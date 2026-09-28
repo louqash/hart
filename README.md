@@ -31,7 +31,7 @@ you). Your data stays in one DuckDB file on your machine.
 | **Season** | Phases (comeback → base → build → peak → taper), generated backwards from your A-race and editable; races and events; the observed training state vs the plan. |
 | **Plan** | Your coach's sessions (paste them from a coaching app, an email or a message — any format, any language), matched to what you did; accepted suggestions; one click sends a run or ride to your Garmin calendar as a structured workout. |
 | **Sessions** | Every session graded A–E by Ember from facts computed in code, with every number checked against your data; side-by-side with a similar earlier session. |
-| **Strength** | Progression per lift (top sets, estimated 1-rep max, 8-week change), sessions per week against your target. |
+| **Strength** | Progression per lift (top sets, estimated 1-rep max, 8-week change), sessions per week against your target; lifts Garmin names differently can be merged ("Barbell Deadlift" = "Deadlift"). |
 | **Health** | Lab results with trends, and reminders computed from them: follow-ups on flagged results, regular panels timed to your season, a pre-race medical, physio check-ins. |
 | **Ember** | Chat with an AI coach-analyst that reads your data through hart's tools, never invents numbers, and proposes changes (notes, plan, season, health checks) that you approve. |
 | **Evening message** | Tomorrow's plan and suggestion, today's sessions and open alerts, in Discord at the time you choose. |

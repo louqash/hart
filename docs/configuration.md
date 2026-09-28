@@ -157,3 +157,21 @@ hart doesn't connect to coaching platforms (their APIs are paid or closed). Copy
 wherever your coach sends it — an app, an email, a message — and paste it on the Plan page; Ember turns it
 into sessions and you confirm them. Turn on **I have a coach** in Settings so Ember treats those sessions as
 your coach's plan. Leave it off if you plan your own training.
+
+## Strength exercise names
+
+Garmin names the same lift inconsistently: a set can be recorded by exercise ("Barbell Deadlift") or, when
+the watch isn't sure, only by category ("Deadlift"). hart counts lifts by a canonical key:
+
+- **Automatic:** an exercise whose name is its category with `BARBELL_` in front is that category
+  (`BARBELL_DEADLIFT` → `DEADLIFT`). Other prefixes (`DUMBBELL_`, `ROMANIAN_`…) stay separate lifts, since they
+  change the load. Warm-ups, cardio and runs logged inside a strength session aren't counted as lifts.
+- **Your aliases:** anything else — a custom exercise name, a variant you treat as the same lift — you merge on
+  the Strength page with **Same lift as**. Aliases can chain (A → B → C); a merge that would loop back is
+  refused. **Undo** removes one.
+
+Merging happens when data is read, never on import: the sets in `strength_sets` keep the names Garmin
+recorded, and aliases are stored separately (the `exercise_aliases` app setting, included in backups). So an
+alias can be undone at any time, and a re-sync never overwrites it. The merged view is used everywhere lifts
+are compared: the Strength page, session comparisons, grading, suggestions and Ember's `get_strength_history`
+(which also returns the original name as `recorded_as`).

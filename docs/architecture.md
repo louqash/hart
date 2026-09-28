@@ -102,6 +102,10 @@ failed and not shown.
 - **Health:** lab results with a marker catalogue (Polish and English names); reminder rules in
   `analytics.health_checks` (regular panels timed to the season, follow-ups on flagged or near-limit results,
   stale markers, planned re-checks from notes, pre-race medical, physio check-ins), reconciled daily.
+- **Strength:** `analytics.strength_progress` — top sets, estimated 1-rep max, weekly sessions. Lifts are
+  merged at read time by `exercise_key` (the name without a `BARBELL_` prefix that matches the category, then
+  the athlete's aliases from the `exercise_aliases` app setting); `strength_sets` keeps Garmin's names. See
+  [configuration](configuration.md#strength-exercise-names).
 - **Settings:** `hart.server.settings` registry — default ← env variable ← Settings page.
 
 ## Data model
