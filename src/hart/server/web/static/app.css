@@ -46,10 +46,16 @@
 
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; background: var(--bg); }
+/* Solid strip behind the iOS status bar so content scrolling under the clock stays readable. */
+html::before { content: ""; position: fixed; top: 0; left: 0; right: 0; height: env(safe-area-inset-top); z-index: 30;
+  background: var(--bg); pointer-events: none; }
 body {
   margin: 0; min-height: 100vh; color: var(--text); font: 15px/1.5 var(--sans);
   background: var(--bg); position: relative; overflow-x: hidden;
   padding-bottom: calc(68px + env(safe-area-inset-bottom));
+  /* Home-screen app on iOS: the status bar is translucent and overlaps the page (viewport-fit=cover). */
+  padding-top: env(safe-area-inset-top);
+  padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
 }
 /* Atmosphere: forest glow top-left, sunset ember bottom-right, faint grain. */
 body::before, body::after { content: ""; position: fixed; pointer-events: none; z-index: 0; border-radius: 50%; will-change: transform; }
@@ -460,7 +466,7 @@ table.labs td.num.warn { color: var(--amber); font-weight: 600; }
 .week-review .eyebrow, p .eyebrow { margin-right: 6px; }
 
 /* ---- background activity bar ---- */
-.activity-bar { position: sticky; top: 0; z-index: 15; max-width: 1140px; margin: 8px auto 0; padding: 7px 14px;
+.activity-bar { position: sticky; top: env(safe-area-inset-top); z-index: 15; max-width: 1140px; margin: 8px auto 0; padding: 7px 14px;
   display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--cream);
   background: rgba(16, 33, 26, .96); border: 1px solid var(--line); border-radius: 14px 4px 14px 4px; }
 .activity-bar .text { flex: 1; min-width: 0; }
