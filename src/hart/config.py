@@ -26,7 +26,6 @@ class GarminSettings:
 @dataclasses.dataclass(frozen=True)
 class AthleteSettings:
     name: str
-    max_hr: int
 
 
 DEFAULT_DISCORD_AVATAR = (
@@ -133,7 +132,6 @@ def _load() -> Settings:
         ),
         athlete=AthleteSettings(
             name=_env("ATHLETE_NAME") or os.environ.get("ATHLETE_NAME", "") or "Athlete",
-            max_hr=int(_env("ATHLETE_MAX_HR") or os.environ.get("ATHLETE_MAX_HR", "") or "190"),
         ),
         discord=DiscordSettings(
             bot_token=os.environ.get("DISCORD_BOT_TOKEN", ""),

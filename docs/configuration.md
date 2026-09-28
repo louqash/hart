@@ -73,7 +73,6 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Setting | Environment variable | Default | Notes |
 |---|---|---|---|
 | Your name | `HART_ATHLETE_NAME` | `Athlete` | How Ember addresses you. Everything else about you lives in your notes. |
-| Max heart rate | `HART_ATHLETE_MAX_HR` | `190` | Part of the profile Ember reads; heart-rate zones come from Garmin. |
 | Single-sided power meter | `HART_POWER_SINGLE_SIDED` | `off` | Left-only pedals or cranks double one leg: Ember compares power trends, not absolute watts. |
 | I have a coach | `HART_HAS_COACH` | `off` | Paste your coach's sessions on the Plan page, from wherever they arrive (an app, email, messages). On: Ember treats them as the plan and suggests adjustments. Off: the plan is your own and suggestions plan every day freely. |
 

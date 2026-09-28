@@ -224,7 +224,6 @@ def athlete_profile_resource() -> str:
         {
             "athlete": {
                 "name": settings.get(db, "athlete_name"),
-                "max_hr": settings.get(db, "athlete_max_hr"),
                 "power_single_sided": settings.get(db, "power_single_sided"),
                 "has_coach": settings.get(db, "has_coach"),
             },
@@ -740,7 +739,6 @@ def get_athlete_profile() -> str:
         from hart.server import settings
 
         profile["name"] = settings.get(db, "athlete_name")
-        profile["max_hr"] = settings.get(db, "athlete_max_hr")
         profile["power_single_sided"] = settings.get(db, "power_single_sided")
 
         return _json(profile)

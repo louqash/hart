@@ -59,17 +59,6 @@ REGISTRY: tuple[Setting, ...] = (
         help="How Ember addresses you. Everything else about you lives in your notes.",
     ),
     Setting(
-        "athlete_max_hr",
-        "athlete",
-        "Max heart rate",
-        190,
-        "int",
-        env="HART_ATHLETE_MAX_HR",
-        min=120,
-        max=230,
-        help="Part of the profile Ember reads; heart-rate zones come from Garmin.",
-    ),
-    Setting(
         "power_single_sided",
         "athlete",
         "Single-sided power meter",
