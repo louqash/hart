@@ -104,9 +104,7 @@ def _color_recovery(score: float) -> str:
 
 @app.callback()
 def main(
-    verbose: Annotated[
-        bool, typer.Option("--verbose", "-v", help="Enable debug logging.")
-    ] = False,
+    verbose: Annotated[bool, typer.Option("--verbose", "-v", help="Enable debug logging.")] = False,
 ) -> None:
     """hart CLI."""
     _setup_logging(verbose)
@@ -147,15 +145,17 @@ def auth() -> None:
 
     sso = "https://sso.garmin.com/sso"
     service_url = "https://connect.garmin.com/app"
-    signin_url = f"{sso}/signin?" + urlencode({
-        "id": "gauth-widget",
-        "embedWidget": "true",
-        "gauthHost": sso,
-        "service": service_url,
-        "source": service_url,
-        "redirectAfterAccountLoginUrl": service_url,
-        "redirectAfterAccountCreationUrl": service_url,
-    })
+    signin_url = f"{sso}/signin?" + urlencode(
+        {
+            "id": "gauth-widget",
+            "embedWidget": "true",
+            "gauthHost": sso,
+            "service": service_url,
+            "source": service_url,
+            "redirectAfterAccountLoginUrl": service_url,
+            "redirectAfterAccountCreationUrl": service_url,
+        }
+    )
 
     console.print(
         "\n[bold cyan]Garmin Connect Authentication[/bold cyan]\n"
@@ -197,8 +197,10 @@ def auth() -> None:
     except Exception as exc:
         message = str(exc)
         if "Executable doesn't exist" in message:
-            message = ("Playwright's browser isn't installed. Run "
-                       "[cyan]uv run --extra auth playwright install chromium[/cyan] and try again.")
+            message = (
+                "Playwright's browser isn't installed. Run "
+                "[cyan]uv run --extra auth playwright install chromium[/cyan] and try again."
+            )
         console.print(f"\n[red]Authentication failed:[/red] {message}")
         raise typer.Exit(1)
 
@@ -263,11 +265,13 @@ def _playwright_garmin_login(config: HartSettings, signin_url: str) -> str:
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
-        context = browser.new_context(user_agent=(
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/131.0.0.0 Safari/537.36"
-        ))
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/131.0.0.0 Safari/537.36"
+            )
+        )
         page = context.new_page()
         page.goto(signin_url)
         page.wait_for_load_state("networkidle")
@@ -286,9 +290,7 @@ def _playwright_garmin_login(config: HartSettings, signin_url: str) -> str:
                     # Two-step: submit email, wait for password field
                     page.click("#login-btn-signin")
                     if config.garmin.password:
-                        page.wait_for_selector(
-                            'input[name="password"]', state="visible", timeout=10_000
-                        )
+                        page.wait_for_selector('input[name="password"]', state="visible", timeout=10_000)
                         page.fill('input[name="password"]', config.garmin.password)
                         page.click("#login-btn-signin")
             except Exception:
@@ -302,7 +304,7 @@ def _playwright_garmin_login(config: HartSettings, signin_url: str) -> str:
 
         def _on_request(request: Any) -> None:
             url = request.url
-            m = re.search(r'[?&]ticket=(ST-[^&\s]+)', url)
+            m = re.search(r"[?&]ticket=(ST-[^&\s]+)", url)
             if m and not captured_ticket:
                 captured_ticket.append(m.group(1))
 
@@ -348,8 +350,11 @@ def status() -> None:
     profile = get_athlete_profile(db)
 
     # Build header
-    headline = (f"{race[0]} in [bold]{(race[1] - today).days}[/bold] days" if race
-                else "No A-race set — add one on the Season page")
+    headline = (
+        f"{race[0]} in [bold]{(race[1] - today).days}[/bold] days"
+        if race
+        else "No A-race set — add one on the Season page"
+    )
     console.print()
     console.print(
         Panel(
@@ -391,10 +396,7 @@ def status() -> None:
     recovery_score = profile.get("latest_recovery_score")
     recovery_date = profile.get("latest_recovery_date")
     if recovery_score is not None:
-        console.print(
-            f"\n  Recovery Score: {_color_recovery(recovery_score)}/100"
-            f"  [dim]({recovery_date})[/dim]"
-        )
+        console.print(f"\n  Recovery Score: {_color_recovery(recovery_score)}/100  [dim]({recovery_date})[/dim]")
 
     # VO2max
     vo2_run = profile.get("vo2max_run")
@@ -413,7 +415,6 @@ def status() -> None:
         console.print(f"\n  {' | '.join(metrics_parts)}")
 
     console.print()
-
 
 
 def _status_via_server(config: HartSettings) -> None:
@@ -444,8 +445,7 @@ def _status_via_server(config: HartSettings) -> None:
     recovery = today.get("recovery")
     if recovery:
         console.print(
-            f"  Recovery Score: {_color_recovery(recovery['recovery_score'])}/100"
-            f"  [dim]({recovery['date']})[/dim]"
+            f"  Recovery Score: {_color_recovery(recovery['recovery_score'])}/100  [dim]({recovery['date']})[/dim]"
         )
     last_sync = today.get("last_successful_sync") or "never"
     console.print(f"  [dim]Last successful sync: {last_sync}[/dim]\n")
@@ -477,7 +477,9 @@ def serve(
 
 @app.command("demo")
 def demo(
-    db_path: Annotated[Path, typer.Option("--db", help="Where to create the demo database.")] = Path("data/demo.duckdb"),
+    db_path: Annotated[Path, typer.Option("--db", help="Where to create the demo database.")] = Path(
+        "data/demo.duckdb"
+    ),
 ) -> None:
     """Create a demo database with a fictional athlete (six months of data) to try hart."""
     from hart.demo import build
@@ -570,6 +572,3 @@ def import_data(
     console.print()
     console.print(summary_table)
     console.print()
-
-
-

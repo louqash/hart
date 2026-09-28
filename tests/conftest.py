@@ -1,8 +1,9 @@
 """Shared test fixtures."""
 
-import pytest
-from datetime import datetime, date, timedelta
 import json
+from datetime import date, datetime, timedelta
+
+import pytest
 
 
 @pytest.fixture
@@ -78,6 +79,7 @@ def sample_run_activity():
 def sample_power_series():
     """1-hour bike power data with realistic variation."""
     import random
+
     random.seed(42)
     base_power = 200
     return [max(0, base_power + random.gauss(0, 30)) for _ in range(3600)]
@@ -87,6 +89,7 @@ def sample_power_series():
 def sample_pace_series():
     """45-min run pace data in sec/km."""
     import random
+
     random.seed(42)
     base_pace = 330  # 5:30/km
     return [max(200, base_pace + random.gauss(0, 15)) for _ in range(2700)]
@@ -96,6 +99,7 @@ def sample_pace_series():
 def sample_grade_series():
     """Corresponding grade data for pace series."""
     import math
+
     return [math.sin(i / 200) * 5 for i in range(2700)]  # oscillating ±5%
 
 
@@ -117,6 +121,7 @@ def athlete_config():
 def sample_daily_tss():
     """30 days of daily TSS values."""
     import random
+
     random.seed(42)
     tss_values = []
     base_date = date(2026, 3, 1)
@@ -137,7 +142,10 @@ def write_seed(seed_dir, races=None):
     """A seed directory with one A-race (the app ships no personal defaults)."""
 
     seed_dir.mkdir(parents=True, exist_ok=True)
-    races = races if races is not None else [
-        {"name": "Example Ironman", "race_date": "2027-08-22", "distance": "full", "priority": "A"}]
+    races = (
+        races
+        if races is not None
+        else [{"name": "Example Ironman", "race_date": "2027-08-22", "distance": "full", "priority": "A"}]
+    )
     (seed_dir / "races.json").write_text(json.dumps(races), encoding="utf-8")
     return seed_dir

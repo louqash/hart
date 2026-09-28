@@ -178,6 +178,7 @@ class Database:
 # Module-level singleton accessor
 # ---------------------------------------------------------------------------
 
+
 def get_database(path: str | Path) -> Database:
     """Return a shared :class:`Database` instance for *path*.
 

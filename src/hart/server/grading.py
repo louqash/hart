@@ -36,8 +36,18 @@ UNVERIFIED_LIMIT = 0.30
 CLAUDE_PAUSED_UNTIL = "claude_paused_until"
 
 SessionType = Literal[
-    "recovery", "endurance", "long", "tempo", "threshold", "vo2_intervals", "race", "brick",
-    "strength", "technique", "event_trip", "other",
+    "recovery",
+    "endurance",
+    "long",
+    "tempo",
+    "threshold",
+    "vo2_intervals",
+    "race",
+    "brick",
+    "strength",
+    "technique",
+    "event_trip",
+    "other",
 ]
 
 
@@ -121,7 +131,7 @@ def overall(scores: Scores) -> tuple[float, str]:
     parts = {k: getattr(scores, k) for k in WEIGHTS if getattr(scores, k) is not None}
     weight = sum(WEIGHTS[k] for k in parts)
     value = sum(WEIGHTS[k] * v for k, v in parts.items()) / weight
-    letter = next((l for threshold, l in LETTERS if value >= threshold), "E")
+    letter = next((grade for threshold, grade in LETTERS if value >= threshold), "E")
     return round(value, 2), letter
 
 
@@ -168,33 +178,38 @@ def verify_citations(citations: list[Citation], sources: list[str]) -> list[dict
 
 
 def _next_version(db: Database, activity_id: str) -> int:
-    return db.fetchone("SELECT coalesce(max(version), 0) + 1 FROM session_grades WHERE activity_id = ?", [activity_id])[0]
+    return db.fetchone("SELECT coalesce(max(version), 0) + 1 FROM session_grades WHERE activity_id = ?", [activity_id])[
+        0
+    ]
 
 
 def store_grade(db: Database, activity_id: str, fields: dict[str, Any]) -> int:
     version = _next_version(db, activity_id)
     cols = ["activity_id", "version", *fields]
-    values = [activity_id, version, *[
-        json.dumps(v, default=str) if isinstance(v, dict | list) else v for v in fields.values()
-    ]]
-    db.execute(
-        f"INSERT INTO session_grades ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", values
-    )
+    values = [
+        activity_id,
+        version,
+        *[json.dumps(v, default=str) if isinstance(v, dict | list) else v for v in fields.values()],
+    ]
+    db.execute(f"INSERT INTO session_grades ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)})", values)
     return version
 
 
 def claude_paused(db: Database) -> str | None:
     until = state.get_setting(db, CLAUDE_PAUSED_UNTIL)
-    if until and datetime.datetime.fromisoformat(until) > datetime.datetime.now(tz=datetime.timezone.utc):
+    if until and datetime.datetime.fromisoformat(until) > datetime.datetime.now(tz=datetime.UTC):
         return until
     return None
 
 
 def pause_claude(db: Database, outcome: RunOutcome) -> None:
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    now = datetime.datetime.now(tz=datetime.UTC)
     if outcome.status == "usage_limited":
-        until = (datetime.datetime.fromtimestamp(outcome.resets_at, tz=datetime.timezone.utc)
-                 if outcome.resets_at else now + datetime.timedelta(minutes=60))
+        until = (
+            datetime.datetime.fromtimestamp(outcome.resets_at, tz=datetime.UTC)
+            if outcome.resets_at
+            else now + datetime.timedelta(minutes=60)
+        )
     else:  # auth_failed: back off until someone fixes the token
         until = now + datetime.timedelta(hours=6)
     state.set_setting(db, CLAUDE_PAUSED_UNTIL, until.isoformat())
@@ -221,9 +236,15 @@ def grade_activity(
     features["trigger"] = trigger
 
     if not features["gradable"] and not force:
-        version = store_grade(db, activity_id, {
-            "status": "ungraded", "ungraded_reason": features["ungraded_reason"], "features": features,
-        })
+        version = store_grade(
+            db,
+            activity_id,
+            {
+                "status": "ungraded",
+                "ungraded_reason": features["ungraded_reason"],
+                "features": features,
+            },
+        )
         return {"status": "ungraded", "version": version, "reason": features["ungraded_reason"]}
 
     paused = claude_paused(db)
@@ -233,10 +254,16 @@ def grade_activity(
     bundle = json.dumps(features, default=str, indent=1)
     prompt = f"Grade this session. Facts:\n```json\n{bundle}\n```"
     spec = RunSpec(
-        purpose="grade", prompt=prompt, model=settings.get(db, "model_grade"),
+        purpose="grade",
+        prompt=prompt,
+        model=settings.get(db, "model_grade"),
         system_prompt=grading_system_prompt(athlete_profile(db)),
-        prompt_version=GRADE_PROMPT_VERSION, policy=read_only_policy(), max_turns=12, timeout_s=300,
-        background=True, output_schema=grade_output_schema(),
+        prompt_version=GRADE_PROMPT_VERSION,
+        policy=read_only_policy(),
+        max_turns=12,
+        timeout_s=300,
+        background=True,
+        output_schema=grade_output_schema(),
     )
 
     def run(s: RunSpec) -> RunOutcome:
@@ -250,16 +277,27 @@ def grade_activity(
     output, error = _parse(outcome)
     if output is None and outcome.status == "ok":
         # One repair attempt with the validation error.
-        repair = RunSpec(**{**spec.__dict__, "prompt": f"{prompt}\n\nYour previous answer failed validation: {error}. "
-                                                         "Return a corrected grade.", "resume": outcome.session_id})
+        repair = RunSpec(
+            **{
+                **spec.__dict__,
+                "prompt": f"{prompt}\n\nYour previous answer failed validation: {error}. Return a corrected grade.",
+                "resume": outcome.session_id,
+            }
+        )
         outcome = run(repair)
         output, error = _parse(outcome)
 
     if output is None:
-        version = store_grade(db, activity_id, {
-            "status": "failed", "ungraded_reason": (error or outcome.error or "no output")[:500],
-            "features": features, "claude_run_id": outcome.run_id,
-        })
+        version = store_grade(
+            db,
+            activity_id,
+            {
+                "status": "failed",
+                "ungraded_reason": (error or outcome.error or "no output")[:500],
+                "features": features,
+                "claude_run_id": outcome.run_id,
+            },
+        )
         return {"status": "failed", "version": version, "error": error or outcome.error}
 
     if features.get("event"):
@@ -270,15 +308,27 @@ def grade_activity(
     confidence = output.confidence
     if citations and sum(not c["verified"] for c in citations) / len(citations) > UNVERIFIED_LIMIT:
         confidence = "low"
-    version = store_grade(db, activity_id, {
-        "status": "graded", "intent_source": "inferred", "session_type": output.session_type,
-        "score_execution": output.scores.execution, "score_response": output.scores.response,
-        "score_context": output.scores.context_fit, "overall_score": score, "letter": letter,
-        "confidence": confidence, "summary": output.summary,
-        "highlights": output.highlights, "concerns": output.concerns, "citations": citations,
-        "features": {**features, "justifications": output.justifications.model_dump()},
-        "claude_run_id": outcome.run_id,
-    })
+    version = store_grade(
+        db,
+        activity_id,
+        {
+            "status": "graded",
+            "intent_source": "inferred",
+            "session_type": output.session_type,
+            "score_execution": output.scores.execution,
+            "score_response": output.scores.response,
+            "score_context": output.scores.context_fit,
+            "overall_score": score,
+            "letter": letter,
+            "confidence": confidence,
+            "summary": output.summary,
+            "highlights": output.highlights,
+            "concerns": output.concerns,
+            "citations": citations,
+            "features": {**features, "justifications": output.justifications.model_dump()},
+            "claude_run_id": outcome.run_id,
+        },
+    )
     return {"status": "graded", "version": version, "letter": letter, "score": score}
 
 
@@ -326,8 +376,11 @@ def _decode(g: dict[str, Any]) -> dict[str, Any]:
 def latest_grade(db: Database, activity_id: str, version: int | None = None) -> dict[str, Any] | None:
     where = "AND version = ?" if version else ""
     params: list[Any] = [activity_id, version] if version else [activity_id]
-    found = rows(db, f"SELECT {GRADE_COLUMNS} FROM session_grades WHERE activity_id = ? {where} "
-                     "ORDER BY version DESC LIMIT 1", params)
+    found = rows(
+        db,
+        f"SELECT {GRADE_COLUMNS} FROM session_grades WHERE activity_id = ? {where} ORDER BY version DESC LIMIT 1",
+        params,
+    )
     return _decode(found[0]) if found else None
 
 
@@ -337,7 +390,8 @@ def grade_chips(db: Database, activity_ids: list[str]) -> dict[str, dict[str, An
         return {}
     placeholders = ", ".join("?" for _ in activity_ids)
     chips = {
-        r["activity_id"]: r for r in rows(
+        r["activity_id"]: r
+        for r in rows(
             db,
             "SELECT activity_id, status, letter, overall_score, ungraded_reason, version FROM ("
             "SELECT *, row_number() OVER (PARTITION BY activity_id ORDER BY version DESC) AS rn "
@@ -345,7 +399,11 @@ def grade_chips(db: Database, activity_ids: list[str]) -> dict[str, dict[str, An
             activity_ids,
         )
     }
-    for r in rows(db, f"SELECT dedupe_key FROM jobs WHERE type = 'grade' AND status IN ('queued', 'running') "
-                      f"AND dedupe_key IN ({placeholders})", [f"grade:{a}" for a in activity_ids]):
+    for r in rows(
+        db,
+        f"SELECT dedupe_key FROM jobs WHERE type = 'grade' AND status IN ('queued', 'running') "
+        f"AND dedupe_key IN ({placeholders})",
+        [f"grade:{a}" for a in activity_ids],
+    ):
         chips.setdefault(r["dedupe_key"][6:], {})["pending"] = True
     return chips

@@ -17,21 +17,48 @@ MCP_SERVER = "hart"
 MCP_PREFIX = f"mcp__{MCP_SERVER}__"
 
 # MCP tools that change state or reach outside; everything else is read-only.
-WRITE_TOOLS = frozenset({
-    "sync_garmin", "sync_all", "propose_athlete_note", "propose_season_change", "propose_health_check",
-    "propose_plan_change", "acknowledge_anomaly", "send_discord_message",
-})
+WRITE_TOOLS = frozenset(
+    {
+        "sync_garmin",
+        "sync_all",
+        "propose_athlete_note",
+        "propose_season_change",
+        "propose_health_check",
+        "propose_plan_change",
+        "acknowledge_anomaly",
+        "send_discord_message",
+    }
+)
 # Write tools chat may use: sync (idempotent, enqueues a job) and proposals
 # for notes and season changes (nothing changes until the athlete approves).
-CHAT_WRITE_TOOLS = frozenset({
-    "sync_garmin", "sync_all", "propose_athlete_note", "propose_season_change", "propose_health_check",
-    "propose_plan_change",
-})
+CHAT_WRITE_TOOLS = frozenset(
+    {
+        "sync_garmin",
+        "sync_all",
+        "propose_athlete_note",
+        "propose_season_change",
+        "propose_health_check",
+        "propose_plan_change",
+    }
+)
 
 # Built-in Claude Code tools that must never be available.
 DENIED_BUILTINS = (
-    "Bash", "BashOutput", "KillShell", "Write", "Edit", "MultiEdit", "NotebookEdit",
-    "Read", "Glob", "Grep", "Task", "Agent", "TodoWrite", "ExitPlanMode", "Skill",
+    "Bash",
+    "BashOutput",
+    "KillShell",
+    "Write",
+    "Edit",
+    "MultiEdit",
+    "NotebookEdit",
+    "Read",
+    "Glob",
+    "Grep",
+    "Task",
+    "Agent",
+    "TodoWrite",
+    "ExitPlanMode",
+    "Skill",
 )
 WEB_TOOLS = ("WebSearch", "WebFetch")
 

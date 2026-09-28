@@ -158,16 +158,14 @@ def _insert_activity(
         field = "power" if sport == "bike" else "speed"
         ts, hr, out = streams
         db.connection.executemany(
-            f"INSERT INTO activity_streams (activity_id, timestamp_sec, heart_rate, {field}) "
-            "VALUES (?, ?, ?, ?)",
+            f"INSERT INTO activity_streams (activity_id, timestamp_sec, heart_rate, {field}) VALUES (?, ?, ?, ?)",
             [[act_id, int(t), None if h is None else round(h), o] for t, h, o in zip(ts, hr, out)],
         )
 
 
 def _stored(db: Database, act_id: str) -> tuple[Any, ...]:
     return db.fetchone(
-        "SELECT aerobic_decoupling_pct, efficiency_factor, tss FROM activity_metrics "
-        "WHERE activity_id = ?",
+        "SELECT aerobic_decoupling_pct, efficiency_factor, tss FROM activity_metrics WHERE activity_id = ?",
         [act_id],
     )
 
@@ -214,8 +212,11 @@ def test_sync_writes_decoupling_for_new_activity(db: Database) -> None:
     ts, hr, pw = _steady(60, hr_start=125, hr_end=140)
     points = [StreamPoint(timestamp_sec=t, heart_rate=round(h), power=int(p)) for t, h, p in zip(ts, hr, pw)]
     activity = Activity(
-        activity_id="fit_ride", source="garmin", sport_type=SportType.bike,
-        start_time=datetime.datetime(2026, 9, 26, 13, 41), elapsed_seconds=3600,
+        activity_id="fit_ride",
+        source="garmin",
+        sport_type=SportType.bike,
+        start_time=datetime.datetime(2026, 9, 26, 13, 41),
+        elapsed_seconds=3600,
     )
     db.execute(
         "INSERT INTO activities (activity_id, source, sport_type, start_time, elapsed_seconds) "

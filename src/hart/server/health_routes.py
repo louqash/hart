@@ -41,12 +41,22 @@ def _err(exc: Exception) -> HTTPException:
 @router.get("/health", response_class=HTMLResponse, include_in_schema=False)
 def health_page(request: Request, db: Database = Depends(get_db), config=Depends(get_config)) -> HTMLResponse:
     today = data.local_today(config)
-    return page(request, "health.html", {
-        "nav": "health", "h": health.overview(db, today), "panels": labs.panels(db),
-        "trend_series": health.trend_series(db), "catalogue": labs.CATALOGUE,
-        "annotations": data.rows(db, "SELECT kind, label, start_date, end_date FROM annotations "
-                                     "WHERE kind IN ('illness', 'injury') ORDER BY start_date"),
-    })
+    return page(
+        request,
+        "health.html",
+        {
+            "nav": "health",
+            "h": health.overview(db, today),
+            "panels": labs.panels(db),
+            "trend_series": health.trend_series(db),
+            "catalogue": labs.CATALOGUE,
+            "annotations": data.rows(
+                db,
+                "SELECT kind, label, start_date, end_date FROM annotations "
+                "WHERE kind IN ('illness', 'injury') ORDER BY start_date",
+            ),
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +78,9 @@ def api_create_check(body: health.CheckIn, db: Database = Depends(get_db)) -> di
 
 
 @router.post("/api/health/checks/{check_id}/done")
-def api_check_done(check_id: int, body: DoneIn, db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+def api_check_done(
+    check_id: int, body: DoneIn, db: Database = Depends(get_db), config=Depends(get_config)
+) -> dict[str, Any]:
     try:
         return health.mark_done(db, check_id, data.local_today(config), body.done_on)
     except health.HealthError as exc:
@@ -76,7 +88,9 @@ def api_check_done(check_id: int, body: DoneIn, db: Database = Depends(get_db), 
 
 
 @router.post("/api/health/checks/{check_id}/snooze")
-def api_check_snooze(check_id: int, body: SnoozeIn, db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+def api_check_snooze(
+    check_id: int, body: SnoozeIn, db: Database = Depends(get_db), config=Depends(get_config)
+) -> dict[str, Any]:
     try:
         health.snooze(db, check_id, body.weeks, data.local_today(config))
     except health.HealthError as exc:
@@ -85,8 +99,9 @@ def api_check_snooze(check_id: int, body: SnoozeIn, db: Database = Depends(get_d
 
 
 @router.post("/api/health/checks/{check_id}/{action}")
-def api_check_action(check_id: int, action: Literal["dismiss", "approve", "reopen"],
-                     db: Database = Depends(get_db)) -> dict[str, Any]:
+def api_check_action(
+    check_id: int, action: Literal["dismiss", "approve", "reopen"], db: Database = Depends(get_db)
+) -> dict[str, Any]:
     try:
         {"dismiss": health.dismiss, "approve": health.approve, "reopen": health.reopen}[action](db, check_id)
     except health.HealthError as exc:
@@ -111,8 +126,9 @@ def api_labs(marker: str | None = None, db: Database = Depends(get_db)) -> list[
 
 @router.get("/api/health/markers")
 def api_markers() -> list[dict[str, Any]]:
-    return [{"key": m.key, "name": m.name, "category": m.category, "lab_names": list(m.aliases)}
-            for m in labs.CATALOGUE]
+    return [
+        {"key": m.key, "name": m.name, "category": m.category, "lab_names": list(m.aliases)} for m in labs.CATALOGUE
+    ]
 
 
 @router.post("/api/health/labs/parse")

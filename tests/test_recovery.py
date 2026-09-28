@@ -1,7 +1,6 @@
 """Tests for recovery and HRV analytics."""
 
 
-
 class TestHRV:
     """Test HRV analysis functions."""
 
@@ -16,8 +15,7 @@ class TestHRV:
         # Higher variability = higher RMSSD
         rr_low_var = [800, 801, 800, 801, 800]
         rr_high_var = [780, 820, 770, 830, 790]
-        assert rmssd(rr_high_var) > rmssd(rr_low_var), \
-            "Higher HRV variability should give higher RMSSD"
+        assert rmssd(rr_high_var) > rmssd(rr_low_var), "Higher HRV variability should give higher RMSSD"
 
     def test_ln_rmssd(self):
         from hart.analytics.hrv import ln_rmssd
@@ -27,15 +25,18 @@ class TestHRV:
         assert result > 0, "ln(RMSSD) should be positive for normal HR"
 
     def test_hrv_trend_analysis(self):
-        from hart.analytics.hrv import hrv_trend_analysis
         from datetime import date, timedelta
+
+        from hart.analytics.hrv import hrv_trend_analysis
 
         dates = [date(2026, 3, 1) + timedelta(days=i) for i in range(30)]
         # Declining HRV trend
         hrv_values = [50.0 - i * 0.5 for i in range(30)]
 
         result = hrv_trend_analysis(dates, hrv_values)
-        assert result["trend_direction"] == "declining", f"Should detect declining trend, got {result['trend_direction']}"
+        assert result["trend_direction"] == "declining", (
+            f"Should detect declining trend, got {result['trend_direction']}"
+        )
 
     def test_hrv_suppression_detection(self):
         from hart.analytics.hrv import detect_hrv_suppression
@@ -60,8 +61,12 @@ class TestRecovery:
         hrv = {"hrv_last_night_ms": 55, "baseline_low_ms": 40, "baseline_high_ms": 60}
         training_load = {"tsb": 5}
         weights = {
-            "hrv": 0.30, "sleep": 0.25, "body_battery": 0.20,
-            "readiness": 0.15, "stress": 0.05, "fatigue": 0.05,
+            "hrv": 0.30,
+            "sleep": 0.25,
+            "body_battery": 0.20,
+            "readiness": 0.15,
+            "stress": 0.05,
+            "fatigue": 0.05,
         }
 
         score = compute_recovery_score(health, sleep, hrv, training_load, weights)
@@ -76,8 +81,12 @@ class TestRecovery:
         hrv = {"hrv_last_night_ms": 30, "baseline_low_ms": 40, "baseline_high_ms": 60}
         training_load = {"tsb": -25}
         weights = {
-            "hrv": 0.30, "sleep": 0.25, "body_battery": 0.20,
-            "readiness": 0.15, "stress": 0.05, "fatigue": 0.05,
+            "hrv": 0.30,
+            "sleep": 0.25,
+            "body_battery": 0.20,
+            "readiness": 0.15,
+            "stress": 0.05,
+            "fatigue": 0.05,
         }
 
         score = compute_recovery_score(health, sleep, hrv, training_load, weights)
@@ -97,8 +106,9 @@ class TestAnomaly:
         anomalies = check_overtraining_risk(ctl_series, atl_series)
         assert len(anomalies) > 0, "Should detect overtraining risk with TSB < -30"
         types = [a.anomaly_type for a in anomalies]
-        assert any("overtraining" in t.lower() or "fatigue" in t.lower() or "overreaching" in t.lower() for t in types), \
-            f"Should detect overtraining risk, got types: {types}"
+        assert any(
+            "overtraining" in t.lower() or "fatigue" in t.lower() or "overreaching" in t.lower() for t in types
+        ), f"Should detect overtraining risk, got types: {types}"
 
     def test_no_anomaly_normal_load(self):
         from hart.analytics.anomaly import check_overtraining_risk

@@ -20,12 +20,20 @@ def db(tmp_path: Path):
     database.close()
 
 
-def _gym(db: Database, aid: str, day: datetime.date, sets: list[tuple[str | None, str | None, int, float | None]]) -> None:
-    db.execute("INSERT INTO activities (activity_id, source, sport_type, name, start_time, elapsed_seconds) "
-               "VALUES (?, 'test', 'strength', 'Gym', ?, 3000)", [aid, datetime.datetime.combine(day, datetime.time(18))])
+def _gym(
+    db: Database, aid: str, day: datetime.date, sets: list[tuple[str | None, str | None, int, float | None]]
+) -> None:
+    db.execute(
+        "INSERT INTO activities (activity_id, source, sport_type, name, start_time, elapsed_seconds) "
+        "VALUES (?, 'test', 'strength', 'Gym', ?, 3000)",
+        [aid, datetime.datetime.combine(day, datetime.time(18))],
+    )
     for i, (name, category, reps, kg) in enumerate(sets):
-        db.execute("INSERT INTO strength_sets (activity_id, set_index, set_type, repetitions, weight_kg, exercise_name, "
-                   "exercise_category) VALUES (?, ?, 'active', ?, ?, ?, ?)", [aid, i, reps, kg, name, category])
+        db.execute(
+            "INSERT INTO strength_sets (activity_id, set_index, set_type, repetitions, weight_kg, exercise_name, "
+            "exercise_category) VALUES (?, ?, 'active', ?, ?, ?, ?)",
+            [aid, i, reps, kg, name, category],
+        )
 
 
 def test_helpers() -> None:
@@ -40,10 +48,23 @@ def test_helpers() -> None:
 
 
 def test_progression_and_weeks(db: Database) -> None:
-    _gym(db, "a", TODAY - datetime.timedelta(days=30), [("BARBELL_DEADLIFT", "DEADLIFT", 5, 50), ("BARBELL_DEADLIFT", "DEADLIFT", 5, 60),
-                                                        ("PULL_UP", "PULL_UP", 6, 0), ("WALK", "RUN", 1, None)])
-    _gym(db, "b", TODAY - datetime.timedelta(days=3), [(None, "DEADLIFT", 5, 65), ("PULL_UP", "PULL_UP", 8, 0),
-                                                       (None, "SQUAT", 10, 20)])
+    _gym(
+        db,
+        "a",
+        TODAY - datetime.timedelta(days=30),
+        [
+            ("BARBELL_DEADLIFT", "DEADLIFT", 5, 50),
+            ("BARBELL_DEADLIFT", "DEADLIFT", 5, 60),
+            ("PULL_UP", "PULL_UP", 6, 0),
+            ("WALK", "RUN", 1, None),
+        ],
+    )
+    _gym(
+        db,
+        "b",
+        TODAY - datetime.timedelta(days=3),
+        [(None, "DEADLIFT", 5, 65), ("PULL_UP", "PULL_UP", 8, 0), (None, "SQUAT", 10, 20)],
+    )
     p = progression(db, TODAY)
     by_key = {e["key"]: e for e in p["exercises"]}
     # "BARBELL_DEADLIFT" (session a) and category-only "DEADLIFT" (session b) are one lift; walking isn't a lift.
@@ -72,15 +93,18 @@ def test_same_lift_merge_via_api(tmp_path: Path) -> None:
     _gym(seed, "a", TODAY - datetime.timedelta(days=10), [(None, "SQUAT", 5, 60)])
     _gym(seed, "b", TODAY - datetime.timedelta(days=3), [("WEIGHTED_BACK_SQUATS", "SQUAT", 5, 70)])
     seed.close()
-    config = dataclasses.replace(get_config(), db_path=db_path,
-                                 server=ServerSettings(env="production", seed_dir=tmp_path / "seed"))
+    config = dataclasses.replace(
+        get_config(), db_path=db_path, server=ServerSettings(env="production", seed_dir=tmp_path / "seed")
+    )
     with TestClient(create_app(config, run_scheduler=False), base_url="https://hart.example.ts.net") as client:
         keys = {e["key"] for e in client.get("/api/strength", headers=H).json()["exercises"]}
         assert keys == {"SQUAT", "WEIGHTED_BACK_SQUATS"}
         client.post("/api/strength/aliases", headers=W, json={"name": "SQUAT", "same_as": "WEIGHTED_BACK_SQUATS"})
         merged = client.get("/api/strength", headers=H).json()["exercises"]
         assert [(e["key"], e["sessions"]) for e in merged] == [("WEIGHTED_BACK_SQUATS", 2)]
-        cycle = client.post("/api/strength/aliases", headers=W, json={"name": "WEIGHTED_BACK_SQUATS", "same_as": "SQUAT"})
+        cycle = client.post(
+            "/api/strength/aliases", headers=W, json={"name": "WEIGHTED_BACK_SQUATS", "same_as": "SQUAT"}
+        )
         assert cycle.status_code == 400
         assert "Squat → Weighted Back Squats" in client.get("/strength", headers=H).text
         client.post("/api/strength/aliases", headers=W, json={"name": "SQUAT", "same_as": None})
@@ -94,8 +118,12 @@ def test_strength_history_tool_merges_lifts(tmp_path: Path) -> None:
 
     db = Database(tmp_path / "m.duckdb").connect()
     _gym(db, "a", datetime.date.today() - datetime.timedelta(days=10), [("BARBELL_DEADLIFT", "DEADLIFT", 5, 60)])
-    _gym(db, "b", datetime.date.today() - datetime.timedelta(days=3), [(None, "DEADLIFT", 5, 65),
-                                                                        ("ROMANIAN_DEADLIFT", "DEADLIFT", 8, 40)])
+    _gym(
+        db,
+        "b",
+        datetime.date.today() - datetime.timedelta(days=3),
+        [(None, "DEADLIFT", 5, 65), ("ROMANIAN_DEADLIFT", "DEADLIFT", 8, 40)],
+    )
     mcp_server.configure_server(db, lambda *a, **k: {}, lambda _id: None)
     try:
         out = json.loads(mcp_server.get_strength_history(days_back=30, exercise="deadlift"))
@@ -138,11 +166,13 @@ def test_demo_database_never_reads_seed_files(tmp_path: Path) -> None:
     build(tmp_path / "demo.duckdb", today=TODAY)
     real = tmp_path / "real-seed"
     real.mkdir()
-    (real / "lab_results.json").write_text(json.dumps([{"date": "2020-01-01", "markers": [
-        {"name": "Hemoglobin", "value": "99.9", "unit": "g/dl"}]}]))
+    (real / "lab_results.json").write_text(
+        json.dumps([{"date": "2020-01-01", "markers": [{"name": "Hemoglobin", "value": "99.9", "unit": "g/dl"}]}])
+    )
     (tmp_path / "blood_results.json").write_text("[]")
-    config = dataclasses.replace(get_config(), db_path=tmp_path / "demo.duckdb",
-                                 server=ServerSettings(env="production", seed_dir=real))
+    config = dataclasses.replace(
+        get_config(), db_path=tmp_path / "demo.duckdb", server=ServerSettings(env="production", seed_dir=real)
+    )
     with TestClient(create_app(config, run_scheduler=False), base_url="https://hart.example.ts.net"):
         pass
     db = Database(tmp_path / "demo.duckdb").connect()

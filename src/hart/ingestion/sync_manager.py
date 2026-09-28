@@ -54,9 +54,7 @@ class SyncResult:
     new_health_days: int = 0
     errors: int = 0
     error_details: list[str] = field(default_factory=list)
-    sync_time: datetime.datetime = field(
-        default_factory=lambda: datetime.datetime.now(tz=datetime.timezone.utc)
-    )
+    sync_time: datetime.datetime = field(default_factory=lambda: datetime.datetime.now(tz=datetime.UTC))
 
     def __str__(self) -> str:
         return (
@@ -165,15 +163,14 @@ class SyncManager:
         garmin = self.get_garmin_client()
 
         from garminconnect import Garmin as _Garmin  # type: ignore[import-untyped]
+
         DL_FMT = _Garmin.ActivityDownloadFormat
 
         today = datetime.date.today()
         start_date = today - datetime.timedelta(days=days_back)
 
         try:
-            activities_list = garmin.get_activities_by_date(
-                start_date.isoformat(), today.isoformat()
-            )
+            activities_list = garmin.get_activities_by_date(start_date.isoformat(), today.isoformat())
         except Exception as exc:
             logger.error("Garmin activity list fetch failed: %s", exc)
             result.errors += 1
@@ -188,14 +185,10 @@ class SyncManager:
         existing_ids: set[str] = {
             str(r[0])
             for r in self._db.fetchall(
-                "SELECT external_id FROM activities "
-                "WHERE source = 'garmin' AND external_id IS NOT NULL"
+                "SELECT external_id FROM activities WHERE source = 'garmin' AND external_id IS NOT NULL"
             )
         }
-        new_activities = [
-            a for a in activities_list
-            if str(a.get("activityId", "")) not in existing_ids
-        ]
+        new_activities = [a for a in activities_list if str(a.get("activityId", "")) not in existing_ids]
         # Activities we already have may have been renamed (or described) in
         # Garmin Connect since; the list carries the current values, so update
         # them without any extra API calls.
@@ -246,9 +239,7 @@ class SyncManager:
                 if parsed.activity.sport_type == SportType.strength:
                     sets = _fetch_strength_sets(garmin, act_id) or parsed.strength_sets
                     replace_strength_sets(self._db, parsed.activity.activity_id, sets)
-                self._sync_activity_metrics(
-                    garmin, act_id, parsed.activity, summary, parsed.stream_points
-                )
+                self._sync_activity_metrics(garmin, act_id, parsed.activity, summary, parsed.stream_points)
                 result.new_activities += 1
 
             except Exception as exc:
@@ -307,9 +298,13 @@ class SyncManager:
                 continue
             stored = self._db.fetchall(
                 "SELECT set_index, set_type, repetitions, weight_kg, exercise_category, exercise_name "
-                "FROM strength_sets WHERE activity_id = ? ORDER BY set_index", [activity_id])
-            fresh = [(s.set_index, s.set_type, s.repetitions, s.weight_kg, s.exercise_category, s.exercise_name)
-                     for s in sorted(sets, key=lambda s: s.set_index)]
+                "FROM strength_sets WHERE activity_id = ? ORDER BY set_index",
+                [activity_id],
+            )
+            fresh = [
+                (s.set_index, s.set_type, s.repetitions, s.weight_kg, s.exercise_category, s.exercise_name)
+                for s in sorted(sets, key=lambda s: s.set_index)
+            ]
             if _sets_key(stored) == _sets_key(fresh):
                 continue
             replace_strength_sets(self._db, activity_id, sets)
@@ -403,9 +398,7 @@ class SyncManager:
 
         garmin = self.get_garmin_client()
 
-        missing_only = "" if refresh else (
-            "AND activity_id NOT IN (SELECT DISTINCT activity_id FROM strength_sets) "
-        )
+        missing_only = "" if refresh else ("AND activity_id NOT IN (SELECT DISTINCT activity_id FROM strength_sets) ")
         rows = self._db.fetchall(
             "SELECT activity_id, external_id FROM activities "
             "WHERE sport_type = 'strength' AND external_id IS NOT NULL "
@@ -459,9 +452,7 @@ class SyncManager:
             chunk_start = chunk_end + datetime.timedelta(days=1)
 
         existing = {
-            r[0] for r in self._db.fetchall(
-                "SELECT date FROM daily_health WHERE date >= ? AND date <= ?", [start, end]
-            )
+            r[0] for r in self._db.fetchall("SELECT date FROM daily_health WHERE date >= ? AND date <= ?", [start, end])
         }
         updated = 0
         no_health_row: list[str] = []
@@ -509,9 +500,9 @@ class SyncManager:
         if stats and isinstance(stats, dict):
             # VO2max isn't in the daily summary; the max-metrics service has an
             # entry only on days Garmin produced a new estimate.
-            vo2_run, vo2_cycle = _parse_max_metrics(
-                _safe_call(garmin.get_max_metrics, date_str)
-            ).get(date, (None, None))
+            vo2_run, vo2_cycle = _parse_max_metrics(_safe_call(garmin.get_max_metrics, date_str)).get(
+                date, (None, None)
+            )
             stress_pct = _fetch_stress_percentiles(garmin, date_str)
             hr_pct = _fetch_hr_percentiles(garmin, date_str)
 
@@ -524,9 +515,7 @@ class SyncManager:
             elif isinstance(readiness_data, list) and readiness_data:
                 first = readiness_data[0]
                 if isinstance(first, dict):
-                    training_readiness = _safe_int(
-                        first.get("score") or first.get("trainingReadinessScore")
-                    )
+                    training_readiness = _safe_int(first.get("score") or first.get("trainingReadinessScore"))
 
             health_day = HealthDay(
                 date=date,
@@ -566,13 +555,12 @@ class SyncManager:
         if sleep_data and isinstance(sleep_data, dict):
             dto = sleep_data.get("dailySleepDTO", {})
             if dto and isinstance(dto, dict):
+
                 def _epoch_ms(val: Any) -> datetime.datetime | None:
                     if val is None:
                         return None
                     try:
-                        return datetime.datetime.fromtimestamp(
-                            int(val) / 1000.0, tz=datetime.timezone.utc
-                        )
+                        return datetime.datetime.fromtimestamp(int(val) / 1000.0, tz=datetime.UTC)
                     except (ValueError, TypeError, OSError):
                         return None
 
@@ -584,20 +572,23 @@ class SyncManager:
                         overall.get("value") if isinstance(overall, dict) else scores.get("overallScore")
                     )
 
-                upsert_sleep_record(self._db, SleepRecord(
-                    date=date,
-                    sleep_start=_epoch_ms(dto.get("sleepStartTimestampGMT")),
-                    sleep_end=_epoch_ms(dto.get("sleepEndTimestampGMT")),
-                    total_sleep_sec=_safe_int(dto.get("sleepTimeSeconds")),
-                    deep_sleep_sec=_safe_int(dto.get("deepSleepSeconds")),
-                    light_sleep_sec=_safe_int(dto.get("lightSleepSeconds")),
-                    rem_sleep_sec=_safe_int(dto.get("remSleepSeconds")),
-                    awake_sec=_safe_int(dto.get("awakeSleepSeconds")),
-                    sleep_score=sleep_score,
-                    avg_spo2=_safe_float(dto.get("averageSpO2Value")),
-                    avg_respiration=_safe_float(dto.get("averageRespirationValue")),
-                    avg_hr_sleep=_safe_int(dto.get("avgHeartRate")),
-                ))
+                upsert_sleep_record(
+                    self._db,
+                    SleepRecord(
+                        date=date,
+                        sleep_start=_epoch_ms(dto.get("sleepStartTimestampGMT")),
+                        sleep_end=_epoch_ms(dto.get("sleepEndTimestampGMT")),
+                        total_sleep_sec=_safe_int(dto.get("sleepTimeSeconds")),
+                        deep_sleep_sec=_safe_int(dto.get("deepSleepSeconds")),
+                        light_sleep_sec=_safe_int(dto.get("lightSleepSeconds")),
+                        rem_sleep_sec=_safe_int(dto.get("remSleepSeconds")),
+                        awake_sec=_safe_int(dto.get("awakeSleepSeconds")),
+                        sleep_score=sleep_score,
+                        avg_spo2=_safe_float(dto.get("averageSpO2Value")),
+                        avg_respiration=_safe_float(dto.get("averageRespirationValue")),
+                        avg_hr_sleep=_safe_int(dto.get("avgHeartRate")),
+                    ),
+                )
 
         # HRV
         hrv_data = _safe_call(garmin.get_hrv_data, date_str)
@@ -605,15 +596,18 @@ class SyncManager:
             summary = hrv_data.get("hrvSummary", {})
             if summary and isinstance(summary, dict):
                 baseline = summary.get("baseline") or {}
-                upsert_hrv_daily(self._db, HRVDaily(
-                    date=date,
-                    hrv_weekly_avg_ms=_safe_float(summary.get("weeklyAvg")),
-                    hrv_last_night_ms=_safe_float(summary.get("lastNightAvg")),
-                    hrv_last_night_5min_high=_safe_float(summary.get("lastNight5MinHigh")),
-                    hrv_status=summary.get("status"),
-                    baseline_low_ms=_safe_float(baseline.get("balancedLow")),
-                    baseline_high_ms=_safe_float(baseline.get("balancedUpper")),
-                ))
+                upsert_hrv_daily(
+                    self._db,
+                    HRVDaily(
+                        date=date,
+                        hrv_weekly_avg_ms=_safe_float(summary.get("weeklyAvg")),
+                        hrv_last_night_ms=_safe_float(summary.get("lastNightAvg")),
+                        hrv_last_night_5min_high=_safe_float(summary.get("lastNight5MinHigh")),
+                        hrv_status=summary.get("status"),
+                        baseline_low_ms=_safe_float(baseline.get("balancedLow")),
+                        baseline_high_ms=_safe_float(baseline.get("balancedUpper")),
+                    ),
+                )
 
     def _sync_activity_metrics(
         self,
@@ -631,11 +625,7 @@ class SyncManager:
         """
         sport = activity.sport_type
         sport_str = sport.value if hasattr(sport, "value") else str(sport)
-        act_date = (
-            activity.start_time.date()
-            if hasattr(activity.start_time, "date")
-            else str(activity.start_time)[:10]
-        )
+        act_date = activity.start_time.date() if hasattr(activity.start_time, "date") else str(activity.start_time)[:10]
 
         # HR zones from Garmin device — reflect the zones as configured at the
         # time of the activity, no static threshold needed.
@@ -643,9 +633,7 @@ class SyncManager:
         raw_zones = _safe_call(garmin.get_activity_hr_in_timezones, ext_id)
         if raw_zones:
             hr_zone_seconds = {
-                f"Z{z['zoneNumber']}": round(z["secsInZone"], 1)
-                for z in raw_zones
-                if z.get("secsInZone") is not None
+                f"Z{z['zoneNumber']}": round(z["secsInZone"], 1) for z in raw_zones if z.get("secsInZone") is not None
             }
 
         # Efficiency factor: NP/avg_HR (bike) or speed/avg_HR (run).
@@ -685,18 +673,23 @@ class SyncManager:
                  carb_calories, fat_calories)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
-                    activity.activity_id, sport_str, act_date,
-                    tss, tss_method,
+                    activity.activity_id,
+                    sport_str,
+                    act_date,
+                    tss,
+                    tss_method,
                     json.dumps(hr_zone_seconds) if hr_zone_seconds else None,
-                    ef, decoupling,
+                    ef,
+                    decoupling,
                     _safe_float(summary.get("groundContactTime")),
                     _safe_float(summary.get("verticalOscillation")),
                     _safe_float(summary.get("verticalRatio")),
                     round(sl / 100.0, 3) if sl is not None else None,
-                    None,        # swolf
+                    None,  # swolf
                     _safe_int(summary.get("calories")),
                     round(float(summary["totalWork"]), 1) if summary.get("totalWork") else None,
-                    None, None,  # carb/fat calories not in Garmin API
+                    None,
+                    None,  # carb/fat calories not in Garmin API
                 ],
             )
             logger.debug("Metrics written for activity %s", activity.activity_id)
@@ -712,17 +705,13 @@ class SyncManager:
 VO2MAX_CHUNK_DAYS = 366
 
 
-def _fetch_max_metrics_range(
-    garmin: Any, start: datetime.date, end: datetime.date
-) -> Any:
+def _fetch_max_metrics_range(garmin: Any, start: datetime.date, end: datetime.date) -> Any:
     """Max-metrics (VO2max) entries for a date range in one call.
 
     garminconnect only wraps the single-day form (``get_max_metrics``); the
     service takes ``/{start}/{end}`` the same way.
     """
-    return garmin.connectapi(
-        f"{garmin.garmin_connect_metrics_url}/{start.isoformat()}/{end.isoformat()}"
-    )
+    return garmin.connectapi(f"{garmin.garmin_connect_metrics_url}/{start.isoformat()}/{end.isoformat()}")
 
 
 def _parse_max_metrics(
@@ -798,8 +787,7 @@ def _fetch_stress_percentiles(garmin: Any, date_str: str) -> dict[str, Any]:
 
     vals_array = data.get("stressValuesArray") or []
     measured = sorted(
-        v[1] for v in vals_array
-        if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], (int, float)) and v[1] > 0
+        v[1] for v in vals_array if isinstance(v, list) and len(v) >= 2 and isinstance(v[1], (int, float)) and v[1] > 0
     )
     if measured:
         result["stress_p50"] = _percentile(measured, 50)
@@ -816,10 +804,7 @@ def _fetch_hr_percentiles(garmin: Any, date_str: str) -> dict[str, Any]:
         return result
 
     vals_array = data.get("heartRateValues") or []
-    measured = sorted(
-        v[1] for v in vals_array
-        if isinstance(v, list) and len(v) >= 2 and v[1] is not None and v[1] > 0
-    )
+    measured = sorted(v[1] for v in vals_array if isinstance(v, list) and len(v) >= 2 and v[1] is not None and v[1] > 0)
     if measured:
         result["min_hr"] = measured[0]
         result["hr_p25"] = _percentile(measured, 25)

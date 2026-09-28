@@ -10,12 +10,12 @@ from typing import Any
 
 import pytest
 
-from tests.test_chat import FakeClient, _result
-from tests.test_grading import H, W
 from hart.analytics.health_checks import DEFAULTS, PANEL, Context, evaluate, last_full_panel
 from hart.config import ServerSettings, get_config
 from hart.server import health, labs
 from hart.storage.database import Database
+from tests.test_chat import FakeClient, _result
+from tests.test_grading import H, W
 
 D = datetime.date
 TODAY = D(2026, 9, 26)
@@ -28,10 +28,27 @@ def _reset_fake() -> None:
     FakeClient.scripts.clear()
 
 
-def _r(d: D, key: str, value: float, low: float | None = None, high: float | None = None,
-       flag: str | None = None, unit: str = "u") -> dict[str, Any]:
-    row = {"test_date": d, "marker_key": key, "marker_name": key, "value_num": value, "value_text": f"{value:g}",
-           "qualifier": None, "unit": unit, "ref_low": low, "ref_high": high, "flag": flag}
+def _r(
+    d: D,
+    key: str,
+    value: float,
+    low: float | None = None,
+    high: float | None = None,
+    flag: str | None = None,
+    unit: str = "u",
+) -> dict[str, Any]:
+    row = {
+        "test_date": d,
+        "marker_key": key,
+        "marker_name": key,
+        "value_num": value,
+        "value_text": f"{value:g}",
+        "qualifier": None,
+        "unit": unit,
+        "ref_low": low,
+        "ref_high": high,
+        "flag": flag,
+    }
     row["status"] = labs.out_of_range(row)
     return row
 
@@ -84,8 +101,11 @@ def test_season_panels_merge_when_close() -> None:
 def test_flagged_and_near_limit_follow_ups() -> None:
     results = [*_panel(D(2025, 5, 13), tsh=3.0), *_panel(D(2026, 5, 7), tsh=4.1)]
     results = [r for r in results if r["marker_key"] not in ("tsh", "hemoglobin")]
-    results += [_r(D(2025, 5, 13), "tsh", 3.0, 0.27, 4.2), _r(D(2026, 5, 7), "tsh", 4.1, 0.27, 4.2),
-                _r(D(2026, 5, 7), "hemoglobin", 18.6, 13.5, 18)]
+    results += [
+        _r(D(2025, 5, 13), "tsh", 3.0, 0.27, 4.2),
+        _r(D(2026, 5, 7), "tsh", 4.1, 0.27, 4.2),
+        _r(D(2026, 5, 7), "hemoglobin", 18.6, 13.5, 18),
+    ]
     spec = _by_key(evaluate(_ctx(results))[0])["followup:2026-05-07"]
     assert set(spec.markers) == {"tsh", "hemoglobin"}
     assert spec.due_date == D(2026, 7, 2)  # flagged: +8 weeks wins over near-limit +12 weeks
@@ -101,10 +121,19 @@ def test_old_flagged_result_goes_into_next_panel() -> None:
 
 
 def test_planned_recheck_from_note_until_result() -> None:
-    note = {"id": 7, "title": "Blood results May 2026", "category": "health", "body": "",
-            "valid_from": D(2026, 5, 7),
-            "rules": {"planned_labs": [{"markers": ["tsh"], "due": "2026-06-15", "after": "2026-05-07"}]}}
-    results = [*_panel(D(2026, 5, 7)), _r(D(2025, 5, 13), "tsh", 3.0, 0.27, 4.2), _r(D(2026, 5, 7), "tsh", 4.1, 0.27, 4.2)]
+    note = {
+        "id": 7,
+        "title": "Blood results May 2026",
+        "category": "health",
+        "body": "",
+        "valid_from": D(2026, 5, 7),
+        "rules": {"planned_labs": [{"markers": ["tsh"], "due": "2026-06-15", "after": "2026-05-07"}]},
+    }
+    results = [
+        *_panel(D(2026, 5, 7)),
+        _r(D(2025, 5, 13), "tsh", 3.0, 0.27, 4.2),
+        _r(D(2026, 5, 7), "tsh", 4.1, 0.27, 4.2),
+    ]
     specs = _by_key(evaluate(_ctx(results, notes=[note]))[0])
     assert specs["planned:7:0"].due_date == D(2026, 6, 15)
     assert "tsh" not in (specs.get("followup:2026-05-07").markers if "followup:2026-05-07" in specs else [])
@@ -121,10 +150,24 @@ def test_stale_vitamin_d_timed_for_late_winter() -> None:
 
 def test_pre_race_exam_and_physio() -> None:
     notes = [
-        {"id": 3, "category": "injury", "title": "Shoulder", "body": "treated by a physio", "valid_from": None,
-         "created": D(2026, 9, 20), "rules": None},
-        {"id": 4, "category": "constraint", "title": "Illness rules", "body": "flagged as a cardiac risk",
-         "valid_from": None, "created": D(2026, 9, 20), "rules": None},
+        {
+            "id": 3,
+            "category": "injury",
+            "title": "Shoulder",
+            "body": "treated by a physio",
+            "valid_from": None,
+            "created": D(2026, 9, 20),
+            "rules": None,
+        },
+        {
+            "id": 4,
+            "category": "constraint",
+            "title": "Illness rules",
+            "body": "flagged as a cardiac risk",
+            "valid_from": None,
+            "created": D(2026, 9, 20),
+            "rules": None,
+        },
     ]
     race = {"name": "Example Ironman", "race_date": D(2027, 8, 22), "distance": "full"}
     specs = _by_key(evaluate(_ctx(_panel(D(2026, 5, 7)), a_race=race, build_start=D(2027, 4, 26), notes=notes))[0])
@@ -136,8 +179,11 @@ def test_pre_race_exam_and_physio() -> None:
 
 
 def test_trend_watch() -> None:
-    results = [_r(D(2024, 5, 1), "hemoglobin", 18.0, 13.5, 18), _r(D(2025, 5, 1), "hemoglobin", 17.2, 13.5, 18),
-               _r(D(2026, 5, 1), "hemoglobin", 16.1, 13.5, 18)]
+    results = [
+        _r(D(2024, 5, 1), "hemoglobin", 18.0, 13.5, 18),
+        _r(D(2025, 5, 1), "hemoglobin", 17.2, 13.5, 18),
+        _r(D(2026, 5, 1), "hemoglobin", 16.1, 13.5, 18),
+    ]
     trend = evaluate(_ctx(results))[1]
     assert trend[0]["key"] == "hemoglobin" and trend[0]["direction"] == "falling"
 
@@ -155,8 +201,13 @@ def db(tmp_path: Path):
 
 
 def _store(db: Database, d: D, markers: list[tuple[str, str, str | None]]) -> None:
-    labs.import_panel(db, labs.LabPanelIn(test_date=d, markers=[
-        labs.LabMarkerIn(name=n, value=v, reference_range=r) for n, v, r in markers]), "manual")
+    labs.import_panel(
+        db,
+        labs.LabPanelIn(
+            test_date=d, markers=[labs.LabMarkerIn(name=n, value=v, reference_range=r) for n, v, r in markers]
+        ),
+        "manual",
+    )
 
 
 def test_sync_creates_resolves_and_respects_dismissal(db: Database) -> None:
@@ -207,12 +258,23 @@ def client(tmp_path: Path):
     db_path = tmp_path / "app.duckdb"
     seed_dir = tmp_path / "data" / "seed"
     seed_dir.mkdir(parents=True)
-    (tmp_path / "data" / "blood_results.json").write_text(json.dumps([
-        {"date": "2025-05-13", "markers": [
-            {"name": "TSH", "value": "3.1", "unit": "µIU/ml", "reference_range": "0.27 - 4.2"},
-            {"name": "LDH", "value": "250", "unit": "U/l", "reference_range": "135 - 225", "flag": "H"}]},
-    ]), encoding="utf-8")
-    config = dataclasses.replace(get_config(), db_path=db_path, server=ServerSettings(env="production", seed_dir=seed_dir))
+    (tmp_path / "data" / "blood_results.json").write_text(
+        json.dumps(
+            [
+                {
+                    "date": "2025-05-13",
+                    "markers": [
+                        {"name": "TSH", "value": "3.1", "unit": "µIU/ml", "reference_range": "0.27 - 4.2"},
+                        {"name": "LDH", "value": "250", "unit": "U/l", "reference_range": "135 - 225", "flag": "H"},
+                    ],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    config = dataclasses.replace(
+        get_config(), db_path=db_path, server=ServerSettings(env="production", seed_dir=seed_dir)
+    )
     app = create_app(config, run_scheduler=False, claude_client_factory=FakeClient)
     with TestClient(app, base_url="https://hart.example.ts.net") as c:
         yield c
@@ -228,30 +290,56 @@ def test_health_page_and_alerts(client) -> None:
 
 
 def test_lab_paste_import(client) -> None:
-    FakeClient.scripts.append([_result(structured_output={
-        "panels": [{"test_date": "2026-09-20", "markers": [
-            {"name": "Ferrytyna", "value": "95", "unit": "ng/ml", "reference_range": "30 - 400"},
-            {"name": "TSH", "value": "2.1", "unit": "µIU/ml", "reference_range": "0.27 - 4.2"}]}],
-        "warnings": [],
-    })])
+    FakeClient.scripts.append(
+        [
+            _result(
+                structured_output={
+                    "panels": [
+                        {
+                            "test_date": "2026-09-20",
+                            "markers": [
+                                {"name": "Ferrytyna", "value": "95", "unit": "ng/ml", "reference_range": "30 - 400"},
+                                {"name": "TSH", "value": "2.1", "unit": "µIU/ml", "reference_range": "0.27 - 4.2"},
+                            ],
+                        }
+                    ],
+                    "warnings": [],
+                }
+            )
+        ]
+    )
     out = client.post("/api/health/labs/parse", headers=W, json={"text": "Ferrytyna 95 ng/ml 30 - 400\nTSH 2.1"}).json()
     assert out["panels"][0]["markers"][0]["marker_key"] == "ferritin" and out["panels"][0]["existing"] == 0
     assert FakeClient.instances[0].options.model == "claude-haiku-4-5"
-    body = {"panels": [{"test_date": p["test_date"], "markers": [
-        {k: m[k] for k in ("name", "value", "unit", "reference_range", "flag")} for m in p["markers"]]} for p in out["panels"]]}
+    body = {
+        "panels": [
+            {
+                "test_date": p["test_date"],
+                "markers": [
+                    {k: m[k] for k in ("name", "value", "unit", "reference_range", "flag")} for m in p["markers"]
+                ],
+            }
+            for p in out["panels"]
+        ]
+    }
     saved = client.post("/api/health/labs/import", headers=W, json=body).json()
     assert saved["panels"][0]["added"] == 2
     again = client.post("/api/health/labs/import", headers=W, json=body).json()
     assert again["panels"][0]["skipped"] == 2
-    new = [r for r in client.get("/api/health/labs?marker=tsh", headers=H).json() if str(r["test_date"]) == "2026-09-20"]
+    new = [
+        r for r in client.get("/api/health/labs?marker=tsh", headers=H).json() if str(r["test_date"]) == "2026-09-20"
+    ]
     assert new and new[0]["source"] == "paste"
 
 
 def test_claude_proposed_check_needs_approval(client) -> None:
     from hart import mcp_server
 
-    out = json.loads(mcp_server.propose_health_check(
-        title="Re-test ferritin", rationale="Ferritin trending down", kind="follow_up", markers=["ferritin"]))
+    out = json.loads(
+        mcp_server.propose_health_check(
+            title="Re-test ferritin", rationale="Ferritin trending down", kind="follow_up", markers=["ferritin"]
+        )
+    )
     assert out["status"] == "proposed"
     assert "Suggested by Ember" in client.get("/health", headers=H).text
     client.post(f"/api/health/checks/{out['id']}/approve", headers=W, json={})

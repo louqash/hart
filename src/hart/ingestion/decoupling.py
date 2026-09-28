@@ -8,7 +8,8 @@ applies the same gates (see :func:`steady_session_decoupling`).
 from __future__ import annotations
 
 import logging
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from hart.analytics.efficiency import steady_session_decoupling
 from hart.models.activity import StreamPoint
@@ -31,12 +32,14 @@ def decoupling_from_points(points: Iterable[StreamPoint], sport: Any) -> float |
     if field is None:
         return None
     pts = list(points)
-    return _rounded(steady_session_decoupling(
-        [p.timestamp_sec for p in pts],
-        [p.heart_rate for p in pts],
-        [getattr(p, field) for p in pts],
-        _sport_str(sport),
-    ))
+    return _rounded(
+        steady_session_decoupling(
+            [p.timestamp_sec for p in pts],
+            [p.heart_rate for p in pts],
+            [getattr(p, field) for p in pts],
+            _sport_str(sport),
+        )
+    )
 
 
 def activity_decoupling(db: Database, activity_id: str, sport: Any) -> float | None:
@@ -45,15 +48,19 @@ def activity_decoupling(db: Database, activity_id: str, sport: Any) -> float | N
     if field is None:
         return None
     rows = db.fetchall(
-        f"SELECT timestamp_sec, heart_rate, {field} FROM activity_streams "
-        "WHERE activity_id = ? ORDER BY timestamp_sec",
+        f"SELECT timestamp_sec, heart_rate, {field} FROM activity_streams WHERE activity_id = ? ORDER BY timestamp_sec",
         [activity_id],
     )
     if not rows:
         return None
-    return _rounded(steady_session_decoupling(
-        [r[0] for r in rows], [r[1] for r in rows], [r[2] for r in rows], _sport_str(sport),
-    ))
+    return _rounded(
+        steady_session_decoupling(
+            [r[0] for r in rows],
+            [r[1] for r in rows],
+            [r[2] for r in rows],
+            _sport_str(sport),
+        )
+    )
 
 
 def backfill_decoupling(db: Database, only_missing: bool = False) -> dict[str, int]:
@@ -62,10 +69,7 @@ def backfill_decoupling(db: Database, only_missing: bool = False) -> dict[str, i
     Only that column is updated (other metrics are untouched); ineligible
     sessions are set to NULL so a tightened gate also clears old values.
     """
-    sql = (
-        "SELECT m.activity_id, m.sport_type FROM activity_metrics m "
-        "WHERE m.sport_type IN ('bike', 'run')"
-    )
+    sql = "SELECT m.activity_id, m.sport_type FROM activity_metrics m WHERE m.sport_type IN ('bike', 'run')"
     if only_missing:
         sql += " AND m.aerobic_decoupling_pct IS NULL"
     rows = db.fetchall(sql + " ORDER BY m.date")

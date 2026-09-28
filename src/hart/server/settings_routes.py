@@ -21,7 +21,10 @@ THRESHOLD_FAMILIES = {
     "health": (health.HEALTH_SETTINGS_KEY, HEALTH_DEFAULTS, "Health-check reminders"),
 }
 THRESHOLD_LABELS = {
-    "state_": "Training state", "flag_": "Phase flags", "ready_": "Readiness", "phase_": "Phase template",
+    "state_": "Training state",
+    "flag_": "Phase flags",
+    "ready_": "Readiness",
+    "phase_": "Phase template",
     "health_": "Health",
 }
 
@@ -37,7 +40,7 @@ class ThresholdIn(BaseModel):
 def _label(key: str) -> str:
     for prefix, group in THRESHOLD_LABELS.items():
         if key.startswith(prefix):
-            return f"{group}: {key[len(prefix):].replace('_', ' ')}"
+            return f"{group}: {key[len(prefix) :].replace('_', ' ')}"
     return key.replace("_", " ")
 
 
@@ -45,10 +48,22 @@ def thresholds(db: Database) -> list[dict[str, Any]]:
     out = []
     for family, (store, defaults, title) in THRESHOLD_FAMILIES.items():
         overrides = state.get_setting(db, store, {}) or {}
-        out.append({"family": family, "title": title, "items": [
-            {"key": k, "label": _label(k), "default": v, "value": overrides.get(k, v), "overridden": k in overrides}
-            for k, v in defaults.items()
-        ]})
+        out.append(
+            {
+                "family": family,
+                "title": title,
+                "items": [
+                    {
+                        "key": k,
+                        "label": _label(k),
+                        "default": v,
+                        "value": overrides.get(k, v),
+                        "overridden": k in overrides,
+                    }
+                    for k, v in defaults.items()
+                ],
+            }
+        )
     return out
 
 
@@ -64,8 +79,11 @@ def server_facts(config: Any) -> list[tuple[str, str, str]]:
         ("HART_BACKUP_DIR", str(s.backup_dir) if s.backup_dir else "not set — no nightly backups", "Nightly backups"),
         ("GARMIN_EMAIL", "set" if config.garmin.email else "not set", "Garmin Connect login"),
         ("CLAUDE_CODE_OAUTH_TOKEN", "set" if _has_claude_token() else "not set", "Claude subscription token"),
-        ("HART_DISCORD_WEBHOOK_URL", "set" if config.discord.webhook_url or config.discord.bot_token else "not set",
-         "Evening message"),
+        (
+            "HART_DISCORD_WEBHOOK_URL",
+            "set" if config.discord.webhook_url or config.discord.bot_token else "not set",
+            "Evening message",
+        ),
     ]
 
 
@@ -81,9 +99,16 @@ def settings_page(request: Request, db: Database = Depends(get_db), config=Depen
     groups: dict[str, list[dict[str, Any]]] = {}
     for item in items:
         groups.setdefault(item["group_label"], []).append(item)
-    return page(request, "settings.html", {
-        "nav": "settings", "groups": groups, "thresholds": thresholds(db), "server": server_facts(config),
-    })
+    return page(
+        request,
+        "settings.html",
+        {
+            "nav": "settings",
+            "groups": groups,
+            "thresholds": thresholds(db),
+            "server": server_facts(config),
+        },
+    )
 
 
 @router.get("/api/settings")
@@ -110,8 +135,9 @@ def api_reset_setting(key: str, db: Database = Depends(get_db)) -> dict[str, Any
 
 
 @router.put("/api/thresholds/{family}/{key}")
-def api_set_threshold(family: str, key: str, body: ThresholdIn, db: Database = Depends(get_db),
-                      config=Depends(get_config)) -> dict[str, Any]:
+def api_set_threshold(
+    family: str, key: str, body: ThresholdIn, db: Database = Depends(get_db), config=Depends(get_config)
+) -> dict[str, Any]:
     if family not in THRESHOLD_FAMILIES:
         raise HTTPException(404, detail="unknown threshold family")
     store, defaults, _ = THRESHOLD_FAMILIES[family]

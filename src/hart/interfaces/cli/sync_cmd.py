@@ -335,18 +335,23 @@ def backfill_metrics() -> None:
                     "carb_calories, fat_calories) "
                     "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                     [
-                        act_id, sport_type, act_date,
-                        summary.get("activityTrainingLoad"), "garmin",
+                        act_id,
+                        sport_type,
+                        act_date,
+                        summary.get("activityTrainingLoad"),
+                        "garmin",
                         json.dumps(hr_zone_seconds) if hr_zone_seconds else None,
-                        ef, activity_decoupling(db, act_id, sport_type),
+                        ef,
+                        activity_decoupling(db, act_id, sport_type),
                         summary.get("groundContactTime"),
                         summary.get("verticalOscillation"),
                         summary.get("verticalRatio"),
                         round(sl / 100.0, 3) if sl is not None else None,
-                        None,        # swolf
+                        None,  # swolf
                         summary.get("calories"),
                         round(summary.get("totalWork", 0), 1) if summary.get("totalWork") else None,
-                        None, None,  # carb/fat calories
+                        None,
+                        None,  # carb/fat calories
                     ],
                 )
                 metrics_inserted += 1
@@ -378,9 +383,7 @@ def backfill_gear() -> None:
     config = get_config()
     db = _get_db(config)
 
-    total = db.fetchall(
-        "SELECT COUNT(*) FROM activities WHERE gear_id IS NULL AND external_id IS NOT NULL"
-    )[0][0]
+    total = db.fetchall("SELECT COUNT(*) FROM activities WHERE gear_id IS NULL AND external_id IS NOT NULL")[0][0]
 
     if total == 0:
         console.print("[green]All activities already have gear data.[/green]")
@@ -388,8 +391,9 @@ def backfill_gear() -> None:
 
     console.print(f"Found [cyan]{total}[/cyan] activities without gear — fetching from Garmin...")
 
-    from hart.ingestion.sync_manager import SyncManager
     import datetime
+
+    from hart.ingestion.sync_manager import SyncManager
 
     start_time = datetime.datetime.now()
     manager = SyncManager(db, config)
@@ -405,6 +409,7 @@ def backfill_gear() -> None:
         task = progress.add_task("Fetching gear...", total=total)
 
         import time
+
         garmin = manager.get_garmin_client()
 
         rows = db.fetchall(
@@ -418,6 +423,7 @@ def backfill_gear() -> None:
             progress.update(task, completed=i, description=f"Fetching {i}/{total}...")
             try:
                 from hart.ingestion.sync_manager import _fetch_gear_id
+
                 gear_uuid = _fetch_gear_id(garmin, str(external_id))
                 db.execute(
                     "UPDATE activities SET gear_id = ? WHERE activity_id = ?",
@@ -549,7 +555,8 @@ def backfill_vo2max(
 @sync_app.command("backfill-decoupling")
 def backfill_decoupling_cmd(
     only_missing: Annotated[
-        bool, typer.Option("--only-missing", help="Skip sessions that already have a value."),
+        bool,
+        typer.Option("--only-missing", help="Skip sessions that already have a value."),
     ] = False,
 ) -> None:
     """Compute aerobic decoupling from stored streams for bike and run sessions.
@@ -564,9 +571,7 @@ def backfill_decoupling_cmd(
         from hart.interfaces.cli import server_client
 
         try:
-            job = server_client.request(
-                config, "POST", "/api/backfill/decoupling", {"only_missing": only_missing}
-            )
+            job = server_client.request(config, "POST", "/api/backfill/decoupling", {"only_missing": only_missing})
             if job["status"].startswith("already_"):
                 console.print(f"[yellow]{job['message']}[/yellow] — waiting for it instead.")
             with console.status(f"Backfilling decoupling on hart server (job #{job['job_id']})..."):

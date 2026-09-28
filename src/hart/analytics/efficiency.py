@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Efficiency Factor
 # ---------------------------------------------------------------------------
@@ -142,8 +141,7 @@ def compute_decoupling_from_streams(
 
     if len(hr_series) != len(power_or_pace_series):
         raise ValueError(
-            f"hr_series length ({len(hr_series)}) != "
-            f"power_or_pace_series length ({len(power_or_pace_series)})"
+            f"hr_series length ({len(hr_series)}) != power_or_pace_series length ({len(power_or_pace_series)})"
         )
 
     hr = np.array(hr_series, dtype=np.float64)
@@ -188,9 +186,9 @@ def compute_decoupling_from_streams(
 # Session-level decoupling gates (Fitness "Staying Power", session pages, grading).
 DECOUPLING_MIN_MOVING_SEC = 45 * 60
 DECOUPLING_WARMUP_SEC = 10 * 60
-DECOUPLING_MAX_GAP_SEC = 10        # longer gaps are pauses, not moving time
+DECOUPLING_MAX_GAP_SEC = 10  # longer gaps are pauses, not moving time
 BIKE_MAX_VARIABILITY_INDEX = 1.10  # NP / avg power; intervals & outdoor rides ≥ ~1.2
-RUN_MAX_SPEED_CV = 0.10            # CV of 1-min mean speed; interval runs ≥ ~0.12
+RUN_MAX_SPEED_CV = 0.10  # CV of 1-min mean speed; interval runs ≥ ~0.12
 
 
 def steady_session_decoupling(
@@ -270,7 +268,7 @@ def _is_steady(out: np.ndarray, moving: np.ndarray, sport_type: str) -> bool:
         # 30-s rolling mean, 4th-power average (Coggan NP) over the analysed part.
         window = min(30, len(out))
         rolling = np.convolve(out, np.ones(window) / window, mode="valid")
-        np_val = float(np.mean(rolling ** 4) ** 0.25)
+        np_val = float(np.mean(rolling**4) ** 0.25)
         avg = float(np.mean(out))
         return avg > 0 and np_val / avg <= BIKE_MAX_VARIABILITY_INDEX
     minute = ((moving - moving[0]) // 60).astype(np.int64)

@@ -57,11 +57,18 @@ def resolve_context(request: Request, context: str | None) -> dict[str, Any] | N
         if act is None:
             return None
         when = act["start_time"].strftime("%Y-%m-%d %H:%M") if act.get("start_time") else ""
-        return {"type": "activity", "id": value,
-                "label": f"session {value} — {act['name'] or act['sport_type']} on {when}"}
+        return {
+            "type": "activity",
+            "id": value,
+            "label": f"session {value} — {act['name'] or act['sport_type']} on {when}",
+        }
     if kind in ("date", "readiness", "season", "suggestion"):
-        labels = {"date": f"the day {value}", "readiness": f"today's readiness ({value})", "season": "the season plan",
-                  "suggestion": f"the training suggestion for {value} (see get_daily_suggestion and get_planned_sessions)"}
+        labels = {
+            "date": f"the day {value}",
+            "readiness": f"today's readiness ({value})",
+            "season": "the season plan",
+            "suggestion": f"the training suggestion for {value} (see get_daily_suggestion and get_planned_sessions)",
+        }
         return {"type": kind, "id": value, "label": labels[kind]}
     return None
 
@@ -79,12 +86,20 @@ def _render_messages(conversation: dict[str, Any]) -> None:
 @router.get("/chat", response_class=HTMLResponse, include_in_schema=False)
 def chat_page(request: Request, context: str | None = None) -> HTMLResponse:
     chat = _chat(request)
-    return page(request, "chat.html", {
-        "conversations": chat.list(), "conversation": None, "models": CHAT_MODELS,
-        "default_model": _default_model(request),
-        "context": resolve_context(request, context), "context_param": context or "",
-        "web_access": chat.web_access(), "nav": "chat",
-    })
+    return page(
+        request,
+        "chat.html",
+        {
+            "conversations": chat.list(),
+            "conversation": None,
+            "models": CHAT_MODELS,
+            "default_model": _default_model(request),
+            "context": resolve_context(request, context),
+            "context_param": context or "",
+            "web_access": chat.web_access(),
+            "nav": "chat",
+        },
+    )
 
 
 @router.get("/chat/{conv_id}", response_class=HTMLResponse, include_in_schema=False)
@@ -94,11 +109,20 @@ def conversation_page(request: Request, conv_id: str) -> HTMLResponse:
     if conversation is None:
         raise HTTPException(404, detail="conversation not found")
     _render_messages(conversation)
-    return page(request, "chat.html", {
-        "conversations": chat.list(), "conversation": conversation, "models": CHAT_MODELS,
-        "default_model": conversation["model"], "context": conversation.get("context_ref"), "context_param": "",
-        "web_access": chat.web_access(), "nav": "chat",
-    })
+    return page(
+        request,
+        "chat.html",
+        {
+            "conversations": chat.list(),
+            "conversation": conversation,
+            "models": CHAT_MODELS,
+            "default_model": conversation["model"],
+            "context": conversation.get("context_ref"),
+            "context_param": "",
+            "web_access": chat.web_access(),
+            "nav": "chat",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -173,7 +197,7 @@ async def api_stream(run_id: str, request: Request, after: int = -1) -> Streamin
             while True:
                 try:
                     item = await asyncio.wait_for(queue.get(), HEARTBEAT_S)
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     yield b": ping\n\n"  # keeps proxies from closing an idle stream
                     continue
                 if item is None:
@@ -186,5 +210,6 @@ async def api_stream(run_id: str, request: Request, after: int = -1) -> Streamin
             with contextlib.suppress(asyncio.CancelledError):
                 await task
 
-    return StreamingResponse(stream(), media_type="text/event-stream",
-                             headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+    return StreamingResponse(
+        stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )

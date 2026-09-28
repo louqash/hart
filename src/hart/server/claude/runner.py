@@ -19,9 +19,10 @@ import json
 import logging
 import time
 import warnings
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from hart.server.claude.policy import MCP_PREFIX, MCP_SERVER, ToolPolicy, WebGuard
 from hart.storage.database import Database
@@ -82,11 +83,11 @@ def _tool_output_text(content: Any) -> str:
 
 
 def _short_name(name: str) -> str:
-    return name[len(MCP_PREFIX):] if name.startswith(MCP_PREFIX) else name
+    return name[len(MCP_PREFIX) :] if name.startswith(MCP_PREFIX) else name
 
 
 def _now() -> datetime.datetime:
-    return datetime.datetime.now(tz=datetime.timezone.utc)
+    return datetime.datetime.now(tz=datetime.UTC)
 
 
 def _default_client_factory(options: Any) -> Any:
@@ -133,7 +134,7 @@ class ClaudeRunner:
             self._active[outcome.run_id] = (client, outcome)
             try:
                 await asyncio.wait_for(self._drive(client, spec, emit, outcome, guard), spec.timeout_s)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 outcome.status, outcome.error = "error", f"timed out after {int(spec.timeout_s)} s"
                 with contextlib.suppress(Exception):
                     await client.interrupt()
@@ -233,11 +234,18 @@ class ClaudeRunner:
             if isinstance(msg, StreamEvent):
                 ev = msg.event or {}
                 delta = ev.get("delta") or {}
-                if msg.parent_tool_use_id is None and ev.get("type") == "content_block_delta" \
-                        and delta.get("type") == "text_delta":
+                if (
+                    msg.parent_tool_use_id is None
+                    and ev.get("type") == "content_block_delta"
+                    and delta.get("type") == "text_delta"
+                ):
                     emit({"type": "text", "delta": delta.get("text", "")})
-                elif msg.parent_tool_use_id is None and ev.get("type") == "content_block_start" \
-                        and (ev.get("content_block") or {}).get("type") == "text" and text_parts:
+                elif (
+                    msg.parent_tool_use_id is None
+                    and ev.get("type") == "content_block_start"
+                    and (ev.get("content_block") or {}).get("type") == "text"
+                    and text_parts
+                ):
                     emit({"type": "text", "delta": "\n\n"})
             elif isinstance(msg, AssistantMessage):
                 if msg.error:
@@ -248,8 +256,14 @@ class ClaudeRunner:
                     if isinstance(block, TextBlock) and block.text.strip():
                         text_parts.append(block.text)
                     elif isinstance(block, ToolUseBlock):
-                        call = {"id": block.id, "name": _short_name(block.name), "input": block.input,
-                                "is_error": None, "output_excerpt": None, "started": time.monotonic()}
+                        call = {
+                            "id": block.id,
+                            "name": _short_name(block.name),
+                            "input": block.input,
+                            "is_error": None,
+                            "output_excerpt": None,
+                            "started": time.monotonic(),
+                        }
                         calls[block.id] = call
                         outcome.tool_calls.append(call)
                         emit({"type": "tool_start", "id": block.id, "name": call["name"], "input": block.input})
@@ -264,8 +278,14 @@ class ClaudeRunner:
                             call["is_error"] = bool(block.is_error)
                             call["output_excerpt"] = text[:OUTPUT_EXCERPT]
                             call["ms"] = int((time.monotonic() - call.pop("started")) * 1000)
-                        emit({"type": "tool_end", "id": block.tool_use_id, "is_error": bool(block.is_error),
-                              "output_excerpt": text[:OUTPUT_EXCERPT]})
+                        emit(
+                            {
+                                "type": "tool_end",
+                                "id": block.tool_use_id,
+                                "is_error": bool(block.is_error),
+                                "output_excerpt": text[:OUTPUT_EXCERPT],
+                            }
+                        )
             elif isinstance(msg, SystemMessage):
                 if msg.subtype == "init" and msg.data.get("session_id"):
                     outcome.session_id = msg.data["session_id"]
@@ -282,7 +302,10 @@ class ClaudeRunner:
                 if (msg.terminal_reason or "").startswith("aborted"):
                     outcome.status = "cancelled"
                 elif error_kind == "authentication_failed":
-                    outcome.status, outcome.error = "auth_failed", "Claude authentication failed — the token may have expired"
+                    outcome.status, outcome.error = (
+                        "auth_failed",
+                        "Claude authentication failed — the token may have expired",
+                    )
                 elif rate_limited or error_kind == "rate_limit" or msg.api_error_status == 429:
                     outcome.status, outcome.error = "usage_limited", "Claude usage limit reached"
                 elif msg.is_error:
@@ -330,6 +353,14 @@ class ClaudeRunner:
             cur.execute(
                 "UPDATE claude_runs SET status = ?, error = ?, session_id = ?, num_turns = ?, duration_ms = ?, "
                 "transcript = ?, finished_at = ? WHERE id = ?",
-                [outcome.status, outcome.error, outcome.session_id, outcome.num_turns, outcome.duration_ms,
-                 json.dumps(transcript, default=str), _now(), outcome.run_id],
+                [
+                    outcome.status,
+                    outcome.error,
+                    outcome.session_id,
+                    outcome.num_turns,
+                    outcome.duration_ms,
+                    json.dumps(transcript, default=str),
+                    _now(),
+                    outcome.run_id,
+                ],
             )

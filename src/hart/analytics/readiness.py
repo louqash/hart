@@ -114,23 +114,42 @@ def compute_readiness(inp: ReadinessInputs, t: dict[str, float]) -> dict[str, An
     window = int(t["ready_baseline_days"])
     why: list[dict[str, str]] = []
     if inp.sleep_hours is None:
-        why.append({"input": "Sleep", "why": "No sleep record for last night yet.",
-                    "fix": "Either the watch wasn't worn overnight, or Garmin hasn't got the data yet — open Garmin "
-                           "Connect on your phone so the watch uploads, then press Sync (the morning check also "
-                           "runs every 15 min until 10:30)."})
+        why.append(
+            {
+                "input": "Sleep",
+                "why": "No sleep record for last night yet.",
+                "fix": "Either the watch wasn't worn overnight, or Garmin hasn't got the data yet — open Garmin "
+                "Connect on your phone so the watch uploads, then press Sync (the morning check also "
+                "runs every 15 min until 10:30).",
+            }
+        )
     if inp.hrv_last_night is None and inp.sleep_hours is not None:
-        why.append({"input": "HRV", "why": "Sleep was recorded but Garmin has no overnight HRV for it.",
-                    "fix": "Overnight HRV needs the watch worn snugly for the whole night; one short or loose "
-                           "night leaves a gap."})
+        why.append(
+            {
+                "input": "HRV",
+                "why": "Sleep was recorded but Garmin has no overnight HRV for it.",
+                "fix": "Overnight HRV needs the watch worn snugly for the whole night; one short or loose "
+                "night leaves a gap.",
+            }
+        )
     elif inp.hrv_last_night is not None and hrv_base is None:
-        why.append({"input": "HRV baseline",
-                    "why": f"Last night's HRV is there, but the baseline needs {need} of the last {window} nights "
-                           f"with HRV — you have {len(inp.hrv_history)}.",
-                    "fix": f"Wear the watch at night; the baseline appears after "
-                           f"{max(need - len(inp.hrv_history), 0)} more night(s)."})
+        why.append(
+            {
+                "input": "HRV baseline",
+                "why": f"Last night's HRV is there, but the baseline needs {need} of the last {window} nights "
+                f"with HRV — you have {len(inp.hrv_history)}.",
+                "fix": f"Wear the watch at night; the baseline appears after "
+                f"{max(need - len(inp.hrv_history), 0)} more night(s).",
+            }
+        )
     if inp.recovery_score is None and inp.sleep_hours is None:
-        why.append({"input": "Recovery score", "why": "Computed from last night's sleep, HRV and Body Battery.",
-                    "fix": "It appears after the sync that brings last night's sleep."})
+        why.append(
+            {
+                "input": "Recovery score",
+                "why": "Computed from last night's sleep, HRV and Body Battery.",
+                "fix": "It appears after the sync that brings last night's sleep.",
+            }
+        )
 
     if level == "unknown":
         reason = "Not enough data: " + ", ".join(missing) if missing else "Not enough data"

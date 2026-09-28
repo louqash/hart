@@ -1,31 +1,5 @@
 """hart analytics: pure computation over the training data."""
 
-from hart.analytics.pace import (
-    grade_adjusted_pace,
-    normalized_graded_pace,
-    pace_to_speed,
-    run_tss,
-    speed_to_pace,
-)
-from hart.analytics.power import (
-    apply_power_balance,
-    normalized_power,
-    power_duration_curve,
-    tss_from_power,
-    variability_index,
-)
-from hart.analytics.swim import (
-    pace_per_100m,
-    swim_css,
-    swim_tss,
-    swolf,
-)
-from hart.analytics.training_load import (
-    compute_ctl_atl_tsb,
-    compute_monotony_strain,
-    hr_trimp,
-    update_training_load,
-)
 from hart.analytics.anomaly import (
     check_hr_anomalies,
     check_overtraining_risk,
@@ -42,9 +16,9 @@ from hart.analytics.efficiency import (
     aerobic_decoupling,
     cardiac_drift_rate,
     compute_decoupling_from_streams,
-    steady_session_decoupling,
     efficiency_factor_bike,
     efficiency_factor_run,
+    steady_session_decoupling,
 )
 from hart.analytics.hrv import (
     detect_hrv_suppression,
@@ -53,9 +27,35 @@ from hart.analytics.hrv import (
     ln_rmssd,
     rmssd,
 )
+from hart.analytics.pace import (
+    grade_adjusted_pace,
+    normalized_graded_pace,
+    pace_to_speed,
+    run_tss,
+    speed_to_pace,
+)
+from hart.analytics.power import (
+    apply_power_balance,
+    normalized_power,
+    power_duration_curve,
+    tss_from_power,
+    variability_index,
+)
 from hart.analytics.recovery import (
     compute_recovery_score,
     recovery_trend,
+)
+from hart.analytics.swim import (
+    pace_per_100m,
+    swim_css,
+    swim_tss,
+    swolf,
+)
+from hart.analytics.training_load import (
+    compute_ctl_atl_tsb,
+    compute_monotony_strain,
+    hr_trimp,
+    update_training_load,
 )
 
 __all__ = [

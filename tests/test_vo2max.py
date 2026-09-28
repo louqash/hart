@@ -21,6 +21,7 @@ D = datetime.date
 
 def _entry(day: str, run: float | None = None, cycle: float | None = None) -> dict[str, Any]:
     """One max-metrics entry shaped like Garmin's response."""
+
     def block(value: float | None) -> dict[str, Any] | None:
         if value is None:
             return None
@@ -100,12 +101,14 @@ def _vo2(db: Database, day: D) -> tuple[Any, Any]:
 
 
 def test_parse_prefers_precise_and_merges_blocks() -> None:
-    parsed = _parse_max_metrics([
-        _entry("2026-06-02", run=51.4),
-        _entry("2026-06-02", cycle=54.5),
-        {"generic": {"calendarDate": "2026-06-03", "vo2MaxPreciseValue": None, "vo2MaxValue": 52}},
-        {"generic": None, "cycling": None},
-    ])
+    parsed = _parse_max_metrics(
+        [
+            _entry("2026-06-02", run=51.4),
+            _entry("2026-06-02", cycle=54.5),
+            {"generic": {"calendarDate": "2026-06-03", "vo2MaxPreciseValue": None, "vo2MaxValue": 52}},
+            {"generic": None, "cycling": None},
+        ]
+    )
     assert parsed == {D(2026, 6, 2): (51.4, 54.5), D(2026, 6, 3): (52.0, None)}
     assert _parse_max_metrics(None) == {}
     assert _parse_max_metrics({"error": "x"}) == {}
@@ -131,17 +134,23 @@ def test_backfill_updates_existing_days_only(db: Database) -> None:
     upsert_health_day(db, HealthDay(date=D(2025, 1, 10), resting_hr=50))
     upsert_health_day(db, HealthDay(date=D(2026, 3, 1), resting_hr=49, vo2max_run=49.0))
     upsert_health_day(db, HealthDay(date=D(2026, 6, 2), resting_hr=47))
-    garmin = FakeGarmin([
-        _entry("2025-01-10", run=48.2),
-        _entry("2025-07-01", cycle=52.0),        # no daily_health row → skipped
-        _entry("2026-03-01", cycle=53.1),        # run already stored, must survive
-        _entry("2026-06-02", run=51.4, cycle=54.5),
-    ])
+    garmin = FakeGarmin(
+        [
+            _entry("2025-01-10", run=48.2),
+            _entry("2025-07-01", cycle=52.0),  # no daily_health row → skipped
+            _entry("2026-03-01", cycle=53.1),  # run already stored, must survive
+            _entry("2026-06-02", run=51.4, cycle=54.5),
+        ]
+    )
 
     result = _manager(db, garmin).backfill_vo2max(end=D(2026, 9, 26))
 
     assert result == {
-        "from": "2025-01-10", "to": "2026-09-26", "estimates": 4, "updated": 3, "no_health_row": 1,
+        "from": "2025-01-10",
+        "to": "2026-09-26",
+        "estimates": 4,
+        "updated": 3,
+        "no_health_row": 1,
     }
     assert len(garmin.range_calls) == 2  # yearly chunks, not one call per day
     assert _vo2(db, D(2025, 1, 10)) == (48.2, None)

@@ -30,7 +30,6 @@ logger = logging.getLogger(__name__)
 SEASON_DETECTION_KEY = "season_detection"
 
 
-
 def _read(seed_dir: Path, name: str) -> list[dict[str, Any]]:
     path = seed_dir / name
     if not path.is_file():
@@ -81,13 +80,15 @@ def seed_annotations(db: Database, seed_dir: Path | None = None, today: datetime
 
     rows: list[tuple[str, str, datetime.date, datetime.date | None, str]] = []
     if detected.layoff:
-        rows.append((
-            "other",
-            "Training break",
-            detected.layoff.last_activity_date,
-            detected.layoff.return_date - datetime.timedelta(days=1),
-            "detected",
-        ))
+        rows.append(
+            (
+                "other",
+                "Training break",
+                detected.layoff.last_activity_date,
+                detected.layoff.return_date - datetime.timedelta(days=1),
+                "detected",
+            )
+        )
     if detected.no_device:
         rows.append(("no_device", "Watch not worn", detected.no_device[0], detected.no_device[1], "detected"))
     for a in _read(seed_dir, "annotations.json") if seed_dir else []:
@@ -139,8 +140,11 @@ def seed_notes(db: Database, seed_dir: Path) -> int:
             "INSERT INTO athlete_notes (category, title, body, valid_from, valid_to, rules, status, source) "
             "VALUES (?, ?, ?, ?, ?, ?, 'proposed', 'seed')",
             [
-                note["category"], note["title"], note["body"],
-                note.get("valid_from"), note.get("valid_to"),
+                note["category"],
+                note["title"],
+                note["body"],
+                note.get("valid_from"),
+                note.get("valid_to"),
                 json.dumps(note["rules"]) if note.get("rules") else None,
             ],
         )

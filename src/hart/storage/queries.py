@@ -121,8 +121,7 @@ def get_activity_streams(
     """Return all stream points for an activity, ordered by timestamp."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM activity_streams "
-        "WHERE activity_id = ? ORDER BY timestamp_sec",
+        "SELECT * FROM activity_streams WHERE activity_id = ? ORDER BY timestamp_sec",
         [activity_id],
     )
 
@@ -134,8 +133,7 @@ def get_strength_sets(
     """Return strength sets for an activity, ordered by index."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM strength_sets "
-        "WHERE activity_id = ? ORDER BY set_index",
+        "SELECT * FROM strength_sets WHERE activity_id = ? ORDER BY set_index",
         [activity_id],
     )
 
@@ -147,8 +145,7 @@ def get_activity_laps(
     """Return laps for an activity, ordered by index."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM activity_laps "
-        "WHERE activity_id = ? ORDER BY lap_index",
+        "SELECT * FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
         [activity_id],
     )
 
@@ -167,9 +164,7 @@ def get_training_load(
     """Return daily training-load rows between *start_date* and *end_date*."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM daily_training_load "
-        "WHERE date >= ? AND date <= ? AND sport_type = ? "
-        "ORDER BY date",
+        "SELECT * FROM daily_training_load WHERE date >= ? AND date <= ? AND sport_type = ? ORDER BY date",
         [start_date, end_date, sport_type],
     )
 
@@ -187,8 +182,7 @@ def get_daily_health(
     """Return daily health rows for the given date range."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM daily_health "
-        "WHERE date >= ? AND date <= ? ORDER BY date",
+        "SELECT * FROM daily_health WHERE date >= ? AND date <= ? ORDER BY date",
         [start_date, end_date],
     )
 
@@ -201,8 +195,7 @@ def get_sleep_data(
     """Return sleep records for the given date range."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM sleep_records "
-        "WHERE date >= ? AND date <= ? ORDER BY date",
+        "SELECT * FROM sleep_records WHERE date >= ? AND date <= ? ORDER BY date",
         [start_date, end_date],
     )
 
@@ -215,8 +208,7 @@ def get_hrv_trend(
     """Return daily HRV data for the given date range."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM hrv_daily "
-        "WHERE date >= ? AND date <= ? ORDER BY date",
+        "SELECT * FROM hrv_daily WHERE date >= ? AND date <= ? ORDER BY date",
         [start_date, end_date],
     )
 
@@ -234,8 +226,7 @@ def get_recovery_scores(
     """Return recovery scores for the given date range."""
     return _rows_to_dicts(
         db,
-        "SELECT * FROM daily_recovery "
-        "WHERE date >= ? AND date <= ? ORDER BY date",
+        "SELECT * FROM daily_recovery WHERE date >= ? AND date <= ? ORDER BY date",
         [start_date, end_date],
     )
 
@@ -328,11 +319,7 @@ def get_anomalies(
         clauses.append("anomaly_type = ?")
         params.append(anomaly_type)
 
-    sql = (
-        "SELECT * FROM anomaly_log"
-        + _build_where(clauses, params)
-        + " ORDER BY detected_at DESC"
-    )
+    sql = "SELECT * FROM anomaly_log" + _build_where(clauses, params) + " ORDER BY detected_at DESC"
     return _rows_to_dicts(db, sql, params)
 
 
@@ -361,8 +348,7 @@ def get_athlete_profile(db: Database) -> dict[str, Any]:
 
     # Latest resting HR
     row = db.fetchone(
-        "SELECT resting_hr FROM daily_health "
-        "WHERE resting_hr IS NOT NULL ORDER BY date DESC LIMIT 1",
+        "SELECT resting_hr FROM daily_health WHERE resting_hr IS NOT NULL ORDER BY date DESC LIMIT 1",
     )
     if row:
         profile["resting_hr"] = row[0]
@@ -380,8 +366,7 @@ def get_athlete_profile(db: Database) -> dict[str, Any]:
 
     # Latest recovery score
     row = db.fetchone(
-        "SELECT recovery_score, date FROM daily_recovery "
-        "ORDER BY date DESC LIMIT 1",
+        "SELECT recovery_score, date FROM daily_recovery ORDER BY date DESC LIMIT 1",
     )
     if row:
         profile["latest_recovery_score"] = row[0]
@@ -505,10 +490,7 @@ def run_analytics_query(
     """
     stripped = sql.strip().rstrip(";")
     if _FORBIDDEN_PATTERN.search(stripped):
-        raise ValueError(
-            "Only SELECT queries are allowed.  "
-            "Detected a write/DDL keyword in the query."
-        )
+        raise ValueError("Only SELECT queries are allowed.  Detected a write/DDL keyword in the query.")
     _check_read_only_select(db, stripped)
 
     # Force a row limit to prevent runaway queries.

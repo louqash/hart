@@ -38,12 +38,16 @@ class DetectedSeason:
 
     def as_dict(self) -> dict[str, Any]:
         return {
-            "layoff": None if self.layoff is None else {
+            "layoff": None
+            if self.layoff is None
+            else {
                 "last_activity_date": self.layoff.last_activity_date.isoformat(),
                 "return_date": self.layoff.return_date.isoformat(),
                 "gap_days": self.layoff.gap_days,
             },
-            "no_device": None if self.no_device is None else {
+            "no_device": None
+            if self.no_device is None
+            else {
                 "start": self.no_device[0].isoformat(),
                 "end": self.no_device[1].isoformat(),
             },
@@ -106,7 +110,8 @@ def detect_layoffs(db: Any, today: datetime.date | None = None) -> DetectedSeaso
 
     placeholders = ", ".join("?" for _ in TRAINING_SPORTS)
     activity_dates = [
-        r[0] for r in db.fetchall(
+        r[0]
+        for r in db.fetchall(
             "SELECT DISTINCT CAST(start_time AS DATE) FROM activities "
             f"WHERE sport_type IN ({placeholders}) AND start_time >= ?",
             [*TRAINING_SPORTS, since],
@@ -117,7 +122,8 @@ def detect_layoffs(db: Any, today: datetime.date | None = None) -> DetectedSeaso
     # Garmin creates a daily_health row even when the watch isn't worn, so a
     # day counts as "worn" only when it has actual values.
     health_dates = [
-        r[0] for r in db.fetchall(
+        r[0]
+        for r in db.fetchall(
             "SELECT date FROM daily_health WHERE date >= ? AND resting_hr IS NOT NULL "
             "UNION SELECT date FROM sleep_records WHERE date >= ? AND total_sleep_sec IS NOT NULL",
             [since, since],
@@ -224,7 +230,9 @@ def generate_phases(
             start = end + day
 
     half = build_weeks // 2
-    build_parts = [(build_start, half), (build_start + half * week, build_weeks - half)] if half else [(build_start, build_weeks)]
+    build_parts = (
+        [(build_start, half), (build_start + half * week, build_weeks - half)] if half else [(build_start, build_weeks)]
+    )
     for i, (start, size) in enumerate(build_parts, 1):
         name = f"Build {i}" if len(build_parts) > 1 else "Build"
         phases.append(PhaseSpec("build", name, start, start + size * week - day, PHASE_GOALS["build"]))
@@ -233,9 +241,11 @@ def generate_phases(
     phases.append(PhaseSpec("taper", "Taper", taper_start, race_date - day, PHASE_GOALS["taper"]))
     phases.append(PhaseSpec("race", "Race", race_date, race_date, PHASE_GOALS["race"]))
     transition_days = int(t["phase_transition_days"])
-    phases.append(PhaseSpec(
-        "transition", "Transition", race_date + day, race_date + transition_days * day, PHASE_GOALS["transition"]
-    ))
+    phases.append(
+        PhaseSpec(
+            "transition", "Transition", race_date + day, race_date + transition_days * day, PHASE_GOALS["transition"]
+        )
+    )
     return phases
 
 
@@ -273,8 +283,12 @@ def observed_state(
     ramp = None if ctl_now is None or ctl_7 is None else round(ctl_now - ctl_7, 2)
     change = None if ctl_now is None or not ctl_28 else round(ctl_now / ctl_28 - 1, 3)
     metrics = {
-        "ctl": ctl_now, "atl": _value_on_or_before(atl, on), "tsb": tsb_now, "ramp_7d": ramp,
-        "ctl_change_28d": change, "consistency_14d": consistency,
+        "ctl": ctl_now,
+        "atl": _value_on_or_before(atl, on),
+        "tsb": tsb_now,
+        "ramp_7d": ramp,
+        "ctl_change_28d": change,
+        "consistency_14d": consistency,
     }
 
     if history_days < t["state_min_history_days"] or ramp is None or tsb_now is None:

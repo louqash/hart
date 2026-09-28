@@ -48,9 +48,21 @@ CATALOGUE: tuple[Marker, ...] = (
     Marker("ft3", "Free T3", "thyroid", ("ft3",)),
     Marker("anti_tpo", "Anti-TPO", "thyroid", ("anty-tpo", "anti-tpo", "atpo")),
     Marker("anti_tg", "Anti-TG", "thyroid", ("anty-tg", "anti-tg", "atg")),
-    Marker("vitamin_d_25oh", "Vitamin D (25-OH)", "vitamins",
-           ("witamina d3 metabolit 25(oh)", "witamina d 25(oh)", "25(oh)d", "witamina d",
-            "vitamin d3 25(oh)", "vitamin d 25(oh)", "vitamin d", "25-oh vitamin d")),
+    Marker(
+        "vitamin_d_25oh",
+        "Vitamin D (25-OH)",
+        "vitamins",
+        (
+            "witamina d3 metabolit 25(oh)",
+            "witamina d 25(oh)",
+            "25(oh)d",
+            "witamina d",
+            "vitamin d3 25(oh)",
+            "vitamin d 25(oh)",
+            "vitamin d",
+            "25-oh vitamin d",
+        ),
+    ),
     Marker("vitamin_b12", "Vitamin B12", "vitamins", ("witamina b12", "vitamin b12", "b12")),
     Marker("crp", "CRP", "inflammation", ("crp ilościowo", "crp", "białko c-reaktywne")),
     Marker("esr", "ESR (OB)", "inflammation", ("ob", "esr")),
@@ -78,8 +90,20 @@ BY_KEY = {m.key: m for m in CATALOGUE}
 MARKER_KEYS: dict[str, str] = {alias: m.key for m in CATALOGUE for alias in m.aliases}
 
 # Key markers for trends on the Health page, in display order.
-TREND_MARKERS = ("hemoglobin", "ferritin", "tsh", "vitamin_d_25oh", "vitamin_b12", "hematocrit", "crp",
-                 "creatinine", "glucose", "ldl", "testosterone", "alt")
+TREND_MARKERS = (
+    "hemoglobin",
+    "ferritin",
+    "tsh",
+    "vitamin_d_25oh",
+    "vitamin_b12",
+    "hematocrit",
+    "crp",
+    "creatinine",
+    "glucose",
+    "ldl",
+    "testosterone",
+    "alt",
+)
 
 _NUM = re.compile(r"-?\d+(?:[.,]\d+)?")
 
@@ -134,8 +158,20 @@ def insert_marker(db: Database, test_date: Any, m: LabMarkerIn | dict[str, Any],
         "INSERT INTO lab_results (test_date, marker_name, marker_key, value_text, value_num, qualifier, "
         "unit, ref_low, ref_high, ref_text, flag, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (test_date, marker_name) DO NOTHING RETURNING id",
-        [test_date, name, marker_key(name), value_text, value, qualifier, (m.unit or "").strip() or None,
-         low, high, (m.reference_range or "").strip() or None, (m.flag or "").strip() or None, source],
+        [
+            test_date,
+            name,
+            marker_key(name),
+            value_text,
+            value,
+            qualifier,
+            (m.unit or "").strip() or None,
+            low,
+            high,
+            (m.reference_range or "").strip() or None,
+            (m.flag or "").strip() or None,
+            source,
+        ],
     )
     return found is not None
 
@@ -154,10 +190,18 @@ def import_lab_results(db: Database, path: Path, source: str = "import") -> int:
         for m in panel.get("markers", []):
             if not str(m.get("name", "")).strip() or not str(m.get("value", "")).strip():
                 continue
-            inserted += insert_marker(db, panel["date"], {
-                "name": str(m["name"]), "value": str(m["value"]), "unit": m.get("unit"),
-                "reference_range": m.get("reference_range"), "flag": m.get("flag"),
-            }, source)
+            inserted += insert_marker(
+                db,
+                panel["date"],
+                {
+                    "name": str(m["name"]),
+                    "value": str(m["value"]),
+                    "unit": m.get("unit"),
+                    "reference_range": m.get("reference_range"),
+                    "flag": m.get("flag"),
+                },
+                source,
+            )
     return inserted
 
 
@@ -197,9 +241,12 @@ def results(db: Database, key: str | None = None) -> list[dict[str, Any]]:
     from hart.server.data import rows
 
     where, params = ("WHERE marker_key = ?", [key]) if key else ("", [])
-    found = rows(db, "SELECT id, test_date, marker_name, marker_key, value_text, value_num, qualifier, unit, "
-                     f"ref_low, ref_high, ref_text, flag, source FROM lab_results {where} ORDER BY test_date, marker_name",
-                 params)
+    found = rows(
+        db,
+        "SELECT id, test_date, marker_name, marker_key, value_text, value_num, qualifier, unit, "
+        f"ref_low, ref_high, ref_text, flag, source FROM lab_results {where} ORDER BY test_date, marker_name",
+        params,
+    )
     for r in found:
         r["status"] = out_of_range(r)
         r["name_en"] = BY_KEY[r["marker_key"]].name if r["marker_key"] in BY_KEY else None
@@ -258,9 +305,14 @@ async def parse_paste(claude: Any, model: str, text: str) -> dict[str, Any]:
     if len(text) > MAX_PASTE_CHARS:
         raise LabError(f"paste is too long (max {MAX_PASTE_CHARS} characters)")
     spec = RunSpec(
-        purpose="parse_labs", prompt=f"Pasted lab results:\n<<<\n{text}\n>>>", model=model,
-        system_prompt=_PARSE_SYSTEM, prompt_version=PARSE_PROMPT_VERSION,
-        policy=ToolPolicy(allowed_mcp=frozenset(), web=False), max_turns=3, timeout_s=90,
+        purpose="parse_labs",
+        prompt=f"Pasted lab results:\n<<<\n{text}\n>>>",
+        model=model,
+        system_prompt=_PARSE_SYSTEM,
+        prompt_version=PARSE_PROMPT_VERSION,
+        policy=ToolPolicy(allowed_mcp=frozenset(), web=False),
+        max_turns=3,
+        timeout_s=90,
         output_schema=ParsedLabs.model_json_schema(),
     )
     outcome = await claude.run(spec)

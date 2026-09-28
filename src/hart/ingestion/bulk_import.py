@@ -12,12 +12,12 @@ import logging
 import shutil
 import tempfile
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
 
 from hart.config import HartSettings
-from hart.ingestion.fit_parser import FitParseResult, FitParser
+from hart.ingestion.fit_parser import FitParser, FitParseResult
 from hart.storage.database import Database
 from hart.storage.writers import (
     replace_strength_sets,
@@ -142,10 +142,13 @@ def import_garmin_export(
 
             # Check for duplicates.  Start time also matches rows whose ID
             # predates a sport remap (e.g. strength once stored as "_other").
-            if db.fetchone(
-                "SELECT 1 FROM activities WHERE activity_id = ? OR start_time = ?",
-                [parsed.activity.activity_id, parsed.activity.start_time],
-            ) is not None:
+            if (
+                db.fetchone(
+                    "SELECT 1 FROM activities WHERE activity_id = ? OR start_time = ?",
+                    [parsed.activity.activity_id, parsed.activity.start_time],
+                )
+                is not None
+            ):
                 logger.debug(
                     "Activity %s already exists, skipping",
                     parsed.activity.activity_id,
@@ -170,9 +173,7 @@ def import_garmin_export(
                     exc,
                 )
                 result.errors += 1
-                result.error_details.append(
-                    f"{parsed.activity.activity_id}: {exc}"
-                )
+                result.error_details.append(f"{parsed.activity.activity_id}: {exc}")
 
     logger.info("Bulk import complete: %s", result)
     return result

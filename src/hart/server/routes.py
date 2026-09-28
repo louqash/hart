@@ -28,8 +28,16 @@ router = APIRouter()
 SportFilter = Literal["combined", "swim", "bike", "run", "strength", "other"]
 RangeKey = Literal["90d", "180d", "1y", "all"]
 NOTE_CATEGORIES = ("injury", "constraint", "baseline", "preference", "goal", "health", "equipment", "other")
-RULE_KEYS = {"forbid_sports", "max_duration_min", "max_intensity", "allowed_weekdays", "max_sessions_per_week",
-             "planned_labs", "min_sessions_per_week", "preferred_weekdays"}
+RULE_KEYS = {
+    "forbid_sports",
+    "max_duration_min",
+    "max_intensity",
+    "allowed_weekdays",
+    "max_sessions_per_week",
+    "planned_labs",
+    "min_sessions_per_week",
+    "preferred_weekdays",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -78,10 +86,16 @@ def sport_label(sport: str | None, sub_type: str | None = None) -> str:
 
 
 for name, fn in {
-    "duration": fmt_duration, "pace": fmt_pace, "num": fmt_num, "date": fmt_date,
-    "markdown": markdown, "sport": sport_label,
+    "duration": fmt_duration,
+    "pace": fmt_pace,
+    "num": fmt_num,
+    "date": fmt_date,
+    "markdown": markdown,
+    "sport": sport_label,
 }.items():
     templates.env.filters[name] = fn
+
+
 def static_url(path: str) -> str:
     """/static URL with a version query, so deploys never serve stale cached JS/CSS."""
     file = WEB_DIR / "static" / path
@@ -120,8 +134,9 @@ def page(request: Request, name: str, context: dict[str, Any]) -> HTMLResponse:
     with request.app.state.db.cursor() as cur:
         header = data.header_status(cur, request.app.state.config)
         prefs = athlete_profile(cur)
-    return templates.TemplateResponse(request, name, {"login": request.state.login, "header": header,
-                                                      "prefs": prefs, **context})
+    return templates.TemplateResponse(
+        request, name, {"login": request.state.login, "header": header, "prefs": prefs, **context}
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -174,7 +189,9 @@ class NoteIn(BaseModel):
             raise ValueError(f"unknown rule keys: {', '.join(sorted(set(v) - RULE_KEYS))}")
         for plan in (v or {}).get("planned_labs") or []:
             if not isinstance(plan, dict) or not plan.get("markers"):
-                raise ValueError('planned_labs entries need "markers" (catalogue keys) and optionally "due", "after", "title"')
+                raise ValueError(
+                    'planned_labs entries need "markers" (catalogue keys) and optionally "due", "after", "title"'
+                )
             for key in ("due", "after"):
                 if plan.get(key):
                     datetime.date.fromisoformat(plan[key])
@@ -219,11 +236,18 @@ def fitness_page(request: Request, db: Database = Depends(get_db), config=Depend
 def season_page(request: Request, db: Database = Depends(get_db), config=Depends(get_config)) -> HTMLResponse:
     today = data.local_today(config)
     t = state.get_thresholds(db)
-    return page(request, "season.html", {
-        "s": data.season(db, today), "ctx": data.season_context(db, today, t), "nav": "season",
-        "phase_types": season_ops.PHASE_TYPES, "annotation_kinds": season_ops.ANNOTATION_KINDS,
-        "race_distances": season_ops.RACE_DISTANCES,
-    })
+    return page(
+        request,
+        "season.html",
+        {
+            "s": data.season(db, today),
+            "ctx": data.season_context(db, today, t),
+            "nav": "season",
+            "phase_types": season_ops.PHASE_TYPES,
+            "annotation_kinds": season_ops.ANNOTATION_KINDS,
+            "race_distances": season_ops.RACE_DISTANCES,
+        },
+    )
 
 
 @router.get("/sessions", response_class=HTMLResponse, include_in_schema=False)
@@ -235,12 +259,15 @@ def sessions_page(
 ) -> HTMLResponse:
     limit = 50
     listing = data.sessions_list(db, sport or None, None, None, limit, (max(page_no, 1) - 1) * limit)
-    return page(request, "sessions.html", {"l": listing, "sport": sport or "", "page_no": max(page_no, 1), "nav": "sessions"})
+    return page(
+        request, "sessions.html", {"l": listing, "sport": sport or "", "page_no": max(page_no, 1), "nav": "sessions"}
+    )
 
 
 @router.get("/sessions/{activity_id}", response_class=HTMLResponse, include_in_schema=False)
-def session_page(request: Request, activity_id: str, v: int | None = None, compare: str | None = None,
-                 db: Database = Depends(get_db)) -> HTMLResponse:
+def session_page(
+    request: Request, activity_id: str, v: int | None = None, compare: str | None = None, db: Database = Depends(get_db)
+) -> HTMLResponse:
     detail = data.session_detail(db, activity_id)
     if detail is None:
         raise HTTPException(404, detail="session not found")
@@ -253,23 +280,36 @@ def session_page(request: Request, activity_id: str, v: int | None = None, compa
 
 
 @router.get("/strength", response_class=HTMLResponse, include_in_schema=False)
-def strength_page(request: Request, ex: str | None = None, db: Database = Depends(get_db),
-                  config=Depends(get_config)) -> HTMLResponse:
+def strength_page(
+    request: Request, ex: str | None = None, db: Database = Depends(get_db), config=Depends(get_config)
+) -> HTMLResponse:
     from hart.analytics.strength_progress import progression, weekly_sessions
     from hart.server.suggestions import _merged_rule, active_notes
 
     today = data.local_today(config)
     prog = progression(db, today)
-    selected = next((e for e in prog["exercises"] if e["key"] == ex), prog["exercises"][0] if prog["exercises"] else None)
+    selected = next(
+        (e for e in prog["exercises"] if e["key"] == ex), prog["exercises"][0] if prog["exercises"] else None
+    )
     target = _merged_rule(active_notes(db, today), "min_sessions_per_week").get("strength")
     from hart.analytics.strength_progress import exercise_label, load_aliases
 
-    aliases = [{"from": k, "to": v, "from_label": exercise_label(k), "to_label": exercise_label(v)}
-               for k, v in sorted(load_aliases(db).items())]
-    return page(request, "strength.html", {
-        "nav": "strength", "p": prog, "selected": selected, "weeks": weekly_sessions(db, today), "target": target,
-        "aliases": aliases,
-    })
+    aliases = [
+        {"from": k, "to": v, "from_label": exercise_label(k), "to_label": exercise_label(v)}
+        for k, v in sorted(load_aliases(db).items())
+    ]
+    return page(
+        request,
+        "strength.html",
+        {
+            "nav": "strength",
+            "p": prog,
+            "selected": selected,
+            "weeks": weekly_sessions(db, today),
+            "target": target,
+            "aliases": aliases,
+        },
+    )
 
 
 class AliasIn(BaseModel):
@@ -307,9 +347,15 @@ def api_strength(db: Database = Depends(get_db), config=Depends(get_config)) -> 
 @router.get("/notes", response_class=HTMLResponse, include_in_schema=False)
 def notes_page(request: Request, db: Database = Depends(get_db)) -> HTMLResponse:
     notes = list_notes(db)
-    return page(request, "notes.html", {
-        "notes": notes, "categories": NOTE_CATEGORIES, "nav": "notes",
-    })
+    return page(
+        request,
+        "notes.html",
+        {
+            "notes": notes,
+            "categories": NOTE_CATEGORIES,
+            "nav": "notes",
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -323,7 +369,9 @@ def api_dashboard(db: Database = Depends(get_db), config=Depends(get_config)) ->
 
 
 @router.get("/api/readiness")
-def api_readiness(date: datetime.date | None = None, db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+def api_readiness(
+    date: datetime.date | None = None, db: Database = Depends(get_db), config=Depends(get_config)
+) -> dict[str, Any]:
     return data.readiness_on(db, date or data.local_today(config), state.get_thresholds(db))
 
 
@@ -341,7 +389,12 @@ def api_ack_anomaly(anomaly_id: int, db: Database = Depends(get_db)) -> dict[str
 
 
 @router.get("/api/fitness/pmc")
-def api_pmc(range: RangeKey = "180d", sport: SportFilter = "combined", db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+def api_pmc(
+    range: RangeKey = "180d",
+    sport: SportFilter = "combined",
+    db: Database = Depends(get_db),
+    config=Depends(get_config),
+) -> dict[str, Any]:
     return data.pmc(db, data.local_today(config), range, sport)
 
 
@@ -351,7 +404,9 @@ def api_volume(weeks: int = 12, db: Database = Depends(get_db), config=Depends(g
 
 
 @router.get("/api/fitness/efficiency")
-def api_efficiency(range: RangeKey = "1y", db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+def api_efficiency(
+    range: RangeKey = "1y", db: Database = Depends(get_db), config=Depends(get_config)
+) -> dict[str, Any]:
     return data.efficiency(db, data.local_today(config), range)
 
 
@@ -374,10 +429,17 @@ def api_markers(db: Database = Depends(get_db), config=Depends(get_config)) -> l
 def api_compare(body: CompareIn) -> Any:
     from hart import mcp_server
 
-    return data.clean(json.loads(mcp_server.compare_periods(
-        body.period1_start.isoformat(), body.period1_end.isoformat(),
-        body.period2_start.isoformat(), body.period2_end.isoformat(), body.sport_type,
-    )))
+    return data.clean(
+        json.loads(
+            mcp_server.compare_periods(
+                body.period1_start.isoformat(),
+                body.period1_end.isoformat(),
+                body.period2_start.isoformat(),
+                body.period2_end.isoformat(),
+                body.sport_type,
+            )
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -442,8 +504,11 @@ def api_apply_proposal(proposal_id: int, request: Request, db: Database = Depend
 
         if out.get("garmin_workout_removed"):
             request.app.state.runner.enqueue(
-                "garmin_workout", {"delete_workout_id": out["garmin_workout_removed"]}, trigger="manual",
-                dedupe_key=f"garmin_delete:{out['garmin_workout_removed']}")
+                "garmin_workout",
+                {"delete_workout_id": out["garmin_workout_removed"]},
+                trigger="manual",
+                dedupe_key=f"garmin_delete:{out['garmin_workout_removed']}",
+            )
         dates = [datetime.date.fromisoformat(str(d)[:10]) for d in out.pop("plan_dates", [])]
         out["suggestions_refreshed"] = refresh_suggestions(request, db, dates)
     return data.clean(out)
@@ -554,8 +619,10 @@ class BackfillRequest(BaseModel):
 
 def _enqueue_grade(request: Request, activity_id: str, trigger: str, force: bool = False) -> dict[str, Any]:
     return request.app.state.runner.enqueue(
-        "grade", {"activity_id": activity_id, "trigger": trigger, "force": force},
-        trigger="manual", dedupe_key=f"grade:{activity_id}",
+        "grade",
+        {"activity_id": activity_id, "trigger": trigger, "force": force},
+        trigger="manual",
+        dedupe_key=f"grade:{activity_id}",
     )
 
 
@@ -589,7 +656,9 @@ def api_session_features(activity_id: str, db: Database = Depends(get_db)) -> di
 
 
 @router.post("/api/sessions/{activity_id}/grade")
-def api_regrade(activity_id: str, body: GradeRequest, request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
+def api_regrade(
+    activity_id: str, body: GradeRequest, request: Request, db: Database = Depends(get_db)
+) -> dict[str, Any]:
     if db.fetchone("SELECT 1 FROM activities WHERE activity_id = ?", [activity_id]) is None:
         raise HTTPException(404, detail="session not found")
     return _enqueue_grade(request, activity_id, "manual", body.force)
@@ -598,18 +667,23 @@ def api_regrade(activity_id: str, body: GradeRequest, request: Request, db: Data
 @router.post("/api/grades/backfill")
 def api_grade_backfill(body: BackfillRequest, request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
     """Queue grading for sessions in the last N days that have no grade yet."""
-    ids = [r[0] for r in db.fetchall(
-        "SELECT a.activity_id FROM activities a WHERE a.start_time >= current_date - ? * INTERVAL 1 DAY "
-        "AND NOT EXISTS (SELECT 1 FROM session_grades g WHERE g.activity_id = a.activity_id "
-        "AND g.status IN ('graded', 'ungraded')) ORDER BY a.start_time",
-        [body.days],
-    )]
+    ids = [
+        r[0]
+        for r in db.fetchall(
+            "SELECT a.activity_id FROM activities a WHERE a.start_time >= current_date - ? * INTERVAL 1 DAY "
+            "AND NOT EXISTS (SELECT 1 FROM session_grades g WHERE g.activity_id = a.activity_id "
+            "AND g.status IN ('graded', 'ungraded')) ORDER BY a.start_time",
+            [body.days],
+        )
+    ]
     jobs = [_enqueue_grade(request, i, "backfill") for i in ids]
     return {"queued": sum(1 for j in jobs if j["status"] == "queued"), "activities": len(ids)}
 
 
 @router.post("/api/sessions/{activity_id}/feedback")
-def api_session_feedback(activity_id: str, body: FeedbackIn, request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
+def api_session_feedback(
+    activity_id: str, body: FeedbackIn, request: Request, db: Database = Depends(get_db)
+) -> dict[str, Any]:
     if db.fetchone("SELECT 1 FROM activities WHERE activity_id = ?", [activity_id]) is None:
         raise HTTPException(404, detail="session not found")
     db.execute(
@@ -619,10 +693,13 @@ def api_session_feedback(activity_id: str, body: FeedbackIn, request: Request, d
     )
     # Feedback after grading → one regrade with it, never more.
     regrade = None
-    graded = db.fetchone("SELECT count(*) FROM session_grades WHERE activity_id = ? AND status = 'graded'", [activity_id])[0]
+    graded = db.fetchone(
+        "SELECT count(*) FROM session_grades WHERE activity_id = ? AND status = 'graded'", [activity_id]
+    )[0]
     already = db.fetchone(
         "SELECT count(*) FROM session_grades WHERE activity_id = ? "
-        "AND json_extract_string(features, '$.trigger') = 'feedback'", [activity_id]
+        "AND json_extract_string(features, '$.trigger') = 'feedback'",
+        [activity_id],
     )[0]
     if graded and not already:
         regrade = _enqueue_grade(request, activity_id, "feedback")
@@ -659,8 +736,14 @@ def api_create_note(body: NoteIn, request: Request, db: Database = Depends(get_d
     new_id = db.fetchone(
         "INSERT INTO athlete_notes (category, title, body, valid_from, valid_to, rules, status, source) "
         "VALUES (?, ?, ?, ?, ?, ?, 'active', 'manual') RETURNING id",
-        [body.category, body.title, body.body, body.valid_from, body.valid_to,
-         json.dumps(body.rules) if body.rules else None],
+        [
+            body.category,
+            body.title,
+            body.body,
+            body.valid_from,
+            body.valid_to,
+            json.dumps(body.rules) if body.rules else None,
+        ],
     )[0]
     _resync_health(db)
     return {"id": new_id}
@@ -674,8 +757,15 @@ def api_update_note(note_id: int, body: NoteIn, db: Database = Depends(get_db)) 
     db.execute(
         "UPDATE athlete_notes SET category = ?, title = ?, body = ?, valid_from = ?, valid_to = ?, rules = ?, "
         "source = 'manual', updated_at = current_timestamp WHERE id = ?",
-        [body.category, body.title, body.body, body.valid_from, body.valid_to,
-         json.dumps(body.rules) if body.rules else None, note_id],
+        [
+            body.category,
+            body.title,
+            body.body,
+            body.valid_from,
+            body.valid_to,
+            json.dumps(body.rules) if body.rules else None,
+            note_id,
+        ],
     )
     _resync_health(db)
     return {"id": note_id}
@@ -691,9 +781,7 @@ def _resync_health(db: Database) -> None:
 def _set_note_status(db: Database, note_id: int, status: str) -> dict[str, Any]:
     if db.fetchone("SELECT 1 FROM athlete_notes WHERE id = ?", [note_id]) is None:
         raise HTTPException(404, detail="note not found")
-    db.execute(
-        "UPDATE athlete_notes SET status = ?, updated_at = current_timestamp WHERE id = ?", [status, note_id]
-    )
+    db.execute("UPDATE athlete_notes SET status = ?, updated_at = current_timestamp WHERE id = ?", [status, note_id])
     _resync_health(db)
     return {"id": note_id, "status": status}
 

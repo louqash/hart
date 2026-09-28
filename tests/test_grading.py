@@ -11,12 +11,12 @@ from typing import Any
 import pytest
 from claude_agent_sdk import RateLimitEvent, RateLimitInfo
 
-from tests.test_chat import FakeClient, _result
 from hart.analytics.grading_features import build_features
 from hart.config import ServerSettings, get_config
 from hart.server.grading import Citation, Scores, overall, verify_citations
 from hart.server.state import DEFAULT_THRESHOLDS
 from hart.storage.database import Database
+from tests.test_chat import FakeClient, _result
 
 NOW = datetime.datetime.now().replace(microsecond=0)
 
@@ -27,8 +27,16 @@ def _reset_fake() -> None:
     FakeClient.scripts.clear()
 
 
-def _activity(db: Database, act_id: str, start: datetime.datetime, sport: str = "bike",
-              sub: str = "indoor_cycling", secs: int = 3600, hr: float = 130, power: float | None = 150) -> None:
+def _activity(
+    db: Database,
+    act_id: str,
+    start: datetime.datetime,
+    sport: str = "bike",
+    sub: str = "indoor_cycling",
+    secs: int = 3600,
+    hr: float = 130,
+    power: float | None = 150,
+) -> None:
     db.execute(
         "INSERT INTO activities (activity_id, source, sport_type, sub_type, name, start_time, elapsed_seconds, "
         "moving_seconds, avg_hr, avg_power, normalized_power) VALUES (?, 'test', ?, ?, 'Ride', ?, ?, ?, ?, ?, ?)",
@@ -36,14 +44,16 @@ def _activity(db: Database, act_id: str, start: datetime.datetime, sport: str = 
     )
     db.execute(
         "INSERT INTO activity_metrics (activity_id, sport_type, date, tss, hr_zone_seconds, efficiency_factor) "
-        "VALUES (?, ?, ?, 40, '{\"Z1\": 600, \"Z2\": 2800, \"Z3\": 200}', ?)",
+        'VALUES (?, ?, ?, 40, \'{"Z1": 600, "Z2": 2800, "Z3": 200}\', ?)',
         [act_id, sport, start.date(), (power or 0) / hr if power else None],
     )
 
 
 def _streams(db: Database, act_id: str, n: int = 1800, drift: float = 0.05) -> None:
     rows = [(act_id, i, int(125 + 10 * drift * i / n * 20), 150) for i in range(n)]
-    db.executemany("INSERT INTO activity_streams (activity_id, timestamp_sec, heart_rate, power) VALUES (?, ?, ?, ?)", rows)
+    db.executemany(
+        "INSERT INTO activity_streams (activity_id, timestamp_sec, heart_rate, power) VALUES (?, ?, ?, ?)", rows
+    )
 
 
 @pytest.fixture
@@ -60,20 +70,23 @@ def db(tmp_path: Path):
 
 def test_overall_and_letters() -> None:
     assert overall(Scores(execution=5, response=5, context_fit=5)) == (5.0, "A")
-    assert overall(Scores(execution=4, response=4, context_fit=3))[1] == "B"   # 3.75
+    assert overall(Scores(execution=4, response=4, context_fit=3))[1] == "B"  # 3.75
     assert overall(Scores(execution=3, response=None, context_fit=3)) == (3.0, "C")  # renormalised
     assert overall(Scores(execution=None, response=None, context_fit=2)) == (2.0, "E")
-    assert overall(Scores(execution=2, response=3, context_fit=2))[1] == "D"   # 2.3
+    assert overall(Scores(execution=2, response=3, context_fit=2))[1] == "D"  # 2.3
 
 
 def test_verify_citations() -> None:
     sources = ['{"decoupling_pct": 4.23, "avg_hr": 131, "load": 26}']
-    out = verify_citations([
-        Citation(label="decoupling", value=4.2, unit="%", source="features"),
-        Citation(label="avg HR", value=131, source="features"),
-        Citation(label="made up", value=77.7, source="features"),
-        Citation(label="load", value="26", source="features"),
-    ], sources)
+    out = verify_citations(
+        [
+            Citation(label="decoupling", value=4.2, unit="%", source="features"),
+            Citation(label="avg HR", value=131, source="features"),
+            Citation(label="made up", value=77.7, source="features"),
+            Citation(label="load", value="26", source="features"),
+        ],
+        sources,
+    )
     assert [c["verified"] for c in out] == [True, True, False, True]
 
 
@@ -115,13 +128,19 @@ def test_eligibility(db: Database) -> None:
 GRADE = {
     "session_type": "endurance",
     "scores": {"execution": 4, "response": 3, "context_fit": 5},
-    "justifications": {"execution": "Steady Z2.", "response": "HR 3.7% below similar rides.", "context_fit": "Right for the comeback."},
+    "justifications": {
+        "execution": "Steady Z2.",
+        "response": "HR 3.7% below similar rides.",
+        "context_fit": "Right for the comeback.",
+    },
     "confidence": "high",
     "summary": "Controlled endurance ride; HR was 3.7% lower than similar rides.",
     "highlights": ["78% of the time in Z2"],
     "concerns": [],
-    "citations": [{"label": "HR vs similar", "value": -3.7, "unit": "%", "source": "features.comparison"},
-                  {"label": "Z2 share", "value": 78, "unit": "%", "source": "features.intensity"}],
+    "citations": [
+        {"label": "HR vs similar", "value": -3.7, "unit": "%", "source": "features.comparison"},
+        {"label": "Z2 share", "value": 78, "unit": "%", "source": "features.intensity"},
+    ],
 }
 
 
@@ -139,8 +158,9 @@ def client(tmp_path: Path):
     _streams(seed, "ride")
     _activity(seed, "walk", NOW - datetime.timedelta(hours=5), sport="other", sub="generic", power=None)
     seed.close()
-    config = dataclasses.replace(get_config(), db_path=db_path,
-                                 server=ServerSettings(env="production", seed_dir=tmp_path / "seed"))
+    config = dataclasses.replace(
+        get_config(), db_path=db_path, server=ServerSettings(env="production", seed_dir=tmp_path / "seed")
+    )
     app = create_app(config, run_scheduler=False, claude_client_factory=FakeClient)
     with TestClient(app, base_url="https://hart.example.ts.net") as c:
         yield c
@@ -203,11 +223,16 @@ def test_walks_are_ungraded_without_claude(client) -> None:
 
 
 def test_usage_limit_pauses_grading(client) -> None:
-    FakeClient.scripts.append([
-        RateLimitEvent(rate_limit_info=RateLimitInfo(status="rejected", resets_at=int(time.time()) + 3600),
-                       uuid="u", session_id="s"),
-        _result(is_error=True, api_error_status=429),
-    ])
+    FakeClient.scripts.append(
+        [
+            RateLimitEvent(
+                rate_limit_info=RateLimitInfo(status="rejected", resets_at=int(time.time()) + 3600),
+                uuid="u",
+                session_id="s",
+            ),
+            _result(is_error=True, api_error_status=429),
+        ]
+    )
     job = _grade(client, "ride")
     assert job["status"] == "error" and "usage limit" in job["error"]
     job2 = _grade(client, "ride")  # paused: Claude isn't called again

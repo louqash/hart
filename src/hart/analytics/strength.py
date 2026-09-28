@@ -11,7 +11,6 @@ from typing import Any
 
 from hart.models.activity import StrengthSet
 
-
 # ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
@@ -47,17 +46,19 @@ def parse_garmin_exercise_sets(payload: dict[str, Any] | None) -> list[StrengthS
             name = top.get("name")
             confidence = top.get("probability")
 
-        sets.append(StrengthSet(
-            set_index=idx,
-            set_type=set_type,
-            start_time=_parse_ts(raw.get("startTime")),
-            duration_sec=raw.get("duration"),
-            repetitions=raw.get("repetitionCount"),
-            weight_kg=weight_kg,
-            exercise_category=category,
-            exercise_name=name,
-            exercise_confidence=confidence,
-        ))
+        sets.append(
+            StrengthSet(
+                set_index=idx,
+                set_type=set_type,
+                start_time=_parse_ts(raw.get("startTime")),
+                duration_sec=raw.get("duration"),
+                repetitions=raw.get("repetitionCount"),
+                weight_kg=weight_kg,
+                exercise_category=category,
+                exercise_name=name,
+                exercise_confidence=confidence,
+            )
+        )
     return sets
 
 
@@ -68,7 +69,7 @@ def _parse_ts(val: Any) -> datetime.datetime | None:
         dt = datetime.datetime.fromisoformat(str(val))
     except ValueError:
         return None
-    return dt if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc)
+    return dt if dt.tzinfo else dt.replace(tzinfo=datetime.UTC)
 
 
 # ---------------------------------------------------------------------------
@@ -102,14 +103,16 @@ def summarize_strength_sets(sets: list[dict[str, Any]]) -> dict[str, Any]:
         label = exercise_label(s.get("exercise_category"), s.get("exercise_name"))
         set_numbers[label] = set_numbers.get(label, 0) + 1
         reps = _num(s.get("repetitions"))
-        out.append({
-            "exercise": label,
-            "set": set_numbers[label],
-            "reps": int(reps) if reps is not None else None,
-            "weight_kg": _num(s.get("weight_kg")),
-            "duration_sec": round(duration) if duration is not None else None,
-            "rest_after_sec": None,
-        })
+        out.append(
+            {
+                "exercise": label,
+                "set": set_numbers[label],
+                "reps": int(reps) if reps is not None else None,
+                "weight_kg": _num(s.get("weight_kg")),
+                "duration_sec": round(duration) if duration is not None else None,
+                "rest_after_sec": None,
+            }
+        )
 
     return {"active_sets": len(out), "sets": out}
 

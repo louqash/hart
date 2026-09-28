@@ -29,8 +29,10 @@ def athlete_profile(db: Database) -> dict[str, Any]:
 
 def data_notes(profile: dict[str, Any]) -> str:
     """Facts about the data every prompt needs (shared by chat, grading, suggestions)."""
-    lines = ['Daily "load" is Garmin\'s EPOC-based training load, not power-based TSS; never compare it with '
-             "TSS from other platforms."]
+    lines = [
+        'Daily "load" is Garmin\'s EPOC-based training load, not power-based TSS; never compare it with '
+        "TSS from other platforms."
+    ]
     if profile["power_single_sided"]:
         lines.insert(0, "Power comes from a single-sided meter (one leg, doubled): judge trends, not absolute watts.")
     return " ".join(lines)
@@ -38,11 +40,15 @@ def data_notes(profile: dict[str, Any]) -> str:
 
 def coach_notes(profile: dict[str, Any]) -> str:
     if not profile["has_coach"]:
-        return ("There may be no coach: planned sessions in `get_planned_sessions` are the athlete's own plan. "
-                "Suggesting training is fine.")
-    return (f"{profile['name']} has a coach. Suggesting training adjustments is fine; when the coach's plan covers a "
-            "day, present suggestions as adjustments to it — the coach's plan takes priority. The coach's plan "
-            "(pasted in by the athlete) is in `get_planned_sessions`.")
+        return (
+            "There may be no coach: planned sessions in `get_planned_sessions` are the athlete's own plan. "
+            "Suggesting training is fine."
+        )
+    return (
+        f"{profile['name']} has a coach. Suggesting training adjustments is fine; when the coach's plan covers a "
+        "day, present suggestions as adjustments to it — the coach's plan takes priority. The coach's plan "
+        "(pasted in by the athlete) is in `get_planned_sessions`."
+    )
 
 
 _CHAT = """\
@@ -108,6 +114,11 @@ lists, small tables) when it helps. No filler.
 def chat_system_prompt(today: datetime.date, tz: str, profile: dict[str, Any] | None = None) -> str:
     profile = profile or {"name": "the athlete", "power_single_sided": False, "has_coach": False}
     return _CHAT.format(
-        assistant=ASSISTANT_NAME, name=profile["name"], today=today.isoformat(), weekday=today.strftime("%A"),
-        tz=tz, data_notes=data_notes(profile), coach_notes=coach_notes(profile),
+        assistant=ASSISTANT_NAME,
+        name=profile["name"],
+        today=today.isoformat(),
+        weekday=today.strftime("%A"),
+        tz=tz,
+        data_notes=data_notes(profile),
+        coach_notes=coach_notes(profile),
     )

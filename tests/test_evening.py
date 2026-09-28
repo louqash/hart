@@ -10,10 +10,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from tests.test_grading import _activity
 from hart.config import get_config
 from hart.server import evening, settings, state, suggestions
 from hart.storage.database import Database
+from tests.test_grading import _activity
 
 TZ = ZoneInfo("Europe/Warsaw")
 
@@ -27,8 +27,11 @@ def db(tmp_path: Path):
 
 def _config(webhook: str = "https://discord.example/webhook") -> Any:
     base = get_config()
-    return dataclasses.replace(base, discord=dataclasses.replace(base.discord, webhook_url=webhook, bot_token=""),
-                               server=dataclasses.replace(base.server, public_host="hart.example.ts.net"))
+    return dataclasses.replace(
+        base,
+        discord=dataclasses.replace(base.discord, webhook_url=webhook, bot_token=""),
+        server=dataclasses.replace(base.server, public_host="hart.example.ts.net"),
+    )
 
 
 def _at(hour: int, minute: int = 0) -> datetime.datetime:
@@ -52,8 +55,11 @@ def test_due_rules(db: Database) -> None:
 
 def test_waits_for_tomorrows_suggestion(db: Database) -> None:
     tomorrow = datetime.date.today() + datetime.timedelta(days=1)
-    db.execute("INSERT INTO jobs (type, status, dedupe_key, trigger, payload) VALUES "
-               "('suggest', 'running', ?, 'schedule', '{}')", [f"suggest:{tomorrow}"])
+    db.execute(
+        "INSERT INTO jobs (type, status, dedupe_key, trigger, payload) VALUES "
+        "('suggest', 'running', ?, 'schedule', '{}')",
+        [f"suggest:{tomorrow}"],
+    )
     assert not evening.due(db, _config(), _at(22, 10))
     assert evening.due(db, _config(), _at(22, 31))  # doesn't wait forever
 
@@ -62,14 +68,24 @@ def test_message_content_and_send(db: Database, monkeypatch) -> None:
     today = datetime.date.today()
     tomorrow = today + datetime.timedelta(days=1)
     _activity(db, "ride", datetime.datetime.combine(today, datetime.time(9)), secs=3660)
-    db.execute("INSERT INTO planned_sessions (date, sport_type, title, duration_min, source) "
-               "VALUES (?, 'run', 'Coach easy run', 40, 'coach_import')", [tomorrow])
-    suggestions.store(db, tomorrow, {
-        "kind": "preliminary", "readiness": "green", "status": "ok", "recommendation": "modify",
-        "summary": "Keep it shorter after today's ride.",
-        "sessions": [{"sport_type": "run", "title": "Easy run", "duration_min": 30, "intensity": "endurance"}],
-        "cautions": ["Calf: stop if it tightens"],
-    })
+    db.execute(
+        "INSERT INTO planned_sessions (date, sport_type, title, duration_min, source) "
+        "VALUES (?, 'run', 'Coach easy run', 40, 'coach_import')",
+        [tomorrow],
+    )
+    suggestions.store(
+        db,
+        tomorrow,
+        {
+            "kind": "preliminary",
+            "readiness": "green",
+            "status": "ok",
+            "recommendation": "modify",
+            "summary": "Keep it shorter after today's ride.",
+            "sessions": [{"sport_type": "run", "title": "Easy run", "duration_min": 30, "intensity": "endurance"}],
+            "cautions": ["Calf: stop if it tightens"],
+        },
+    )
     sent: list[dict[str, Any]] = []
 
     class Response:
@@ -77,6 +93,7 @@ def test_message_content_and_send(db: Database, monkeypatch) -> None:
         text = ""
 
     import httpx
+
     monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.append({"url": url, **kw}) or Response())
     out = evening.run(db, _config())
     text = sent[0]["json"]["content"]
@@ -94,6 +111,7 @@ def test_failed_send_is_recorded(db: Database, monkeypatch) -> None:
         text = "Invalid Webhook Token"
 
     import httpx
+
     monkeypatch.setattr(httpx, "post", lambda url, **kw: Response())
     with pytest.raises(evening.DiscordError):
         evening.run(db, _config())

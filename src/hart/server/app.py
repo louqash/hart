@@ -25,9 +25,9 @@ from pydantic import BaseModel, Field
 
 from hart.config import HartSettings, get_config
 from hart.server import chat_routes, evening, health_routes, plan_routes, routes, settings, settings_routes, state
+from hart.server.auth import AuthMiddleware
 from hart.server.chat import ChatService
 from hart.server.claude.runner import ClaudeRunner
-from hart.server.auth import AuthMiddleware
 from hart.server.data import claude_status, claude_usage
 from hart.server.jobs.handlers import make_handlers
 from hart.server.jobs.pipeline import has_sleep_for, row_dict
@@ -99,8 +99,7 @@ def build_today(db: Database, config: HartSettings) -> dict[str, Any]:
     today = _local_today(config)
     race = row_dict(
         db,
-        "SELECT name, race_date FROM races WHERE priority = 'A' AND race_date >= ? "
-        "ORDER BY race_date LIMIT 1",
+        "SELECT name, race_date FROM races WHERE priority = 'A' AND race_date >= ? ORDER BY race_date LIMIT 1",
         [today],
     )
     load = row_dict(
@@ -117,7 +116,9 @@ def build_today(db: Database, config: HartSettings) -> dict[str, Any]:
     last_sync = last_successful_sync(db)
     return {
         "date": today,
-        "race": None if race is None else {
+        "race": None
+        if race is None
+        else {
             "name": race["name"],
             "date": race["race_date"],
             "days_to_race": (race["race_date"] - today).days,
@@ -201,7 +202,7 @@ def _last_job(db: Database, job_type: str) -> dict[str, Any] | None:
 
 
 def build_system(db: Database, config: HartSettings, runner: JobRunner) -> dict[str, Any]:
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    now = datetime.datetime.now(tz=datetime.UTC)
 
     def count(sql: str) -> int:
         return int(db.fetchone(sql)[0])
@@ -352,9 +353,15 @@ def create_app(
 
     @app.get("/system", response_class=HTMLResponse, include_in_schema=False)
     def system_page(request: Request, db: Database = Depends(get_db)) -> HTMLResponse:
-        return routes.page(request, "system.html", {
-            "s": build_system(db, config, _runner(request)), "today": build_today(db, config), "nav": "system",
-        })
+        return routes.page(
+            request,
+            "system.html",
+            {
+                "s": build_system(db, config, _runner(request)),
+                "today": build_today(db, config),
+                "nav": "system",
+            },
+        )
 
     # ---- API ----
 
@@ -375,9 +382,7 @@ def create_app(
     @app.post("/api/backfill/vo2max")
     def api_backfill_vo2max(body: Vo2maxBackfillRequest, request: Request) -> dict[str, Any]:
         payload = {k: v.isoformat() for k, v in (("start", body.start), ("end", body.end)) if v}
-        return _runner(request).enqueue(
-            "vo2max_backfill", payload, trigger="manual", dedupe_key="vo2max_backfill"
-        )
+        return _runner(request).enqueue("vo2max_backfill", payload, trigger="manual", dedupe_key="vo2max_backfill")
 
     @app.post("/api/backup")
     def api_backup(request: Request) -> dict[str, Any]:
@@ -386,12 +391,16 @@ def create_app(
     @app.post("/api/backfill/decoupling")
     def api_backfill_decoupling(body: DecouplingBackfillRequest, request: Request) -> dict[str, Any]:
         return _runner(request).enqueue(
-            "decoupling_backfill", {"only_missing": body.only_missing},
-            trigger="manual", dedupe_key="decoupling_backfill",
+            "decoupling_backfill",
+            {"only_missing": body.only_missing},
+            trigger="manual",
+            dedupe_key="decoupling_backfill",
         )
 
     @app.get("/api/jobs")
-    def api_jobs(request: Request, type: str | None = None, status: str | None = None, limit: int = 50) -> list[dict[str, Any]]:
+    def api_jobs(
+        request: Request, type: str | None = None, status: str | None = None, limit: int = 50
+    ) -> list[dict[str, Any]]:
         return _runner(request).list_jobs(job_type=type, status=status, limit=min(limit, 200))
 
     class EveningIn(BaseModel):
@@ -406,8 +415,9 @@ def create_app(
     def api_evening_test(request: Request) -> dict[str, Any]:
         if not evening.configured(config):
             raise HTTPException(400, detail="Discord isn't configured — set HART_DISCORD_WEBHOOK_URL")
-        return _runner(request).enqueue("evening_message", {"test": True}, trigger="manual",
-                                        dedupe_key="evening_message_test")
+        return _runner(request).enqueue(
+            "evening_message", {"test": True}, trigger="manual", dedupe_key="evening_message_test"
+        )
 
     @app.get("/api/jobs/active")
     def api_jobs_active(db: Database = Depends(get_db)) -> dict[str, Any]:
@@ -427,7 +437,9 @@ def create_app(
         return job
 
     @app.post("/api/garmin/tokens")
-    def api_garmin_tokens(body: GarminTokensRequest, request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
+    def api_garmin_tokens(
+        body: GarminTokensRequest, request: Request, db: Database = Depends(get_db)
+    ) -> dict[str, Any]:
         """Receive Garmin OAuth tokens from `hart auth` on the laptop."""
         if not body.files:
             raise HTTPException(400, detail="no token files")
@@ -461,12 +473,14 @@ def create_app(
     # the whole site; it caches static assets only, never data.
     @app.get("/sw.js", include_in_schema=False)
     def service_worker() -> FileResponse:
-        return FileResponse(WEB_DIR / "static" / "sw.js", media_type="text/javascript",
-                            headers={"Cache-Control": "no-cache"})
+        return FileResponse(
+            WEB_DIR / "static" / "sw.js", media_type="text/javascript", headers={"Cache-Control": "no-cache"}
+        )
 
     @app.get("/manifest.webmanifest", include_in_schema=False)
     def manifest() -> FileResponse:
         return FileResponse(WEB_DIR / "static" / "manifest.webmanifest", media_type="application/manifest+json")
+
     app.mount("/static", StaticFiles(directory=str(WEB_DIR / "static")), name="static")
 
     # MCP: add its route directly (a Mount would redirect /mcp -> /mcp/).

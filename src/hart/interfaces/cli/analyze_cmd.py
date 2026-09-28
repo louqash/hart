@@ -158,10 +158,12 @@ def analyze_load(
 
     console.print(f"\n  CTL: [cyan]{_sparkline(ctl_values)}[/cyan]")
     console.print(f"  ATL: [magenta]{_sparkline(atl_values)}[/magenta]")
-    console.print(f"  TSB: [{'green' if current_tsb > 0 else 'red'}]{_sparkline(tsb_values)}[/{'green' if current_tsb > 0 else 'red'}]")
+    console.print(
+        f"  TSB: [{'green' if current_tsb > 0 else 'red'}]{_sparkline(tsb_values)}[/{'green' if current_tsb > 0 else 'red'}]"
+    )
 
     # Daily detail table (last 14 days or less)
-    display_data = data[-min(14, len(data)):]
+    display_data = data[-min(14, len(data)) :]
 
     table = Table(title=f"\nDaily Training Load ({sport_label})", show_header=True, header_style="bold")
     table.add_column("Date", style="dim")
@@ -200,8 +202,7 @@ def analyze_load(
         ramp = (current_ctl - ctl_7d_ago) / 7.0
         ramp_color = "green" if 3 <= ramp <= 7 else "yellow" if 0 <= ramp <= 10 else "red"
         console.print(
-            f"\n  7-day ramp rate: [{ramp_color}]{ramp:+.1f} CTL/day[/{ramp_color}]"
-            f"  [dim](target: 3-7 CTL/day)[/dim]"
+            f"\n  7-day ramp rate: [{ramp_color}]{ramp:+.1f} CTL/day[/{ramp_color}]  [dim](target: 3-7 CTL/day)[/dim]"
         )
 
     console.print()
@@ -330,6 +331,7 @@ def analyze_zones(
         if hr_z:
             if isinstance(hr_z, str):
                 import json
+
                 hr_z = json.loads(hr_z)
             if isinstance(hr_z, dict):
                 for zone, secs in hr_z.items():
@@ -498,7 +500,7 @@ def analyze_performance(
             # EF trend assessment
             if len(ef_nums) >= 5:
                 recent_avg = sum(ef_nums[-5:]) / 5
-                older_avg = sum(ef_nums[:max(1, len(ef_nums) - 5)]) / max(1, len(ef_nums) - 5)
+                older_avg = sum(ef_nums[: max(1, len(ef_nums) - 5)]) / max(1, len(ef_nums) - 5)
                 if recent_avg > older_avg * 1.03:
                     console.print("  [green]EF trending upward -- aerobic fitness improving.[/green]")
                 elif recent_avg < older_avg * 0.97:
@@ -531,8 +533,7 @@ def analyze_performance(
             # Average decoupling
             avg_dc = sum(v for _, v in dc_values) / len(dc_values)
             console.print(
-                f"  Average decoupling: {_color_decoupling(avg_dc)} "
-                f"[dim](target: <5% for aerobic sessions)[/dim]"
+                f"  Average decoupling: {_color_decoupling(avg_dc)} [dim](target: <5% for aerobic sessions)[/dim]"
             )
 
     console.print()

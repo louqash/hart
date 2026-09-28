@@ -7,7 +7,6 @@ import datetime
 from pydantic import BaseModel
 
 
-
 class HealthDay(BaseModel):
     """Aggregated daily health metrics (primarily from Garmin)."""
 
@@ -75,5 +74,3 @@ class HRVDaily(BaseModel):
     hrv_status: str | None = None
     baseline_low_ms: float | None = None
     baseline_high_ms: float | None = None
-
-

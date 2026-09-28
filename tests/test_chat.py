@@ -33,8 +33,9 @@ from hart.server.claude.policy import MCP_PREFIX, WebGuard, chat_policy
 
 
 def _delta(text: str) -> StreamEvent:
-    return StreamEvent(uuid="u", session_id="s1", event={"type": "content_block_delta",
-                                                          "delta": {"type": "text_delta", "text": text}})
+    return StreamEvent(
+        uuid="u", session_id="s1", event={"type": "content_block_delta", "delta": {"type": "text_delta", "text": text}}
+    )
 
 
 def _result(**kw: Any) -> ResultMessage:
@@ -44,17 +45,20 @@ def _result(**kw: Any) -> ResultMessage:
 
 ANSWER = [
     SystemMessage(subtype="init", data={"session_id": "s1"}),
-    AssistantMessage(content=[ToolUseBlock(id="t1", name=MCP_PREFIX + "get_training_load", input={"days": 7})],
-                     model="claude-sonnet-5"),
+    AssistantMessage(
+        content=[ToolUseBlock(id="t1", name=MCP_PREFIX + "get_training_load", input={"days": 7})],
+        model="claude-sonnet-5",
+    ),
     UserMessage(content=[ToolResultBlock(tool_use_id="t1", content=[{"type": "text", "text": '{"ctl": 20.1}'}])]),
-    _delta("Your CTL "), _delta("is **20.1**."),
+    _delta("Your CTL "),
+    _delta("is **20.1**."),
     AssistantMessage(content=[TextBlock(text="Your CTL is **20.1**.")], model="claude-sonnet-5"),
     _result(),
 ]
 
 
 class FakeClient:
-    instances: list["FakeClient"] = []
+    instances: list[FakeClient] = []
     scripts: list[list[Any]] = []
 
     def __init__(self, options: Any) -> None:
@@ -133,11 +137,16 @@ def client(tmp_path: Path):
     from hart.server.app import create_app
 
     config = dataclasses.replace(
-        get_config(), db_path=tmp_path / "app.duckdb",
+        get_config(),
+        db_path=tmp_path / "app.duckdb",
         server=ServerSettings(env="production", seed_dir=tmp_path / "seed"),
     )
-    app = create_app(config, run_scheduler=False, claude_client_factory=FakeClient,
-                     handlers={"sync": lambda d, p: {}, "sync_light": lambda d, p: {}})
+    app = create_app(
+        config,
+        run_scheduler=False,
+        claude_client_factory=FakeClient,
+        handlers={"sync": lambda d, p: {}, "sync_light": lambda d, p: {}},
+    )
     with TestClient(app, base_url="https://hart.example.ts.net") as c:
         yield c
 
@@ -190,10 +199,14 @@ def test_chat_turn_streams_and_saves(client) -> None:
 
 
 def test_usage_limit_is_reported(client) -> None:
-    FakeClient.scripts.append([
-        RateLimitEvent(rate_limit_info=RateLimitInfo(status="rejected", resets_at=1790500000), uuid="u", session_id="s"),
-        _result(is_error=True, api_error_status=429, session_id="s"),
-    ])
+    FakeClient.scripts.append(
+        [
+            RateLimitEvent(
+                rate_limit_info=RateLimitInfo(status="rejected", resets_at=1790500000), uuid="u", session_id="s"
+            ),
+            _result(is_error=True, api_error_status=429, session_id="s"),
+        ]
+    )
     conv = client.post("/api/chat", headers=W, json={}).json()["id"]
     run = client.post(f"/api/chat/{conv}/messages", headers=W, json={"text": "hi"}).json()["run_id"]
     done = _events(client, run)[-1]
@@ -237,8 +250,12 @@ def test_permission_callback_and_busy_conversation(client) -> None:
     assert busy.status_code == 409
     gate.set()
     _events(client, run)
-    assert [type(d) for d in decisions] == [PermissionResultAllow, PermissionResultDeny, PermissionResultDeny,
-                                            PermissionResultAllow]
+    assert [type(d) for d in decisions] == [
+        PermissionResultAllow,
+        PermissionResultDeny,
+        PermissionResultDeny,
+        PermissionResultAllow,
+    ]
 
 
 def test_chat_page_renders(client) -> None:
@@ -255,13 +272,33 @@ def test_lab_results_import_and_tool(tmp_path: Path) -> None:
     assert parse_value("<8.00") == (8.0, "<") and parse_value("15,5") == (15.5, None)
     assert parse_range("13.5 - 18.0") == (13.5, 18.0) and parse_range(None) == (None, None)
     src = tmp_path / "blood.json"
-    src.write_text(json.dumps([{"date": "2026-05-07", "markers": [
-        {"name": "Ferrytyna", "value": "120", "unit": "ng/ml", "reference_range": "30 - 400", "flag": None},
-        {"name": "TSH", "value": "4.1", "unit": "uIU/ml", "reference_range": "0.27 - 4.2", "flag": "H"}]}]))
+    src.write_text(
+        json.dumps(
+            [
+                {
+                    "date": "2026-05-07",
+                    "markers": [
+                        {
+                            "name": "Ferrytyna",
+                            "value": "120",
+                            "unit": "ng/ml",
+                            "reference_range": "30 - 400",
+                            "flag": None,
+                        },
+                        {"name": "TSH", "value": "4.1", "unit": "uIU/ml", "reference_range": "0.27 - 4.2", "flag": "H"},
+                    ],
+                }
+            ]
+        )
+    )
     db = Database(tmp_path / "t.duckdb").connect()
     assert import_lab_results(db, src) == 2
     assert import_lab_results(db, src) == 0  # idempotent
-    assert db.fetchone("SELECT marker_key, value_num, ref_high FROM lab_results WHERE marker_name = 'TSH'") == ("tsh", 4.1, 4.2)
+    assert db.fetchone("SELECT marker_key, value_num, ref_high FROM lab_results WHERE marker_name = 'TSH'") == (
+        "tsh",
+        4.1,
+        4.2,
+    )
     db.close()
 
 
@@ -272,12 +309,17 @@ def test_usage_is_recorded_and_summarised(tmp_path) -> None:
     from hart.storage.database import Database
 
     db = Database(tmp_path / "u.duckdb").connect()
-    now = _dt.datetime.now(tz=_dt.timezone.utc)
-    for purpose, status, usage in (("chat", "ok", {"input_tokens": 100, "output_tokens": 50}),
-                                   ("grade", "usage_limited", None), ("chat", "ok", {"output_tokens": 10})):
-        db.execute("INSERT INTO claude_runs (purpose, model, prompt_version, status, duration_ms, transcript, started_at, "
-                   "finished_at) VALUES (?, 'claude-opus-5-5', 'x', ?, 60000, ?, ?, ?)",
-                   [purpose, status, json.dumps({"usage": usage, "resets_at": 123}), now, now])
+    now = _dt.datetime.now(tz=_dt.UTC)
+    for purpose, status, usage in (
+        ("chat", "ok", {"input_tokens": 100, "output_tokens": 50}),
+        ("grade", "usage_limited", None),
+        ("chat", "ok", {"output_tokens": 10}),
+    ):
+        db.execute(
+            "INSERT INTO claude_runs (purpose, model, prompt_version, status, duration_ms, transcript, started_at, "
+            "finished_at) VALUES (?, 'claude-opus-5-5', 'x', ?, 60000, ?, ?, ?)",
+            [purpose, status, json.dumps({"usage": usage, "resets_at": 123}), now, now],
+        )
     u = claude_usage(db, _dt.date.today())
     chat = next(p for p in u["purposes"] if p["purpose"] == "chat")
     assert (chat["runs"], chat["tokens"], chat["minutes"]) == (2, 160, 2.0)

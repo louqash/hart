@@ -21,7 +21,6 @@ import numpy as np
 
 from hart.models.metrics import WeeklySummary
 
-
 # ---------------------------------------------------------------------------
 # Weekly Compliance
 # ---------------------------------------------------------------------------
@@ -110,8 +109,7 @@ def weekly_compliance(
     if tss_pct is not None:
         if tss_pct < 60:
             flags.append(
-                f"TSS well below plan ({sport}): {actual.total_tss:.0f} "
-                f"of {planned_tss:.0f} planned ({tss_pct:.0f}%)."
+                f"TSS well below plan ({sport}): {actual.total_tss:.0f} of {planned_tss:.0f} planned ({tss_pct:.0f}%)."
             )
         elif tss_pct > 140:
             flags.append(
@@ -208,7 +206,7 @@ def volume_trend_compliance(
         # Analyse the most recent 4-week block (or available data).
         recent_n = min(len(volumes), 4)
         recent = volumes[-recent_n:]
-        recent_changes = wow_changes[-(recent_n - 1):] if len(wow_changes) >= (recent_n - 1) else wow_changes
+        recent_changes = wow_changes[-(recent_n - 1) :] if len(wow_changes) >= (recent_n - 1) else wow_changes
 
         # Check for recovery week pattern: last week significantly lower.
         if recent_n >= 4:
@@ -220,10 +218,7 @@ def volume_trend_compliance(
 
                 if recovery_ratio < 0.75:
                     current_phase = "recovery"
-                    notes.append(
-                        f"Recovery week detected: volume at {recovery_ratio*100:.0f}% "
-                        f"of peak build week."
-                    )
+                    notes.append(f"Recovery week detected: volume at {recovery_ratio * 100:.0f}% of peak build week.")
                 else:
                     current_phase = "build"
 
@@ -232,14 +227,13 @@ def volume_trend_compliance(
                 for i, change in enumerate(build_increases):
                     if change < 0:
                         notes.append(
-                            f"Week {i+2} volume decreased by {abs(change):.1f}% "
+                            f"Week {i + 2} volume decreased by {abs(change):.1f}% "
                             f"(expected increase during build phase)."
                         )
                         pattern_match = False
                     elif change > 15:
                         notes.append(
-                            f"Week {i+2} volume jumped {change:.1f}% "
-                            f"(recommended: 5-10% increase). Risk of overload."
+                            f"Week {i + 2} volume jumped {change:.1f}% (recommended: 5-10% increase). Risk of overload."
                         )
                         pattern_match = False
             else:
@@ -249,28 +243,19 @@ def volume_trend_compliance(
             # Less than 4 weeks: just check for reasonable progression.
             for i, change in enumerate(recent_changes):
                 if change < -20:
-                    notes.append(
-                        f"Significant volume drop in week {i+2}: {change:.1f}%."
-                    )
+                    notes.append(f"Significant volume drop in week {i + 2}: {change:.1f}%.")
                     pattern_match = False
                 elif change > 20:
-                    notes.append(
-                        f"Large volume spike in week {i+2}: {change:.1f}%."
-                    )
+                    notes.append(f"Large volume spike in week {i + 2}: {change:.1f}%.")
                     pattern_match = False
 
         # Check if a recovery week is overdue.
         if len(volumes) >= 4:
             # Look at last 4 weeks: if all are increasing, recovery may be needed.
             last_4 = volumes[-4:]
-            all_increasing = all(
-                last_4[i] < last_4[i + 1] for i in range(3)
-            )
+            all_increasing = all(last_4[i] < last_4[i + 1] for i in range(3))
             if all_increasing:
-                notes.append(
-                    "4 consecutive build weeks without recovery. "
-                    "Consider scheduling a recovery week."
-                )
+                notes.append("4 consecutive build weeks without recovery. Consider scheduling a recovery week.")
 
     if not notes:
         notes.append("Volume progression looks appropriate.")

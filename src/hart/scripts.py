@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn
 
@@ -52,9 +51,9 @@ def backfill_metrics() -> None:
         efficiency_factor_bike,
         efficiency_factor_run,
     )
-    from hart.ingestion.decoupling import activity_decoupling
     from hart.analytics.training_load import update_training_load
     from hart.config import get_config
+    from hart.ingestion.decoupling import activity_decoupling
     from hart.storage import queries
     from hart.storage.database import Database
     from hart.storage.views import refresh_all_views
@@ -100,9 +99,7 @@ def backfill_metrics() -> None:
                 decoupling = activity_decoupling(db, activity_id, sport_type)
 
                 act_date = (
-                    activity["start_time"].date()
-                    if hasattr(activity["start_time"], "date")
-                    else activity["start_time"]
+                    activity["start_time"].date() if hasattr(activity["start_time"], "date") else activity["start_time"]
                 )
                 db.execute(
                     """INSERT INTO activity_metrics

@@ -27,7 +27,6 @@ import numpy as np
 
 from hart.models.metrics import RecoveryScore
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -272,9 +271,7 @@ def recovery_trend(
             "days_below_60": 0,
         }
 
-    values = np.array(
-        [s["recovery_score"] for s in scores], dtype=np.float64
-    )
+    values = np.array([s["recovery_score"] for s in scores], dtype=np.float64)
     n = len(values)
 
     # Rolling mean

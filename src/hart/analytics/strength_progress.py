@@ -40,7 +40,7 @@ def exercise_key(name: str | None, category: str | None, aliases: dict[str, str]
         base = name
         for prefix in DEFAULT_IMPLEMENTS:
             if base.startswith(prefix):
-                base = base[len(prefix):]
+                base = base[len(prefix) :]
         if _plain(base) == _plain(category):
             key = category
     seen = set()
@@ -78,15 +78,27 @@ def progression(db: Database, today: datetime.date) -> dict[str, Any]:
         key = exercise_key(name, category, aliases)
         if key is None:
             continue
-        s = sessions.setdefault(key, {}).setdefault((activity_id, day.isoformat()), {
-            "activity_id": activity_id, "date": day, "sets": 0, "volume": 0.0, "top_kg": None, "top_reps": None,
-            "e1rm": None, "max_reps": None,
-        })
+        s = sessions.setdefault(key, {}).setdefault(
+            (activity_id, day.isoformat()),
+            {
+                "activity_id": activity_id,
+                "date": day,
+                "sets": 0,
+                "volume": 0.0,
+                "top_kg": None,
+                "top_reps": None,
+                "e1rm": None,
+                "max_reps": None,
+            },
+        )
         s["sets"] += 1
         s["volume"] += (reps or 0) * (weight or 0)
         s["max_reps"] = max(s["max_reps"] or 0, reps or 0) or None
-        if weight is not None and (s["top_kg"] is None or weight > s["top_kg"] or
-                                   (weight == s["top_kg"] and (reps or 0) > (s["top_reps"] or 0))):
+        if weight is not None and (
+            s["top_kg"] is None
+            or weight > s["top_kg"]
+            or (weight == s["top_kg"] and (reps or 0) > (s["top_reps"] or 0))
+        ):
             s["top_kg"], s["top_reps"] = weight, reps
         est = e1rm(weight, reps)
         if est and (s["e1rm"] is None or est > s["e1rm"]):
@@ -105,13 +117,22 @@ def progression(db: Database, today: datetime.date) -> dict[str, Any]:
         change = None
         if len(in_block) >= 2 and in_block[0][metric]:
             change = round((in_block[-1][metric] / in_block[0][metric] - 1) * 100, 1)
-        exercises.append({
-            "key": key, "label": exercise_label(key), "bodyweight": bodyweight, "metric": metric,
-            "sessions": len(history), "first": history[0]["date"], "last": latest["date"], "latest": latest,
-            "best": max((h[metric] or 0) for h in history) or None,
-            "block_sessions": len([h for h in history if h["date"] >= block_start]),
-            "block_change_pct": change, "history": history,
-        })
+        exercises.append(
+            {
+                "key": key,
+                "label": exercise_label(key),
+                "bodyweight": bodyweight,
+                "metric": metric,
+                "sessions": len(history),
+                "first": history[0]["date"],
+                "last": latest["date"],
+                "latest": latest,
+                "best": max((h[metric] or 0) for h in history) or None,
+                "block_sessions": len([h for h in history if h["date"] >= block_start]),
+                "block_change_pct": change,
+                "history": history,
+            }
+        )
     # Recently trained and frequent first.
     exercises.sort(key=lambda e: (e["last"], e["sessions"]), reverse=True)
     return {"today": today, "block_start": block_start, "exercises": exercises}
@@ -120,8 +141,14 @@ def progression(db: Database, today: datetime.date) -> dict[str, Any]:
 def weekly_sessions(db: Database, today: datetime.date, weeks: int = BLOCK_WEEKS) -> list[dict[str, Any]]:
     monday = today - datetime.timedelta(days=today.weekday())
     start = monday - datetime.timedelta(weeks=weeks - 1)
-    counts = dict(db.fetchall(
-        "SELECT CAST(date_trunc('week', start_time) AS DATE), count(*) FROM activities "
-        "WHERE sport_type = 'strength' AND start_time >= ? GROUP BY 1", [start]))
-    return [{"week": start + datetime.timedelta(weeks=i),
-             "sessions": counts.get(start + datetime.timedelta(weeks=i), 0)} for i in range(weeks)]
+    counts = dict(
+        db.fetchall(
+            "SELECT CAST(date_trunc('week', start_time) AS DATE), count(*) FROM activities "
+            "WHERE sport_type = 'strength' AND start_time >= ? GROUP BY 1",
+            [start],
+        )
+    )
+    return [
+        {"week": start + datetime.timedelta(weeks=i), "sessions": counts.get(start + datetime.timedelta(weeks=i), 0)}
+        for i in range(weeks)
+    ]

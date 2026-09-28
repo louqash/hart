@@ -6,7 +6,7 @@ an MCP server, and Ember (Claude Code via the Agent SDK). Start with `docs/archi
 ## Working on the code
 
 - Tests: `uv run --extra dev pytest` (no network or Claude needed — fakes in `tests/test_chat.py` and
-  `tests/test_server.py`).
+  `tests/test_server.py`). Lint and format: `uv run --extra dev ruff check src tests` and `ruff format src tests`.
 - Dev server: `HART_ENV=dev uv run hart serve` (127.0.0.1, no sign-in).
 - **Code computes facts, Claude interprets.** Anything that must be correct lives in `src/hart/analytics/` with
   tests; prompts receive the results as JSON.

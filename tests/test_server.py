@@ -12,8 +12,6 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import write_seed
-
 from hart.analytics.phase import (
     comeback_end_for,
     detect_layoffs,
@@ -30,6 +28,7 @@ from hart.server.jobs.scheduler import Scheduler, garmin_blocked
 from hart.server.seed import seed_all
 from hart.storage.database import Database
 from hart.storage.queries import run_analytics_query
+from tests.conftest import write_seed
 
 D = datetime.date
 
@@ -55,27 +54,33 @@ def _add_activity(db: Database, act_id: str, day: D, sport: str = "bike") -> Non
 
 
 class TestSqlGuard:
-    @pytest.mark.parametrize("sql", [
-        "SELECT * FROM read_text('/etc/hosts')",
-        "SELECT count(*) FROM glob('/etc/*')",
-        "SELECT * FROM '/etc/passwd'",
-        "SELECT * FROM 'data.csv'",
-        "SELECT * FROM read_csv_auto('x.csv')",
-        "SELECT 1; SELECT 2",
-        "DELETE FROM activities",
-        "WITH x AS (SELECT * FROM read_parquet('a.parquet')) SELECT * FROM x",
-        "SELECT * FROM activities WHERE activity_id IN (SELECT * FROM glob('/tmp/*'))",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT * FROM read_text('/etc/hosts')",
+            "SELECT count(*) FROM glob('/etc/*')",
+            "SELECT * FROM '/etc/passwd'",
+            "SELECT * FROM 'data.csv'",
+            "SELECT * FROM read_csv_auto('x.csv')",
+            "SELECT 1; SELECT 2",
+            "DELETE FROM activities",
+            "WITH x AS (SELECT * FROM read_parquet('a.parquet')) SELECT * FROM x",
+            "SELECT * FROM activities WHERE activity_id IN (SELECT * FROM glob('/tmp/*'))",
+        ],
+    )
     def test_rejects(self, db: Database, sql: str) -> None:
         with pytest.raises(ValueError):
             run_analytics_query(db, sql)
 
-    @pytest.mark.parametrize("sql", [
-        "SELECT count(*) AS n FROM activities",
-        "WITH w AS (SELECT sport_type FROM activities) SELECT sport_type, count(*) FROM w GROUP BY 1",
-        "SELECT a.activity_id FROM activities a LEFT JOIN activity_metrics m USING (activity_id)",
-        "SELECT * FROM range(3)",
-    ])
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "SELECT count(*) AS n FROM activities",
+            "WITH w AS (SELECT sport_type FROM activities) SELECT sport_type, count(*) FROM w GROUP BY 1",
+            "SELECT a.activity_id FROM activities a LEFT JOIN activity_metrics m USING (activity_id)",
+            "SELECT * FROM range(3)",
+        ],
+    )
     def test_allows(self, db: Database, sql: str) -> None:
         run_analytics_query(db, sql)
 
@@ -207,13 +212,13 @@ class TestPipeline:
 
     def test_garmin_state_pause_and_clear(self, db: Database) -> None:
         apply_garmin_state(db, "garmin_auth")
-        assert garmin_blocked(db, datetime.datetime.now(tz=datetime.timezone.utc)) == "garmin_auth"
+        assert garmin_blocked(db, datetime.datetime.now(tz=datetime.UTC)) == "garmin_auth"
         apply_garmin_state(db, None)
-        assert garmin_blocked(db, datetime.datetime.now(tz=datetime.timezone.utc)) is None
+        assert garmin_blocked(db, datetime.datetime.now(tz=datetime.UTC)) is None
 
     def test_rate_limit_backoff(self, db: Database) -> None:
         apply_garmin_state(db, "garmin_rate_limited")
-        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        now = datetime.datetime.now(tz=datetime.UTC)
         assert garmin_blocked(db, now) == "garmin_rate_limited"
         assert garmin_blocked(db, now + datetime.timedelta(hours=2)) is None
 
@@ -291,7 +296,7 @@ class TestScheduler:
         from zoneinfo import ZoneInfo
 
         local = datetime.datetime(2026, 9, 26, hour, minute, tzinfo=ZoneInfo("Europe/Warsaw"))
-        return local.astimezone(datetime.timezone.utc)
+        return local.astimezone(datetime.UTC)
 
     def test_morning_watch_and_hourly(self, db: Database) -> None:
         runner = RecordingRunner()
@@ -304,9 +309,7 @@ class TestScheduler:
         assert runner.calls == ["sync_light", "sync_light", "sync"]
 
     def test_morning_watch_stops_once_sleep_exists(self, db: Database) -> None:
-        db.execute(
-            "INSERT INTO sleep_records (date, total_sleep_sec) VALUES (?, 27000)", [D(2026, 9, 26)]
-        )
+        db.execute("INSERT INTO sleep_records (date, total_sleep_sec) VALUES (?, 27000)", [D(2026, 9, 26)])
         runner = RecordingRunner()
         Scheduler(db, runner, "Europe/Warsaw").tick(self._at(5, 45))  # type: ignore[arg-type]
         assert runner.calls == []
@@ -326,12 +329,17 @@ class TestScheduler:
 def test_seed_is_idempotent(db: Database, tmp_path: Path) -> None:
     _add_activity(db, "a1", D(2026, 6, 10))
     _add_activity(db, "a2", D(2026, 9, 5))
-    (tmp_path / "athlete_notes.json").write_text(json.dumps([
-        {"category": "goal", "title": "IM", "body": "race", "rules": None},
-    ]))
+    (tmp_path / "athlete_notes.json").write_text(
+        json.dumps(
+            [
+                {"category": "goal", "title": "IM", "body": "race", "rules": None},
+            ]
+        )
+    )
     write_seed(tmp_path)
-    (tmp_path / "annotations.json").write_text(json.dumps([
-        {"kind": "event", "label": "Camp", "start_date": "2026-09-19", "end_date": "2026-09-21"}]))
+    (tmp_path / "annotations.json").write_text(
+        json.dumps([{"kind": "event", "label": "Camp", "start_date": "2026-09-19", "end_date": "2026-09-21"}])
+    )
     first = seed_all(db, tmp_path)
     second = seed_all(db, tmp_path)
     assert first["races"] == 1 and first["notes"] == 1
@@ -426,7 +434,8 @@ class TestApp:
 
     def test_mcp_tool_call_uses_server_db_and_jobs(self, client) -> None:
         resp = self._mcp(
-            client, "tools/call",
+            client,
+            "tools/call",
             {"name": "run_sql_query", "arguments": {"sql": "SELECT name FROM races"}},
             USER,
         )
@@ -436,9 +445,7 @@ class TestApp:
         resp = self._mcp(client, "tools/call", {"name": "sync_all", "arguments": {}}, USER)
         job = json.loads(resp.json()["result"]["content"][0]["text"])
         assert job["status"] in ("queued", "already_queued", "already_running")
-        resp = self._mcp(
-            client, "tools/call", {"name": "get_job_status", "arguments": {"job_id": job["job_id"]}}, USER
-        )
+        resp = self._mcp(client, "tools/call", {"name": "get_job_status", "arguments": {"job_id": job["job_id"]}}, USER)
         assert "status" in json.loads(resp.json()["result"]["content"][0]["text"])
 
 
@@ -473,6 +480,7 @@ class TestBackup:
 
         # Restorable: IMPORT DATABASE into a fresh file.
         import duckdb
+
         con = duckdb.connect(str(tmp_path / "restored2.duckdb"))
         con.execute(f"IMPORT DATABASE '{final / 'db'}'")
         assert con.execute("SELECT count(*) FROM activities").fetchone()[0] == 1
@@ -498,9 +506,7 @@ class TestBackup:
 
 
 def test_pipeline_flags_missing_garmin_credentials(db: Database) -> None:
-    config = dataclasses.replace(
-        get_config(), garmin=dataclasses.replace(get_config().garmin, email="")
-    )
+    config = dataclasses.replace(get_config(), garmin=dataclasses.replace(get_config().garmin, email=""))
     FakeSyncManager.health_error = None
     FakeSyncManager.new_activity_day = None
     result = run_sync_pipeline(db, config, sync_manager_factory=FakeSyncManager)
@@ -513,19 +519,28 @@ def test_job_details_summaries() -> None:
     from hart.server.app import job_details
 
     sync = {
-        "type": "sync", "status": "ok", "error": None,
-        "result": {"steps": {
-            "garmin_health": {"out": {"days": 2, "errors": 0, "from": "2026-09-25", "to": "2026-09-26"}},
-            "garmin_activities": {"out": {"new": 1, "errors": 0}},
-            "recovery": {"out": {"written": 2}},
-            "anomalies": {"out": {"detected": 3, "inserted": 0}},
-        }, "errors": []},
+        "type": "sync",
+        "status": "ok",
+        "error": None,
+        "result": {
+            "steps": {
+                "garmin_health": {"out": {"days": 2, "errors": 0, "from": "2026-09-25", "to": "2026-09-26"}},
+                "garmin_activities": {"out": {"new": 1, "errors": 0}},
+                "recovery": {"out": {"written": 2}},
+                "anomalies": {"out": {"detected": 3, "inserted": 0}},
+            },
+            "errors": [],
+        },
     }
     assert job_details(sync) == (
         "health refreshed for 25–26 Sep · 1 new activity · recovery recalculated for 2 days · no new anomalies"
     )
-    backup = {"type": "backup", "status": "ok", "error": None,
-              "result": {"bytes": 44_040_192, "path": "/backups/2026-09-26", "pruned": []}}
+    backup = {
+        "type": "backup",
+        "status": "ok",
+        "error": None,
+        "result": {"bytes": 44_040_192, "path": "/backups/2026-09-26", "pruned": []},
+    }
     assert job_details(backup) == "42 MB → /backups/2026-09-26"
 
 
@@ -533,18 +548,30 @@ def test_seed_refreshes_only_unapproved_seed_notes(db: Database, tmp_path: Path)
     from hart.server.seed import seed_notes
 
     seed = tmp_path / "athlete_notes.json"
-    seed.write_text(json.dumps([
-        {"category": "injury", "title": "Shoulder", "body": "v1", "rules": None},
-        {"category": "goal", "title": "Race", "body": "v1", "rules": None},
-    ]))
+    seed.write_text(
+        json.dumps(
+            [
+                {"category": "injury", "title": "Shoulder", "body": "v1", "rules": None},
+                {"category": "goal", "title": "Race", "body": "v1", "rules": None},
+            ]
+        )
+    )
     assert seed_notes(db, tmp_path) == 2
     db.execute("UPDATE athlete_notes SET status = 'active' WHERE title = 'Race'")
 
-    seed.write_text(json.dumps([
-        {"category": "injury", "title": "Shoulder", "body": "v2",
-         "rules": {"allowed_weekdays": {"swim": ["thu"]}}},
-        {"category": "goal", "title": "Race", "body": "v2", "rules": None},
-    ]))
+    seed.write_text(
+        json.dumps(
+            [
+                {
+                    "category": "injury",
+                    "title": "Shoulder",
+                    "body": "v2",
+                    "rules": {"allowed_weekdays": {"swim": ["thu"]}},
+                },
+                {"category": "goal", "title": "Race", "body": "v2", "rules": None},
+            ]
+        )
+    )
     assert seed_notes(db, tmp_path) == 1
     rows = dict(db.fetchall("SELECT title, body FROM athlete_notes"))
     assert rows == {"Shoulder": "v2", "Race": "v1"}  # approved note untouched
@@ -559,9 +586,11 @@ def test_health_upsert_keeps_values_when_garmin_returns_nothing(db: Database) ->
     upsert_health_day(db, HealthDay(date=day, resting_hr=50, training_readiness=70, steps=8000))
     # Re-fetch where the readiness call failed (None) but steps updated.
     upsert_health_day(db, HealthDay(date=day, resting_hr=51, training_readiness=None, steps=9000))
-    assert db.fetchone(
-        "SELECT resting_hr, training_readiness, steps FROM daily_health WHERE date = ?", [day]
-    ) == (51, 70, 9000)
+    assert db.fetchone("SELECT resting_hr, training_readiness, steps FROM daily_health WHERE date = ?", [day]) == (
+        51,
+        70,
+        9000,
+    )
 
     upsert_sleep_record(db, SleepRecord(date=day, total_sleep_sec=27000, sleep_score=80))
     upsert_sleep_record(db, SleepRecord(date=day, total_sleep_sec=None, sleep_score=82))

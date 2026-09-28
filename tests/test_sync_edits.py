@@ -8,10 +8,10 @@ from pathlib import Path
 
 import pytest
 
-from tests.test_grading import H
 from hart.config import get_config
 from hart.ingestion.sync_manager import SyncManager
 from hart.storage.database import Database
+from tests.test_grading import H
 
 
 @pytest.fixture
@@ -33,19 +33,23 @@ def test_renamed_activities_are_updated(db: Database) -> None:
     _garmin_activity(db, "111", "Morning Run")
     _garmin_activity(db, "222", "Indoor Cycling", "old notes")
     manager = SyncManager(db, get_config())
-    changed = manager._refresh_edited([
-        {"activityId": 111, "activityName": "Easy Z2 run"},
-        {"activityId": 222, "activityName": "Indoor Cycling"},             # unchanged, no description sent
-        {"activityId": 333, "activityName": "Not stored yet"},              # ignored
-        {"activityId": 222, "activityName": "Indoor Cycling", "description": ""},  # empty never erases
-    ])
+    changed = manager._refresh_edited(
+        [
+            {"activityId": 111, "activityName": "Easy Z2 run"},
+            {"activityId": 222, "activityName": "Indoor Cycling"},  # unchanged, no description sent
+            {"activityId": 333, "activityName": "Not stored yet"},  # ignored
+            {"activityId": 222, "activityName": "Indoor Cycling", "description": ""},  # empty never erases
+        ]
+    )
     assert changed == 1
     names = dict(db.fetchall("SELECT external_id, name FROM activities"))
     assert names == {"111": "Easy Z2 run", "222": "Indoor Cycling"}
     assert db.fetchone("SELECT description FROM activities WHERE external_id = '222'")[0] == "old notes"
     manager._refresh_edited([{"activityId": 222, "activityName": "Trainer: sweet spot", "description": "legs heavy"}])
     assert db.fetchone("SELECT name, description FROM activities WHERE external_id = '222'") == (
-        "Trainer: sweet spot", "legs heavy")
+        "Trainer: sweet spot",
+        "legs heavy",
+    )
 
 
 def test_active_jobs_endpoint(tmp_path: Path) -> None:
@@ -56,8 +60,9 @@ def test_active_jobs_endpoint(tmp_path: Path) -> None:
     from hart.config import ServerSettings
     from hart.server.app import create_app
 
-    config = dataclasses.replace(get_config(), db_path=tmp_path / "a.duckdb",
-                                 server=ServerSettings(env="production", seed_dir=tmp_path / "seed"))
+    config = dataclasses.replace(
+        get_config(), db_path=tmp_path / "a.duckdb", server=ServerSettings(env="production", seed_dir=tmp_path / "seed")
+    )
     app = create_app(config, run_scheduler=False)
     with TestClient(app, base_url="https://hart.example.ts.net") as client:
         assert client.get("/api/jobs/active", headers=H).json()["active"] == []
@@ -85,13 +90,14 @@ def test_edited_strength_sets_are_refreshed(db: Database, monkeypatch) -> None:
     monkeypatch.setattr(sm, "_fetch_strength_sets", lambda garmin, act_id: garmin_sets[act_id])
 
     assert manager.refresh_recent_strength_sets(days=3) == []  # unchanged → nothing written
-    garmin_sets["555"] = [StrengthSet(set_index=0, set_type="active", repetitions=5, weight_kg=62.5,
-                                      exercise_name="DEADLIFT"),
-                          StrengthSet(set_index=1, set_type="active", repetitions=10, weight_kg=20.0,
-                                      exercise_name="GOBLET_SQUAT")]
+    garmin_sets["555"] = [
+        StrengthSet(set_index=0, set_type="active", repetitions=5, weight_kg=62.5, exercise_name="DEADLIFT"),
+        StrengthSet(set_index=1, set_type="active", repetitions=10, weight_kg=20.0, exercise_name="GOBLET_SQUAT"),
+    ]
     assert manager.refresh_recent_strength_sets(days=3) == ["gym"]
-    assert db.fetchall("SELECT repetitions, weight_kg FROM strength_sets WHERE activity_id = 'gym' ORDER BY set_index") == [
-        (5, 62.5), (10, 20.0)]
+    assert db.fetchall(
+        "SELECT repetitions, weight_kg FROM strength_sets WHERE activity_id = 'gym' ORDER BY set_index"
+    ) == [(5, 62.5), (10, 20.0)]
     assert manager.refresh_recent_strength_sets(days=3, skip={"gym"}) == []
 
 
@@ -117,8 +123,11 @@ def test_sync_regrades_sessions_with_edited_sets(tmp_path: Path) -> None:
     db.execute("INSERT INTO session_feedback (activity_id, rpe) VALUES ('run_with_feedback', 6)")
     config = dataclasses.replace(get_config(), garmin=dataclasses.replace(get_config().garmin, email="x@example.com"))
     import hart.server.jobs.handlers as handlers_mod
+
     original = handlers_mod.run_sync_pipeline
-    handlers_mod.run_sync_pipeline = lambda db, config, **kw: original(db, config, sync_manager_factory=FakeSyncManager, **kw)
+    handlers_mod.run_sync_pipeline = lambda db, config, **kw: original(
+        db, config, sync_manager_factory=FakeSyncManager, **kw
+    )
     try:
         make_handlers(config, {"runner": Runner()})["sync"](db, {})
     finally:

@@ -22,12 +22,14 @@ from __future__ import annotations
 import datetime
 import logging
 import time
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from hart.config import HartSettings
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
+
 
 def row_dict(db: Database, sql: str, params: list[Any] | None = None) -> dict[str, Any] | None:
     """Return the first row as a dict with real ``None`` for NULLs.
@@ -97,11 +99,14 @@ def persist_recovery_scores(
             }
             if hrv_row.get("hrv_status"):
                 hrv["hrv_status"] = hrv_row["hrv_status"]
-        load = row_dict(
-            db,
-            "SELECT tsb FROM daily_training_load WHERE date = ? AND sport_type = 'combined'",
-            [d],
-        ) or {}
+        load = (
+            row_dict(
+                db,
+                "SELECT tsb FROM daily_training_load WHERE date = ? AND sport_type = 'combined'",
+                [d],
+            )
+            or {}
+        )
 
         score = compute_recovery_score(
             health={**(health or {}), "date": d},
@@ -134,8 +139,7 @@ def insert_new_anomalies(db: Database, lookback_days: int = 14) -> dict[str, int
             "AND date_range_start IS NOT DISTINCT FROM ? "
             "AND date_range_end IS NOT DISTINCT FROM ? "
             "AND description = ?",
-            [a.anomaly_type, a.metric_name, a.activity_id,
-             a.date_range_start, a.date_range_end, a.description],
+            [a.anomaly_type, a.metric_name, a.activity_id, a.date_range_start, a.date_range_end, a.description],
         )
         if exists is None:
             insert_anomaly(db, a)
@@ -262,11 +266,7 @@ def run_sync_pipeline(
     # ---- 2. Garmin activities ----
     if not light and garmin_configured and result["error_code"] != "garmin_auth":
         since = today - datetime.timedelta(days=activity_days + 1)
-        before = {
-            r[0] for r in db.fetchall(
-                "SELECT activity_id FROM activities WHERE start_time >= ?", [since]
-            )
-        }
+        before = {r[0] for r in db.fetchall("SELECT activity_id FROM activities WHERE start_time >= ?", [since])}
         acts = step("garmin_activities", lambda: manager.sync_garmin_activities(days_back=activity_days))
         if isinstance(acts, Exception):
             result["error_code"] = result["error_code"] or _classify_garmin_error(acts)
@@ -276,34 +276,41 @@ def run_sync_pipeline(
                 result["errors"].extend(acts.error_details)
                 result["error_code"] = result["error_code"] or _classify_error_details(acts.error_details)
             result["steps"]["garmin_activities"]["out"] = {
-                "new": acts.new_activities, "renamed": acts.updated_activities, "errors": acts.errors,
+                "new": acts.new_activities,
+                "renamed": acts.updated_activities,
+                "errors": acts.errors,
             }
-            after = {
-                r[0] for r in db.fetchall(
-                    "SELECT activity_id FROM activities WHERE start_time >= ?", [since]
-                )
-            }
+            after = {r[0] for r in db.fetchall("SELECT activity_id FROM activities WHERE start_time >= ?", [since])}
             result["new_activity_ids"] = sorted(after - before)
             # Gym sets are usually corrected in Garmin Connect after the first sync.
-            edited = step("strength_edits", lambda: manager.refresh_recent_strength_sets(
-                days=activity_days + 1, skip=set(result["new_activity_ids"])))
+            edited = step(
+                "strength_edits",
+                lambda: manager.refresh_recent_strength_sets(
+                    days=activity_days + 1, skip=set(result["new_activity_ids"])
+                ),
+            )
             if isinstance(edited, list):
                 result["strength_edited_ids"] = edited
                 result["steps"]["strength_edits"]["out"] = {"updated": len(edited)}
             # RPE and feel are often added or changed in Garmin Connect after the session.
-            effort = step("effort_edits", lambda: manager.refresh_recent_effort(
-                days=activity_days + 1, skip=set(result["new_activity_ids"])))
+            effort = step(
+                "effort_edits",
+                lambda: manager.refresh_recent_effort(days=activity_days + 1, skip=set(result["new_activity_ids"])),
+            )
             if isinstance(effort, list):
                 result["effort_edited_ids"] = effort
                 result["steps"]["effort_edits"]["out"] = {"updated": len(effort)}
 
     # ---- 3-6. Derived tables ----
     if not light:
-        step("training_load", lambda: update_training_load(
-            db,
-            ctl_tc=config.analytics.ctl_time_constant,
-            atl_tc=config.analytics.atl_time_constant,
-        ))
+        step(
+            "training_load",
+            lambda: update_training_load(
+                db,
+                ctl_tc=config.analytics.ctl_time_constant,
+                atl_tc=config.analytics.atl_time_constant,
+            ),
+        )
 
     weights = {
         "hrv": config.analytics.recovery_weights.hrv,
@@ -327,10 +334,13 @@ def run_sync_pipeline(
     result["sleep_today"] = has_sleep_for(db, today)
 
     # ---- 7. State ----
-    step("sync_state", lambda: update_sync_state(
-        db,
-        "pipeline_light" if light else "pipeline",
-        last_sync_at=datetime.datetime.now(tz=datetime.timezone.utc),
-        metadata={"partial": result["partial"], "error_code": result["error_code"]},
-    ))
+    step(
+        "sync_state",
+        lambda: update_sync_state(
+            db,
+            "pipeline_light" if light else "pipeline",
+            last_sync_at=datetime.datetime.now(tz=datetime.UTC),
+            metadata={"partial": result["partial"], "error_code": result["error_code"]},
+        ),
+    )
     return result

@@ -41,22 +41,28 @@ def limits(ctx: GuardContext) -> dict[str, Any]:
         "note_rules": [{"note": title, "rules": rules} for title, rules in ctx.rules],
     }
     if ctx.readiness == "red":
-        out["red_readiness"] = "no threshold, vo2 or mixed sessions; recommendation must be modify, replace or rest " \
-                               "(free_choice or rest without a coach plan)"
+        out["red_readiness"] = (
+            "no threshold, vo2 or mixed sessions; recommendation must be modify, replace or rest "
+            "(free_choice or rest without a coach plan)"
+        )
     if ctx.coach_sessions:
         out["coach_plan"] = "must not add duration or intensity beyond the coach's plan for this day"
         if not (ctx.readiness == "red" or ctx.injury_active):
             out["replace"] = "not allowed today (only when readiness is red or an injury applies)"
     if ctx.required_today and not ctx.coach_sessions:
-        out["required_today"] = {sport: f"{why} — include a {sport} session (rest only if readiness is red)"
-                                 for sport, why in ctx.required_today.items()}
+        out["required_today"] = {
+            sport: f"{why} — include a {sport} session (rest only if readiness is red)"
+            for sport, why in ctx.required_today.items()
+        }
     if ctx.comeback:
         out["comeback_max_duration_min"] = {
             sport: int(minutes * COMEBACK_CAP) for sport, minutes in ctx.longest_min_14d.items()
         }
-        out["comeback_note"] = ("comeback phase: no session longer than 1.25 x the longest session of the same "
-                                "sport in the last 14 days; a sport with no session in 14 days has no cap listed, "
-                                "keep it short and easy")
+        out["comeback_note"] = (
+            "comeback phase: no session longer than 1.25 x the longest session of the same "
+            "sport in the last 14 days; a sport with no session in 14 days has no cap listed, "
+            "keep it short and easy"
+        )
     return out
 
 

@@ -286,9 +286,7 @@ def update_training_load(
         if sport_label == "combined":
             daily_tss_map = tss_by_date_combined
         else:
-            daily_tss_map = {
-                d: t for (d, s), t in tss_by_date_sport.items() if s == sport_label
-            }
+            daily_tss_map = {d: t for (d, s), t in tss_by_date_sport.items() if s == sport_label}
 
         if not daily_tss_map:
             continue
@@ -308,8 +306,7 @@ def update_training_load(
         if start_date:
             prior_day = start_date - one_day
             seed_row = db.fetchone(
-                "SELECT ctl, atl FROM daily_training_load "
-                "WHERE date = ? AND sport_type = ?",
+                "SELECT ctl, atl FROM daily_training_load WHERE date = ? AND sport_type = ?",
                 [prior_day, sport_label],
             )
             if seed_row:
@@ -342,16 +339,18 @@ def update_training_load(
             week_tss = [t for _, t in daily_tss_list[start_idx : idx + 1]]
             monotony, strain = compute_monotony_strain(week_tss)
 
-            all_results.append((
-                d,
-                sport_label,
-                round(tss, 1),
-                round(ctl, 2),
-                round(atl, 2),
-                round(tsb, 2),
-                round(monotony, 3),
-                round(strain, 1),
-            ))
+            all_results.append(
+                (
+                    d,
+                    sport_label,
+                    round(tss, 1),
+                    round(ctl, 2),
+                    round(atl, 2),
+                    round(tsb, 2),
+                    round(monotony, 3),
+                    round(strain, 1),
+                )
+            )
 
     if not all_results:
         return

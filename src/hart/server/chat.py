@@ -55,7 +55,7 @@ class LiveRun:
 
 
 def _now() -> datetime.datetime:
-    return datetime.datetime.now(tz=datetime.timezone.utc)
+    return datetime.datetime.now(tz=datetime.UTC)
 
 
 class ChatService:
@@ -119,8 +119,9 @@ class ChatService:
         conversation["active_run"] = self._by_conversation.get(conv_id)
         return conversation
 
-    def update(self, conv_id: str, *, title: str | None = None, archived: bool | None = None,
-               model: str | None = None) -> None:
+    def update(
+        self, conv_id: str, *, title: str | None = None, archived: bool | None = None, model: str | None = None
+    ) -> None:
         with contextlib.closing(self._db.cursor()) as cur:
             if title is not None:
                 cur.execute("UPDATE chat_conversations SET title = ? WHERE id = ?", [title.strip()[:120], conv_id])
@@ -203,8 +204,7 @@ class ChatService:
         if prior and not resume:
             recent = prior[-HISTORY_FOR_SUMMARY:]
             history = "\n".join(f"{m['role']}: {m['content'][:800]}" for m in recent)
-            parts.append("(Earlier in this conversation — the previous session could not be restored:\n"
-                         f"{history}\n)")
+            parts.append(f"(Earlier in this conversation — the previous session could not be restored:\n{history}\n)")
         parts.append(text)
         return "\n\n".join(parts)
 
@@ -269,10 +269,17 @@ class ChatService:
                 )
         from hart.server.routes import markdown
 
-        self._emit(live, {
-            "type": "done", "status": outcome.status, "message_id": message_id,
-            "content_html": str(markdown(text)), "error": outcome.error, "resets_at": outcome.resets_at,
-        })
+        self._emit(
+            live,
+            {
+                "type": "done",
+                "status": outcome.status,
+                "message_id": message_id,
+                "content_html": str(markdown(text)),
+                "error": outcome.error,
+                "resets_at": outcome.resets_at,
+            },
+        )
 
     def _prune(self) -> None:
         cutoff = time.monotonic() - KEEP_FINISHED_RUN_S

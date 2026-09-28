@@ -24,9 +24,11 @@ authentication error; everything else works.
 
 ```bash
 uv run --extra dev pytest
+uv run --extra dev ruff check src tests    # lint (rules in pyproject.toml)
+uv run --extra dev ruff format src tests   # format
 ```
 
-The suite (about 190 tests) needs no network and no Claude: Claude runs use a scripted fake client
+The suite (about 200 tests) needs no network and no Claude: Claude runs use a scripted fake client
 (`tests/test_chat.py::FakeClient`), Garmin a fake manager. Web tests go through FastAPI's `TestClient` with an
 identity header and the CSRF header (`tests/test_grading.py`: `H`, `W`).
 

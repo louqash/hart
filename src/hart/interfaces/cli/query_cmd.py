@@ -45,9 +45,13 @@ def run_query(question: str, agent: str = "") -> None:
     agent_name = agent or "training-load-analyst"
 
     cmd = [
-        "claude", "-p", question,
-        "--allowedTools", "mcp__hart__*",
-        "--agent", agent_name,
+        "claude",
+        "-p",
+        question,
+        "--allowedTools",
+        "mcp__hart__*",
+        "--agent",
+        agent_name,
     ]
 
     with Live(Spinner("dots", text="Thinking..."), console=console, transient=True):
@@ -65,10 +69,7 @@ def run_query(question: str, agent: str = "") -> None:
             else:
                 answer = "No response from agent."
         except FileNotFoundError:
-            answer = (
-                "Error: 'claude' CLI not found. "
-                "Install Claude Code to enable agent-powered queries."
-            )
+            answer = "Error: 'claude' CLI not found. Install Claude Code to enable agent-powered queries."
 
     # Render the answer
     console.print()

@@ -7,23 +7,37 @@ from typing import Any
 
 import pytest
 
+from hart.server import garmin_workouts as gw
 from tests.test_chat import FakeClient, _result
 from tests.test_grading import H, W, _wait_job
 from tests.test_plan import _regenerate, _s, _suggestion, client  # noqa: F401 — pytest fixture
-from hart.server import garmin_workouts as gw
 
 INTERVALS = {
     "name": "3x5' @200W",
     "blocks": [
         {"steps": [{"kind": "warmup", "minutes": 10, "target": "power", "power_low": 100, "power_high": 150}]},
-        {"repeat": 3, "steps": [
-            {"kind": "interval", "minutes": 5, "target": "power", "power_low": 195, "power_high": 205,
-             "cadence_low": 80, "cadence_high": 110},
-            {"kind": "recovery", "minutes": 2, "target": "power", "power_low": 145, "power_high": 155}]},
+        {
+            "repeat": 3,
+            "steps": [
+                {
+                    "kind": "interval",
+                    "minutes": 5,
+                    "target": "power",
+                    "power_low": 195,
+                    "power_high": 205,
+                    "cadence_low": 80,
+                    "cadence_high": 110,
+                },
+                {"kind": "recovery", "minutes": 2, "target": "power", "power_low": 145, "power_high": 155},
+            ],
+        },
         {"steps": [{"kind": "cooldown", "minutes": 9}]},
     ],
 }
-EASY_RUN = {"name": "Z2 run 30'", "blocks": [{"steps": [{"kind": "interval", "minutes": 30, "target": "hr_zone", "hr_zone": 2}]}]}
+EASY_RUN = {
+    "name": "Z2 run 30'",
+    "blocks": [{"steps": [{"kind": "interval", "minutes": 30, "target": "hr_zone", "hr_zone": 2}]}],
+}
 
 
 @pytest.fixture(autouse=True)
@@ -90,8 +104,15 @@ def garmin(monkeypatch) -> FakeGarmin:
 
 
 def _plan(client, **kw: Any) -> int:
-    body = {"date": str(datetime.date.today() + datetime.timedelta(days=1)), "sport_type": "run", "title": "Easy run",
-            "duration_min": 30, "intensity": "endurance", "description": "30' Z2", **kw}
+    body = {
+        "date": str(datetime.date.today() + datetime.timedelta(days=1)),
+        "sport_type": "run",
+        "title": "Easy run",
+        "duration_min": 30,
+        "intensity": "endurance",
+        "description": "30' Z2",
+        **kw,
+    }
     return client.post("/api/plan", headers=W, json=body).json()["id"]
 
 
@@ -103,7 +124,9 @@ def test_send_resend_and_delete(client, garmin) -> None:
     planned_id = _plan(client)
     FakeClient.scripts.extend([[_result(structured_output=EASY_RUN)], [_result(structured_output=EASY_RUN)]])
     job = _send(client, planned_id)
-    assert job["status"] == "ok" and garmin.scheduled == [(1001, str(datetime.date.today() + datetime.timedelta(days=1)))]
+    assert job["status"] == "ok" and garmin.scheduled == [
+        (1001, str(datetime.date.today() + datetime.timedelta(days=1)))
+    ]
     assert FakeClient.instances[0].options.model == "claude-sonnet-5"
     row = client.get("/api/plan", headers=H).json()["items"][0]
     assert row["garmin_status"] == "sent" and row["garmin_workout_id"] == "1001"

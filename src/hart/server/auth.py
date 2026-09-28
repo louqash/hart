@@ -30,11 +30,13 @@ SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 
 async def _deny(send: Send, status: int, code: str, message: str) -> None:
     body = json.dumps({"error": {"code": code, "message": message}}).encode()
-    await send({
-        "type": "http.response.start",
-        "status": status,
-        "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
-    })
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [(b"content-type", b"application/json"), (b"content-length", str(len(body)).encode())],
+        }
+    )
     await send({"type": "http.response.body", "body": body})
 
 
@@ -46,8 +48,16 @@ def _same_origin(origin: str, headers: dict[str, str], public_host: str) -> bool
 
 
 class AuthMiddleware:
-    def __init__(self, app: ASGIApp, *, dev: bool, internal_token: str, public_host: str = "",
-                 identity_header: str = "Tailscale-User-Login", allowed_users: tuple[str, ...] = ()) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        *,
+        dev: bool,
+        internal_token: str,
+        public_host: str = "",
+        identity_header: str = "Tailscale-User-Login",
+        allowed_users: tuple[str, ...] = (),
+    ) -> None:
         self.app = app
         self.identity_header = identity_header.lower()
         self.allowed_users = frozenset(u.lower() for u in allowed_users)
@@ -94,7 +104,9 @@ class AuthMiddleware:
             content_type = headers.get("content-type", "")
             if headers.get("x-requested-with") != "hart" or not content_type.startswith("application/json"):
                 await _deny(
-                    send, 403, "csrf",
+                    send,
+                    403,
+                    "csrf",
                     "State-changing requests need 'X-Requested-With: hart' and a JSON body.",
                 )
                 return

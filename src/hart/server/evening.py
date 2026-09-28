@@ -19,8 +19,13 @@ SENT_KEY = "evening_message_sent_on"
 FAILED_KEY = "evening_message_failed_at"
 RETRY_AFTER = datetime.timedelta(minutes=30)
 WAIT_FOR_SUGGESTION = datetime.timedelta(minutes=30)
-REC_LABELS = {"as_planned": "as planned", "modify": "modify the coach's session", "replace": "replace it",
-              "rest": "rest", "free_choice": "no coach plan — free choice"}
+REC_LABELS = {
+    "as_planned": "as planned",
+    "modify": "modify the coach's session",
+    "replace": "replace it",
+    "rest": "rest",
+    "free_choice": "no coach plan — free choice",
+}
 
 
 class DiscordError(Exception):
@@ -37,12 +42,16 @@ def send(config: HartSettings, text: str) -> None:
 
     d = config.discord
     if d.webhook_url:
-        response = httpx.post(d.webhook_url, json={"content": text[:2000], "allowed_mentions": {"parse": []}},
-                              timeout=10.0)
+        response = httpx.post(
+            d.webhook_url, json={"content": text[:2000], "allowed_mentions": {"parse": []}}, timeout=10.0
+        )
     elif d.bot_token and d.channel_id:
-        response = httpx.post(f"https://discord.com/api/v10/channels/{d.channel_id}/messages",
-                              headers={"Authorization": f"Bot {d.bot_token}"},
-                              json={"content": text[:2000], "allowed_mentions": {"parse": []}}, timeout=10.0)
+        response = httpx.post(
+            f"https://discord.com/api/v10/channels/{d.channel_id}/messages",
+            headers={"Authorization": f"Bot {d.bot_token}"},
+            json={"content": text[:2000], "allowed_mentions": {"parse": []}},
+            timeout=10.0,
+        )
     else:
         raise DiscordError("Discord isn't configured (set HART_DISCORD_WEBHOOK_URL)")
     if response.status_code not in (200, 201, 204):
@@ -68,15 +77,26 @@ def build(db: Any, config: HartSettings) -> str:
     else:
         coach = coach_plan_for(db, tomorrow)
         if coach:
-            lines.append("**Coach:** " + "; ".join(
-                f"{r['title']}" + (f" ({r['duration_min']}′)" if r["duration_min"] else "")
-                + (" — replaced by the accepted suggestion" if r["replaced_by"] else "") for r in coach))
+            lines.append(
+                "**Coach:** "
+                + "; ".join(
+                    f"{r['title']}"
+                    + (f" ({r['duration_min']}′)" if r["duration_min"] else "")
+                    + (" — replaced by the accepted suggestion" if r["replaced_by"] else "")
+                    for r in coach
+                )
+            )
         s = for_display(db, tomorrow)
         if s and s["status"] == "ok":
             lines.append(f"**Suggestion ({REC_LABELS.get(s['recommendation'], s['recommendation'])}):** {s['summary']}")
-            garmin = {r["title"]: r["garmin_status"] for r in rows(
-                db, "SELECT title, garmin_status FROM planned_sessions WHERE date = ? AND suggestion_id = ?",
-                [tomorrow, s["id"]])}
+            garmin = {
+                r["title"]: r["garmin_status"]
+                for r in rows(
+                    db,
+                    "SELECT title, garmin_status FROM planned_sessions WHERE date = ? AND suggestion_id = ?",
+                    [tomorrow, s["id"]],
+                )
+            }
             for x in s.get("sessions") or []:
                 tag = " · on Garmin ✓" if garmin.get(x["title"][:120]) == "sent" else ""
                 lines.append(f"• {x['title']} — {x['duration_min']}′ {x['intensity']}{tag}")
@@ -92,7 +112,9 @@ def build(db: Any, config: HartSettings) -> str:
         parts = []
         for x in sorted(done, key=lambda x: x["start_time"]):
             grade = (x.get("grade") or {}).get("letter")
-            parts.append(f"{x['name'] or x['sport_type']} {_minutes(x['duration_s'])}" + (f" · {grade}" if grade else ""))
+            parts.append(
+                f"{x['name'] or x['sport_type']} {_minutes(x['duration_s'])}" + (f" · {grade}" if grade else "")
+            )
         lines.append("**Today:** " + "; ".join(parts))
     else:
         lines.append("**Today:** no training logged.")
@@ -124,9 +146,8 @@ def build(db: Any, config: HartSettings) -> str:
 def due(db: Any, config: HartSettings, now_local: datetime.datetime) -> bool:
     """After 22:00, once per day, when Discord is set up and the message is on.
     Waits (until 22:30) for tomorrow's suggestion if it's still being written."""
-    from hart.server.suggestions import pending
-
     from hart.server import settings
+    from hart.server.suggestions import pending
 
     if not configured(config) or not settings.get(db, "evening_message_enabled"):
         return False
@@ -146,7 +167,7 @@ def run(db: Any, config: HartSettings, *, test: bool = False) -> dict[str, Any]:
         send(config, ("🧪 Test — " if test else "") + text)
     except Exception:  # retried after RETRY_AFTER, not every scheduler tick
         if not test:
-            now = datetime.datetime.now(datetime.timezone.utc).astimezone()
+            now = datetime.datetime.now(datetime.UTC).astimezone()
             state.set_setting(db, FAILED_KEY, now.isoformat())
         raise
     if not test:

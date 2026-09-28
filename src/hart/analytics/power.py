@@ -7,9 +7,7 @@ power-duration curve computation.
 
 from __future__ import annotations
 
-
 import numpy as np
-
 
 # ---------------------------------------------------------------------------
 # Power balance correction
@@ -201,15 +199,15 @@ _PDC_DURATIONS_SEC: list[int] = [
     5,
     10,
     30,
-    60,        # 1 min
-    120,       # 2 min
-    300,       # 5 min
-    600,       # 10 min
-    1200,      # 20 min
-    1800,      # 30 min
-    3600,      # 60 min
-    5400,      # 90 min
-    7200,      # 120 min
+    60,  # 1 min
+    120,  # 2 min
+    300,  # 5 min
+    600,  # 10 min
+    1200,  # 20 min
+    1800,  # 30 min
+    3600,  # 60 min
+    5400,  # 90 min
+    7200,  # 120 min
 ]
 
 
@@ -252,7 +250,7 @@ def power_duration_curve(
             continue  # recording too short for this duration
 
         # Windowed sums via cumulative sum difference.
-        window_sums = cumsum[window_samples:] - cumsum[:n - window_samples + 1]
+        window_sums = cumsum[window_samples:] - cumsum[: n - window_samples + 1]
         best_avg = float(np.max(window_sums)) / window_samples
         result[dur_sec] = round(best_avg, 1)
 

@@ -27,7 +27,7 @@ def apply_garmin_state(db: Database, error_code: str | None) -> None:
     elif error_code == "garmin_rate_limited":
         streak = int(state.get_setting(db, state.GARMIN_RATE_LIMIT_STREAK, 0)) + 1
         hours = min(2 ** (streak - 1), MAX_BACKOFF_HOURS)
-        until = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(hours=hours)
+        until = datetime.datetime.now(tz=datetime.UTC) + datetime.timedelta(hours=hours)
         state.set_setting(db, state.GARMIN_RATE_LIMIT_STREAK, streak)
         state.set_setting(db, state.GARMIN_BACKOFF_UNTIL, until.isoformat())
     elif error_code is None:
@@ -54,14 +54,18 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
     def enqueue_grades(activity_ids: list[str], trigger: str) -> None:
         for activity_id in activity_ids:
             runner_ref["runner"].enqueue(
-                "grade", {"activity_id": activity_id, "trigger": trigger},
-                trigger="chain", dedupe_key=f"grade:{activity_id}",
+                "grade",
+                {"activity_id": activity_id, "trigger": trigger},
+                trigger="chain",
+                dedupe_key=f"grade:{activity_id}",
             )
 
     def enqueue_suggestion(for_date: datetime.date, kind: str, trigger: str) -> dict[str, Any]:
         return runner_ref["runner"].enqueue(
-            "suggest", {"date": for_date.isoformat(), "kind": kind, "trigger": trigger},
-            trigger="chain" if trigger == "sync" else trigger, dedupe_key=f"suggest:{for_date}",
+            "suggest",
+            {"date": for_date.isoformat(), "kind": kind, "trigger": trigger},
+            trigger="chain" if trigger == "sync" else trigger,
+            dedupe_key=f"suggest:{for_date}",
         )
 
     def after_sync(db: Database, result: dict[str, Any], days: int) -> None:
@@ -73,12 +77,20 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         today = local_today(config)
         result["plan_matched"] = auto_match(db, [today - datetime.timedelta(days=i) for i in range(days + 1)])
         now = suggestions.local_now(config)
-        if result.get("sleep_today") and now.hour < suggestions.FINAL_CUTOFF_HOUR \
-                and suggestions.should_generate_final(db, today):
+        if (
+            result.get("sleep_today")
+            and now.hour < suggestions.FINAL_CUTOFF_HOUR
+            and suggestions.should_generate_final(db, today)
+        ):
             result["suggestion"] = enqueue_suggestion(today, "final", "sync")["status"]
         tomorrow = today + datetime.timedelta(days=1)
-        new_today = [a for a in result.get("new_activity_ids") or [] if db.fetchone(
-            "SELECT 1 FROM activities WHERE activity_id = ? AND CAST(start_time AS DATE) = ?", [a, today])]
+        new_today = [
+            a
+            for a in result.get("new_activity_ids") or []
+            if db.fetchone(
+                "SELECT 1 FROM activities WHERE activity_id = ? AND CAST(start_time AS DATE) = ?", [a, today]
+            )
+        ]
         if new_today and suggestions.preliminary_count(db, tomorrow) == 1:
             result["suggestion_tomorrow"] = enqueue_suggestion(tomorrow, "preliminary", "sync")["status"]
 
@@ -88,14 +100,25 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         apply_garmin_state(db, result["error_code"])
         # New activities get graded (spec step 9), even after a partial sync.
         enqueue_grades(result.get("new_activity_ids") or [], "sync")
+
         # Edited in Garmin after the session was graded: grade it again on the final data.
         # RPE/feel from Garmin only counts when there's no feedback given in the app (it wins).
         def graded(a: str) -> bool:
-            return db.fetchone("SELECT 1 FROM session_grades WHERE activity_id = ? AND status = 'graded'", [a]) is not None
+            return (
+                db.fetchone("SELECT 1 FROM session_grades WHERE activity_id = ? AND status = 'graded'", [a]) is not None
+            )
 
         sets = [a for a in result.get("strength_edited_ids") or [] if graded(a)]
-        effort = [a for a in result.get("effort_edited_ids") or [] if a not in sets and graded(a) and db.fetchone(
-            "SELECT 1 FROM session_feedback WHERE activity_id = ? AND (rpe IS NOT NULL OR feel IS NOT NULL)", [a]) is None]
+        effort = [
+            a
+            for a in result.get("effort_edited_ids") or []
+            if a not in sets
+            and graded(a)
+            and db.fetchone(
+                "SELECT 1 FROM session_feedback WHERE activity_id = ? AND (rpe IS NOT NULL OR feel IS NOT NULL)", [a]
+            )
+            is None
+        ]
         enqueue_grades(sets, "sets_edited")
         enqueue_grades(effort, "effort_edited")
         after_sync(db, result, days)
@@ -109,8 +132,13 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             raise JobFailed("Claude runner not available")
         try:
             return generate(
-                db, datetime.date.fromisoformat(payload["date"]), payload.get("kind", "manual"), claude,
-                runner_ref["runner"].loop, config, trigger=payload.get("trigger", "manual"),
+                db,
+                datetime.date.fromisoformat(payload["date"]),
+                payload.get("kind", "manual"),
+                claude,
+                runner_ref["runner"].loop,
+                config,
+                trigger=payload.get("trigger", "manual"),
             )
         except SuggestionsPaused as exc:
             raise JobFailed(str(exc)) from exc
@@ -123,8 +151,13 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             raise JobFailed("Claude runner not available")
         try:
             return grade_activity(
-                db, payload["activity_id"], claude, runner_ref["runner"].loop, config,
-                trigger=payload.get("trigger", "manual"), force=bool(payload.get("force")),
+                db,
+                payload["activity_id"],
+                claude,
+                runner_ref["runner"].loop,
+                config,
+                trigger=payload.get("trigger", "manual"),
+                force=bool(payload.get("force")),
             )
         except GradingPaused as exc:
             raise JobFailed(f"{exc} — the hourly sweep retries later") from exc
@@ -147,8 +180,9 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             claude = runner_ref.get("claude")
             if claude is None:
                 raise JobFailed("Claude runner not available")
-            return garmin_workouts.send(db, int(payload["planned_id"]), claude, runner_ref["runner"].loop, config,
-                                        local_today(config))
+            return garmin_workouts.send(
+                db, int(payload["planned_id"]), claude, runner_ref["runner"].loop, config, local_today(config)
+            )
         except garmin_workouts.GarminError as exc:
             raise JobFailed(str(exc)) from exc
 
@@ -158,9 +192,7 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         _fail_on_garmin_errors(result)
         if result["sleep_today"]:
             # Last night's sleep arrived: escalate to the full pipeline.
-            runner_ref["runner"].enqueue(
-                "sync", {"reason": "sleep arrived"}, trigger="chain", dedupe_key="sync"
-            )
+            runner_ref["runner"].enqueue("sync", {"reason": "sleep arrived"}, trigger="chain", dedupe_key="sync")
         return result
 
     def backup(db: Database, payload: dict[str, Any]) -> dict[str, Any]:

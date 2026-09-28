@@ -1,4 +1,4 @@
-"""DDL definitions and schema initialisation for the triathlon DuckDB database.
+"""DDL definitions and schema initialisation for the hart DuckDB database.
 
 Every table uses ``CREATE TABLE IF NOT EXISTS`` so the function is safe to call
 on every connection open.  A ``schema_version`` metadata table tracks applied
@@ -554,6 +554,7 @@ CREATE INDEX IF NOT EXISTS idx_session_grades_activity
 # Public API
 # ---------------------------------------------------------------------------
 
+
 def init_schema(db: Database) -> None:
     """Create all tables, indexes, and record the schema version.
 
@@ -614,19 +615,21 @@ def _run_migrations(db: Database) -> None:
             "UPDATE activity_metrics SET sport_type = 'strength' WHERE activity_id IN ("
             "  SELECT activity_id FROM activities WHERE sub_type = 'strength_training')"
         )
-        db.execute(
-            "UPDATE activities SET sport_type = 'strength' "
-            "WHERE sub_type = 'strength_training'"
-        )
+        db.execute("UPDATE activities SET sport_type = 'strength' WHERE sub_type = 'strength_training'")
         # Per-sport load for "other" included these sessions; drop it so the
         # next update_training_load() rebuilds "other" and "strength" cleanly.
         db.execute("DELETE FROM daily_training_load WHERE sport_type = 'other'")
 
     if 11 not in applied:
         # v11: Garmin Connect workouts for planned sessions.
-        for column, col_type in (("garmin_steps", "JSON"), ("garmin_workout_id", "VARCHAR"),
-                                 ("garmin_schedule_id", "VARCHAR"), ("garmin_status", "VARCHAR"),
-                                 ("garmin_error", "VARCHAR"), ("garmin_sent_at", "TIMESTAMPTZ")):
+        for column, col_type in (
+            ("garmin_steps", "JSON"),
+            ("garmin_workout_id", "VARCHAR"),
+            ("garmin_schedule_id", "VARCHAR"),
+            ("garmin_status", "VARCHAR"),
+            ("garmin_error", "VARCHAR"),
+            ("garmin_sent_at", "TIMESTAMPTZ"),
+        ):
             _add_column_if_missing(db, "planned_sessions", column, col_type)
 
     if 9 not in applied:
@@ -657,6 +660,7 @@ def _drop_column_if_exists(db: Database, table: str, column: str) -> None:
 def _split_statements(block: str) -> list[str]:
     """Split a multi-statement DDL block on semicolons, ignoring blanks/comments."""
     import re
+
     statements: list[str] = []
     for raw in block.split(";"):
         # Strip leading/trailing whitespace and remove SQL comment lines

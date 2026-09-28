@@ -27,9 +27,8 @@ def _overlaps(db: Database, start: datetime.date, end: datetime.date, exclude_id
         extra = " AND id <> ?"
         params.append(exclude_id)
     return [
-        r[0] for r in db.fetchall(
-            f"SELECT name FROM training_phases WHERE start_date <= ? AND end_date >= ?{extra}", params
-        )
+        r[0]
+        for r in db.fetchall(f"SELECT name FROM training_phases WHERE start_date <= ? AND end_date >= ?{extra}", params)
     ]
 
 
@@ -64,9 +63,7 @@ def update_phase(db: Database, phase_id: int, data: dict[str, Any]) -> None:
 
 def season_inputs(db: Database) -> tuple[datetime.date | None, datetime.date | None, datetime.date | None]:
     """A-race date, comeback start and comeback end (detected)."""
-    race = db.fetchone(
-        "SELECT race_date FROM races WHERE priority = 'A' ORDER BY race_date DESC LIMIT 1"
-    )
+    race = db.fetchone("SELECT race_date FROM races WHERE priority = 'A' ORDER BY race_date DESC LIMIT 1")
     detection = state.get_setting(db, "season_detection") or {}
     layoff = detection.get("layoff") or {}
     start = layoff.get("return_date")
@@ -84,9 +81,7 @@ def regenerate_phases(db: Database, today: datetime.date) -> dict[str, Any]:
     race_date, comeback_start, comeback_end = season_inputs(db)
     if race_date is None:
         raise SeasonError("No A-race defined")
-    specs: list[PhaseSpec] = generate_phases(
-        race_date, comeback_start, comeback_end, today, state.get_thresholds(db)
-    )
+    specs: list[PhaseSpec] = generate_phases(race_date, comeback_start, comeback_end, today, state.get_thresholds(db))
     db.execute("DELETE FROM training_phases WHERE source = 'auto'")
     created, skipped = 0, []
     for spec in specs:
@@ -132,8 +127,9 @@ def validate_race(data: dict[str, Any]) -> None:
 
 
 def _next_a_race(db: Database) -> tuple[Any, ...] | None:
-    return db.fetchone("SELECT id, race_date FROM races WHERE priority = 'A' AND race_date >= current_date "
-                       "ORDER BY race_date LIMIT 1")
+    return db.fetchone(
+        "SELECT id, race_date FROM races WHERE priority = 'A' AND race_date >= current_date ORDER BY race_date LIMIT 1"
+    )
 
 
 def save_race(db: Database, data: dict[str, Any], race_id: int | None = None) -> dict[str, Any]:
@@ -143,13 +139,16 @@ def save_race(db: Database, data: dict[str, Any], race_id: int | None = None) ->
     before = _next_a_race(db)
     values = [data["name"].strip(), data["race_date"], data["distance"], data["priority"], data.get("notes") or None]
     if race_id is None:
-        race_id = db.fetchone("INSERT INTO races (name, race_date, distance, priority, notes) VALUES (?, ?, ?, ?, ?) "
-                              "RETURNING id", values)[0]
+        race_id = db.fetchone(
+            "INSERT INTO races (name, race_date, distance, priority, notes) VALUES (?, ?, ?, ?, ?) RETURNING id", values
+        )[0]
     else:
         if db.fetchone("SELECT 1 FROM races WHERE id = ?", [race_id]) is None:
             raise SeasonError("Race not found")
-        db.execute("UPDATE races SET name = ?, race_date = ?, distance = ?, priority = ?, notes = ? WHERE id = ?",
-                   [*values, race_id])
+        db.execute(
+            "UPDATE races SET name = ?, race_date = ?, distance = ?, priority = ?, notes = ? WHERE id = ?",
+            [*values, race_id],
+        )
     return {"id": race_id, "phases_stale": _next_a_race(db) != before}
 
 
@@ -274,7 +273,9 @@ def create_proposal(
         else:
             validate_annotation(record)
     summary = _describe(db, kind, action, target_id, record)
-    stored = {k: (v.isoformat() if isinstance(v, datetime.date) else v) for k, v in payload.items() if v not in (None, "")}
+    stored = {
+        k: (v.isoformat() if isinstance(v, datetime.date) else v) for k, v in payload.items() if v not in (None, "")
+    }
     new_id = db.fetchone(
         "INSERT INTO season_proposals (kind, action, target_id, payload, reason, summary, status, source) "
         "VALUES (?, ?, ?, ?, ?, ?, 'pending', 'claude') RETURNING id",
@@ -304,8 +305,9 @@ def apply_proposal(db: Database, proposal_id: int) -> dict[str, Any]:
         if action == "delete":
             extra["garmin_workout_removed"] = plan.delete_row(db, target_id)
         elif action == "create":
-            extra["planned_id"] = plan.create_row(db, _plan_row(_merged(db, kind, action, target_id, payload)),
-                                                  source="manual")
+            extra["planned_id"] = plan.create_row(
+                db, _plan_row(_merged(db, kind, action, target_id, payload)), source="manual"
+            )
         else:
             plan.update_row(db, target_id, _plan_row(_merged(db, kind, action, target_id, payload)))
     elif action == "delete":

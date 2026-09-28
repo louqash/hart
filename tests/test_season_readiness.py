@@ -10,12 +10,11 @@ from typing import Any
 
 import pytest
 
-from tests.conftest import write_seed
-
 from hart.analytics.phase import generate_phases, observed_state, phase_flags
 from hart.analytics.readiness import ReadinessInputs, compute_readiness
 from hart.config import ServerSettings, get_config
 from hart.server.state import DEFAULT_THRESHOLDS as T
+from tests.conftest import write_seed
 
 D = datetime.date
 
@@ -150,12 +149,21 @@ def client(tmp_path: Path):
     db.close()
 
     seed = write_seed(tmp_path / "seed")
-    (seed / "athlete_notes.json").write_text(json.dumps([
-        {"category": "injury", "title": "Shoulder", "body": "Swim only Thursday.",
-         "rules": {"allowed_weekdays": {"swim": ["thu"]}}},
-    ]))
+    (seed / "athlete_notes.json").write_text(
+        json.dumps(
+            [
+                {
+                    "category": "injury",
+                    "title": "Shoulder",
+                    "body": "Swim only Thursday.",
+                    "rules": {"allowed_weekdays": {"swim": ["thu"]}},
+                },
+            ]
+        )
+    )
     config = dataclasses.replace(
-        get_config(), db_path=db_path,
+        get_config(),
+        db_path=db_path,
         server=ServerSettings(env="production", seed_dir=seed),
     )
     app = create_app(config, run_scheduler=False, handlers={"sync": lambda d, p: {}, "sync_light": lambda d, p: {}})
@@ -175,9 +183,20 @@ def test_pages_render(client) -> None:
 
 
 def test_json_endpoints_are_strict_json(client) -> None:
-    for path in ("/api/dashboard", "/api/readiness", "/api/fitness/pmc?range=all", "/api/fitness/volume?weeks=26",
-                 "/api/fitness/efficiency", "/api/fitness/health", "/api/fitness/power-curve", "/api/season",
-                 "/api/sessions", "/api/sessions/a0", "/api/sessions/a0/streams", "/api/notes"):
+    for path in (
+        "/api/dashboard",
+        "/api/readiness",
+        "/api/fitness/pmc?range=all",
+        "/api/fitness/volume?weeks=26",
+        "/api/fitness/efficiency",
+        "/api/fitness/health",
+        "/api/fitness/power-curve",
+        "/api/season",
+        "/api/sessions",
+        "/api/sessions/a0",
+        "/api/sessions/a0/streams",
+        "/api/notes",
+    ):
         resp = client.get(path, headers=H)
         assert resp.status_code == 200, (path, resp.text[:300])
         json.loads(resp.text, parse_constant=lambda c: pytest.fail(f"{path}: non-JSON constant {c}"))
@@ -188,8 +207,11 @@ def test_season_seeded_and_overlaps_rejected(client) -> None:
     assert any(p["phase_type"] == "race" for p in season["phases"])
     assert season["unconfirmed"] == len(season["phases"])
     race = next(p for p in season["phases"] if p["phase_type"] == "race")
-    clash = client.post("/api/phases", headers=W, json={
-        "phase_type": "base", "name": "X", "start_date": race["start_date"], "end_date": race["end_date"]})
+    clash = client.post(
+        "/api/phases",
+        headers=W,
+        json={"phase_type": "base", "name": "X", "start_date": race["start_date"], "end_date": race["end_date"]},
+    )
     assert clash.status_code == 400 and "Overlaps" in clash.json()["error"]["message"]
     assert client.post("/api/phases/confirm", headers=W, json={}).json()["confirmed"] == season["unconfirmed"]
     # Editing a phase makes it manual; regeneration keeps it.
@@ -223,8 +245,11 @@ def test_feedback_validation(client) -> None:
 
 
 def _mcp(client, name: str, args: dict[str, Any]) -> Any:
-    resp = client.post("/mcp", headers={**H, "Accept": "application/json, text/event-stream"},
-                       json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}})
+    resp = client.post(
+        "/mcp",
+        headers={**H, "Accept": "application/json, text/event-stream"},
+        json={"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": args}},
+    )
     return json.loads(resp.json()["result"]["content"][0]["text"])
 
 
@@ -248,9 +273,12 @@ def test_per_sport_ctl_uses_each_sports_latest_value(tmp_path: Path) -> None:
     db = Database(tmp_path / "t.duckdb").connect()
     today = D(2026, 9, 26)
     rows = [
-        ("bike", today, 10.0), ("run", today - datetime.timedelta(days=2), 8.0),
-        ("swim", today - datetime.timedelta(days=9), 5.0), ("other", today, 3.0),
-        ("combined", today, 20.0), ("strength", today - datetime.timedelta(days=300), 0.4),
+        ("bike", today, 10.0),
+        ("run", today - datetime.timedelta(days=2), 8.0),
+        ("swim", today - datetime.timedelta(days=9), 5.0),
+        ("other", today, 3.0),
+        ("combined", today, 20.0),
+        ("strength", today - datetime.timedelta(days=300), 0.4),
     ]
     for sport, d, ctl in rows:
         db.execute("INSERT INTO daily_training_load (date, sport_type, ctl) VALUES (?, ?, ?)", [d, sport, ctl])
@@ -270,21 +298,40 @@ def test_per_sport_ctl_uses_each_sports_latest_value(tmp_path: Path) -> None:
 
 def test_season_proposals_flow(client) -> None:
     phases = client.get("/api/season", headers=H).json()["phases"]
-    comeback = next(p for p in phases if p["phase_type"] == "comeback") if any(
-        p["phase_type"] == "comeback" for p in phases) else phases[0]
+    comeback = (
+        next(p for p in phases if p["phase_type"] == "comeback")
+        if any(p["phase_type"] == "comeback" for p in phases)
+        else phases[0]
+    )
     nxt = phases[phases.index(comeback) + 1]
 
     # Extending into the next phase is refused at proposal time.
-    clash = _mcp(client, "propose_season_change", {
-        "kind": "phase", "action": "update", "target_id": comeback["id"],
-        "end_date": nxt["end_date"], "reason": "longer comeback"})
+    clash = _mcp(
+        client,
+        "propose_season_change",
+        {
+            "kind": "phase",
+            "action": "update",
+            "target_id": comeback["id"],
+            "end_date": nxt["end_date"],
+            "reason": "longer comeback",
+        },
+    )
     assert "Overlaps" in clash["error"]
 
     # Shrinking is fine; nothing changes until applied.
     new_end = (datetime.date.fromisoformat(comeback["end_date"]) - datetime.timedelta(days=7)).isoformat()
-    prop = _mcp(client, "propose_season_change", {
-        "kind": "phase", "action": "update", "target_id": comeback["id"], "end_date": new_end,
-        "reason": "Shoulder cleared early"})
+    prop = _mcp(
+        client,
+        "propose_season_change",
+        {
+            "kind": "phase",
+            "action": "update",
+            "target_id": comeback["id"],
+            "end_date": new_end,
+            "reason": "Shoulder cleared early",
+        },
+    )
     assert prop["status"] == "pending" and f"end date {comeback['end_date']} → {new_end}" in prop["summary"]
     season = client.get("/api/season", headers=H).json()
     assert season["proposals"][0]["reason"] == "Shoulder cleared early"
@@ -297,13 +344,26 @@ def test_season_proposals_flow(client) -> None:
     assert again.status_code == 400  # already applied
 
     # Annotations: create, then propose a delete and dismiss it.
-    ann = _mcp(client, "propose_season_change", {
-        "kind": "annotation", "action": "create", "annotation_kind": "illness", "label": "Cold",
-        "start_date": "2026-10-01", "end_date": "2026-10-05", "reason": "Athlete reported a cold"})
+    ann = _mcp(
+        client,
+        "propose_season_change",
+        {
+            "kind": "annotation",
+            "action": "create",
+            "annotation_kind": "illness",
+            "label": "Cold",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-05",
+            "reason": "Athlete reported a cold",
+        },
+    )
     client.post(f"/api/season/proposals/{ann['id']}/apply", headers=W, json={})
     created = next(a for a in client.get("/api/season", headers=H).json()["annotations"] if a["label"] == "Cold")
-    drop = _mcp(client, "propose_season_change", {
-        "kind": "annotation", "action": "delete", "target_id": created["id"], "reason": "mistake"})
+    drop = _mcp(
+        client,
+        "propose_season_change",
+        {"kind": "annotation", "action": "delete", "target_id": created["id"], "reason": "mistake"},
+    )
     assert drop["summary"].startswith("Delete annotation “Cold”")
     client.post(f"/api/season/proposals/{drop['id']}/dismiss", headers=W, json={})
     assert any(a["label"] == "Cold" for a in client.get("/api/season", headers=H).json()["annotations"])

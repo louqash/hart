@@ -92,7 +92,8 @@ def phase_on(db: Database, d: D) -> dict[str, Any] | None:
 def training_days(db: Database, since: D, until: D) -> set[D]:
     placeholders = ", ".join("?" for _ in TRAINING_SPORTS)
     return {
-        r[0] for r in db.fetchall(
+        r[0]
+        for r in db.fetchall(
             "SELECT DISTINCT CAST(start_time AS DATE) FROM activities "
             f"WHERE sport_type IN ({placeholders}) AND start_time >= ? AND start_time < ?",
             [*TRAINING_SPORTS, since, until + DAY],
@@ -131,28 +132,39 @@ def readiness_on(db: Database, d: D, t: dict[str, float]) -> dict[str, Any]:
     n = int(t["ready_baseline_days"])
     sleep = one(db, "SELECT total_sleep_sec, sleep_score FROM sleep_records WHERE date = ?", [d]) or {}
     hrv = one(db, "SELECT hrv_last_night_ms FROM hrv_daily WHERE date = ?", [d]) or {}
-    health = one(
-        db, "SELECT resting_hr, body_battery_start, training_readiness FROM daily_health WHERE date = ?", [d]
-    ) or {}
+    health = (
+        one(db, "SELECT resting_hr, body_battery_start, training_readiness FROM daily_health WHERE date = ?", [d]) or {}
+    )
     recovery = one(db, "SELECT recovery_score FROM daily_recovery WHERE date = ?", [d]) or {}
-    tsb = one(
-        db, "SELECT tsb FROM daily_training_load WHERE sport_type = 'combined' AND date = ?", [d - DAY]
-    ) or {}
+    tsb = one(db, "SELECT tsb FROM daily_training_load WHERE sport_type = 'combined' AND date = ?", [d - DAY]) or {}
     since = d - datetime.timedelta(days=n)
-    hrv_hist = [r["v"] for r in rows(
-        db, "SELECT hrv_last_night_ms AS v FROM hrv_daily WHERE date >= ? AND date < ? AND hrv_last_night_ms IS NOT NULL",
-        [since, d],
-    ) if r["v"] is not None]
-    rhr_hist = [r["v"] for r in rows(
-        db, "SELECT resting_hr AS v FROM daily_health WHERE date >= ? AND date < ? AND resting_hr IS NOT NULL",
-        [since, d],
-    ) if r["v"] is not None]
-    critical = [r["description"] for r in rows(
-        db,
-        "SELECT description FROM anomaly_log WHERE severity = 'critical' AND NOT acknowledged "
-        "AND CAST(detected_at AS DATE) > ?",
-        [d - datetime.timedelta(days=3)],
-    )]
+    hrv_hist = [
+        r["v"]
+        for r in rows(
+            db,
+            "SELECT hrv_last_night_ms AS v FROM hrv_daily WHERE date >= ? AND date < ? AND hrv_last_night_ms IS NOT NULL",
+            [since, d],
+        )
+        if r["v"] is not None
+    ]
+    rhr_hist = [
+        r["v"]
+        for r in rows(
+            db,
+            "SELECT resting_hr AS v FROM daily_health WHERE date >= ? AND date < ? AND resting_hr IS NOT NULL",
+            [since, d],
+        )
+        if r["v"] is not None
+    ]
+    critical = [
+        r["description"]
+        for r in rows(
+            db,
+            "SELECT description FROM anomaly_log WHERE severity = 'critical' AND NOT acknowledged "
+            "AND CAST(detected_at AS DATE) > ?",
+            [d - datetime.timedelta(days=3)],
+        )
+    ]
 
     def active(kind: str) -> str | None:
         row = one(
@@ -223,12 +235,18 @@ def with_grades(db: Database, sessions: list[dict[str, Any]]) -> list[dict[str, 
 
 
 def recent_sessions(db: Database, since: D, until: D) -> list[dict[str, Any]]:
-    return with_grades(db, [_session_row(r) for r in rows(
+    return with_grades(
         db,
-        f"SELECT {SESSION_COLUMNS} {SESSION_FROM} WHERE a.start_time >= ? AND a.start_time < ? "
-        "ORDER BY a.start_time DESC",
-        [since, until + DAY],
-    )])
+        [
+            _session_row(r)
+            for r in rows(
+                db,
+                f"SELECT {SESSION_COLUMNS} {SESSION_FROM} WHERE a.start_time >= ? AND a.start_time < ? "
+                "ORDER BY a.start_time DESC",
+                [since, until + DAY],
+            )
+        ],
+    )
 
 
 def week_summary(db: Database, today: D) -> dict[str, Any]:
@@ -238,14 +256,16 @@ def week_summary(db: Database, today: D) -> dict[str, Any]:
     for i in range(7):
         d = start + i * DAY
         day_sessions = [s for s in sessions if s["date"] == d]
-        days.append({
-            "date": d,
-            "is_today": d == today,
-            "sessions": [
-                {"sport": s["sport_type"], "minutes": round((s["duration_s"] or 0) / 60), "name": s["name"]}
-                for s in sorted(day_sessions, key=lambda s: s["start_time"])
-            ],
-        })
+        days.append(
+            {
+                "date": d,
+                "is_today": d == today,
+                "sessions": [
+                    {"sport": s["sport_type"], "minutes": round((s["duration_s"] or 0) / 60), "name": s["name"]}
+                    for s in sorted(day_sessions, key=lambda s: s["start_time"])
+                ],
+            }
+        )
     totals = {
         "hours": round(sum((s["duration_s"] or 0) for s in sessions) / 3600, 1),
         "load": round(sum(s["load"] or 0 for s in sessions)),
@@ -315,8 +335,13 @@ TOKEN_WARN_DAYS = 30
 
 
 PURPOSE_LABELS = {
-    "chat": "Chat", "grade": "Grading", "suggest": "Suggestions", "garmin_steps": "Garmin workouts",
-    "garmin_text": "Garmin text", "parse_plan": "Plan paste", "parse_labs": "Lab paste",
+    "chat": "Chat",
+    "grade": "Grading",
+    "suggest": "Suggestions",
+    "garmin_steps": "Garmin workouts",
+    "garmin_text": "Garmin text",
+    "parse_plan": "Plan paste",
+    "parse_labs": "Lab paste",
 }
 
 
@@ -336,8 +361,18 @@ def claude_usage(db: Database, today: D, days: int = 14) -> dict[str, Any]:
     purposes: dict[str, dict[str, Any]] = {}
     by_day = {since + datetime.timedelta(days=i): {} for i in range(days)}
     for r in runs:
-        p = purposes.setdefault(r["purpose"], {"purpose": r["purpose"], "label": PURPOSE_LABELS.get(r["purpose"], r["purpose"]),
-                                               "runs": 0, "failed": 0, "minutes": 0.0, "tokens": 0, "models": set()})
+        p = purposes.setdefault(
+            r["purpose"],
+            {
+                "purpose": r["purpose"],
+                "label": PURPOSE_LABELS.get(r["purpose"], r["purpose"]),
+                "runs": 0,
+                "failed": 0,
+                "minutes": 0.0,
+                "tokens": 0,
+                "models": set(),
+            },
+        )
         tokens = sum(r[k] or 0 for k in ("input_tokens", "output_tokens", "cache_read", "cache_write"))
         p["runs"] += 1
         p["failed"] += r["status"] not in ("ok", "running")
@@ -385,14 +420,15 @@ def claude_status(db: Database, config: HartSettings, today: D) -> dict[str, Any
         if isinstance(last.get("transcript"), str):
             problem["resets_at"] = json.loads(last["transcript"]).get("resets_at")
     return {
-        "token_expires": expires, "token_days_left": days_left,
+        "token_expires": expires,
+        "token_days_left": days_left,
         "token_warning": days_left is not None and days_left <= TOKEN_WARN_DAYS,
         "problem": problem,
     }
 
 
 def alerts(db: Database, config: HartSettings | None = None) -> dict[str, Any]:
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    now = datetime.datetime.now(tz=datetime.UTC)
     from hart.server.jobs.scheduler import garmin_blocked
 
     backup = one(
@@ -408,12 +444,15 @@ def alerts(db: Database, config: HartSettings | None = None) -> dict[str, Any]:
         ),
         "proposed_notes": db.fetchone("SELECT count(*) FROM athlete_notes WHERE status = 'proposed'")[0],
         "season_proposals": db.fetchone(
-            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind <> 'plan'")[0],
+            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind <> 'plan'"
+        )[0],
         "plan_proposals": db.fetchone(
-            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind = 'plan'")[0],
+            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind = 'plan'"
+        )[0],
         "health_overdue": db.fetchone(
             "SELECT count(*) FROM health_checks WHERE status = 'open' AND due_date <= ?",
-            [local_today(config) if config else datetime.date.today()])[0],
+            [local_today(config) if config else datetime.date.today()],
+        )[0],
         "health_proposed": db.fetchone("SELECT count(*) FROM health_checks WHERE status = 'proposed'")[0],
         "garmin_blocked": garmin_blocked(db, now),
         "backup_failed": backup if backup and backup["status"] == "error" else None,
@@ -425,7 +464,7 @@ def header_status(db: Database, config: HartSettings) -> dict[str, Any]:
     """Status pill in the masthead: is the system syncing normally?"""
     from hart.server.jobs.scheduler import garmin_blocked, last_successful_sync
 
-    now = datetime.datetime.now(tz=datetime.timezone.utc)
+    now = datetime.datetime.now(tz=datetime.UTC)
     blocked = garmin_blocked(db, now)
     last = last_successful_sync(db)
     age_h = None if last is None else (now - last).total_seconds() / 3600
@@ -467,7 +506,7 @@ def build_dashboard(db: Database, config: HartSettings) -> dict[str, Any]:
     last_sync = last_successful_sync(db)
     age = None
     if last_sync is not None:
-        age = int((datetime.datetime.now(tz=datetime.timezone.utc) - last_sync).total_seconds() // 60)
+        age = int((datetime.datetime.now(tz=datetime.UTC) - last_sync).total_seconds() // 60)
     return {
         "today": today,
         "race": race,
@@ -584,20 +623,39 @@ def health_series(db: Database, today: D, range_key: str) -> dict[str, Any]:
     start = _range_start(today, range_key)
     p = [start, today]
     return {
-        "hrv": rows(db, "SELECT date, hrv_last_night_ms AS last_night, hrv_weekly_avg_ms AS weekly, "
-                        "baseline_low_ms AS low, baseline_high_ms AS high FROM hrv_daily "
-                        "WHERE date >= ? AND date <= ? AND (hrv_last_night_ms IS NOT NULL OR hrv_weekly_avg_ms IS NOT NULL) "
-                        "ORDER BY date", p),
-        "rhr": rows(db, "SELECT date, resting_hr AS value FROM daily_health WHERE date >= ? AND date <= ? "
-                        "AND resting_hr IS NOT NULL ORDER BY date", p),
-        "sleep": rows(db, "SELECT date, round(total_sleep_sec / 3600.0, 2) AS hours, sleep_score AS score "
-                          "FROM sleep_records WHERE date >= ? AND date <= ? AND total_sleep_sec IS NOT NULL "
-                          "ORDER BY date", p),
-        "recovery": rows(db, "SELECT date, recovery_score AS value FROM daily_recovery "
-                             "WHERE date >= ? AND date <= ? ORDER BY date", p),
-        "vo2max": rows(db, "SELECT date, vo2max_run AS run, vo2max_cycle AS cycle FROM daily_health "
-                           "WHERE date >= ? AND date <= ? AND (vo2max_run IS NOT NULL OR vo2max_cycle IS NOT NULL) "
-                           "ORDER BY date", p),
+        "hrv": rows(
+            db,
+            "SELECT date, hrv_last_night_ms AS last_night, hrv_weekly_avg_ms AS weekly, "
+            "baseline_low_ms AS low, baseline_high_ms AS high FROM hrv_daily "
+            "WHERE date >= ? AND date <= ? AND (hrv_last_night_ms IS NOT NULL OR hrv_weekly_avg_ms IS NOT NULL) "
+            "ORDER BY date",
+            p,
+        ),
+        "rhr": rows(
+            db,
+            "SELECT date, resting_hr AS value FROM daily_health WHERE date >= ? AND date <= ? "
+            "AND resting_hr IS NOT NULL ORDER BY date",
+            p,
+        ),
+        "sleep": rows(
+            db,
+            "SELECT date, round(total_sleep_sec / 3600.0, 2) AS hours, sleep_score AS score "
+            "FROM sleep_records WHERE date >= ? AND date <= ? AND total_sleep_sec IS NOT NULL "
+            "ORDER BY date",
+            p,
+        ),
+        "recovery": rows(
+            db,
+            "SELECT date, recovery_score AS value FROM daily_recovery WHERE date >= ? AND date <= ? ORDER BY date",
+            p,
+        ),
+        "vo2max": rows(
+            db,
+            "SELECT date, vo2max_run AS run, vo2max_cycle AS cycle FROM daily_health "
+            "WHERE date >= ? AND date <= ? AND (vo2max_run IS NOT NULL OR vo2max_cycle IS NOT NULL) "
+            "ORDER BY date",
+            p,
+        ),
         **backgrounds(db, start, today),
     }
 
@@ -623,11 +681,14 @@ def _activity_pdc(db: Database, activity_id: str) -> dict[int, float]:
 
 def best_power(db: Database, start: D, end: D) -> dict[int, float]:
     best: dict[int, float] = {}
-    ids = [r[0] for r in db.fetchall(
-        "SELECT activity_id FROM activities WHERE sport_type = 'bike' AND start_time >= ? AND start_time < ? "
-        "AND avg_power > 0",
-        [start, end + DAY],
-    )]
+    ids = [
+        r[0]
+        for r in db.fetchall(
+            "SELECT activity_id FROM activities WHERE sport_type = 'bike' AND start_time >= ? AND start_time < ? "
+            "AND avg_power > 0",
+            [start, end + DAY],
+        )
+    ]
     for activity_id in ids:
         for dur, watts in _activity_pdc(db, activity_id).items():
             if watts > best.get(dur, 0):
@@ -669,10 +730,16 @@ def markers(db: Database, today: D) -> list[dict[str, Any]]:
         now = latest(column, today)
         if now:
             before = latest(column, then)
-            out.append({
-                "key": key, "label": label, "unit": unit, "value": now["value"], "date": now["date"],
-                "delta": round(now["value"] - before["value"], 1) if before else None,
-            })
+            out.append(
+                {
+                    "key": key,
+                    "label": label,
+                    "unit": unit,
+                    "value": now["value"],
+                    "date": now["date"],
+                    "delta": round(now["value"] - before["value"], 1) if before else None,
+                }
+            )
 
     from hart.server import settings
 
@@ -681,11 +748,17 @@ def markers(db: Database, today: D) -> list[dict[str, Any]]:
     prev = best_power(db, today - 179 * DAY, today - 90 * DAY)
     for dur, label in ((300, "Best 5 min power"), (1200, "Best 20 min power"), (3600, "Best 60 min power")):
         if dur in last:
-            out.append({
-                "key": f"power_{dur}", "label": label, "unit": "W", "value": last[dur], "date": None,
-                "delta": round(last[dur] - prev[dur], 1) if dur in prev else None,
-                "note": "last 90 days vs previous 90" + (" · single-sided power" if single_sided else ""),
-            })
+            out.append(
+                {
+                    "key": f"power_{dur}",
+                    "label": label,
+                    "unit": "W",
+                    "value": last[dur],
+                    "date": None,
+                    "delta": round(last[dur] - prev[dur], 1) if dur in prev else None,
+                    "note": "last 90 days vs previous 90" + (" · single-sided power" if single_sided else ""),
+                }
+            )
     return out
 
 
@@ -701,9 +774,7 @@ def season(db: Database, today: D) -> dict[str, Any]:
         "ORDER BY start_date",
     )
     races = rows(db, "SELECT id, name, race_date, distance, priority, notes FROM races ORDER BY race_date")
-    annotations = rows(
-        db, "SELECT id, kind, label, start_date, end_date, source FROM annotations ORDER BY start_date"
-    )
+    annotations = rows(db, "SELECT id, kind, label, start_date, end_date, source FROM annotations ORDER BY start_date")
     starts = [p["start_date"] for p in phases] + [a["start_date"] for a in annotations]
     ends = [p["end_date"] for p in phases] + [r["race_date"] for r in races]
     start = monday(min(starts) if starts else today - 180 * DAY)
@@ -722,8 +793,14 @@ def season(db: Database, today: D) -> dict[str, Any]:
     )
     return {
         "proposals": proposals,
-        "today": today, "start": start, "end": end, "phases": phases, "races": races,
-        "annotations": annotations, "weekly_load": weekly, "detection": detection,
+        "today": today,
+        "start": start,
+        "end": end,
+        "phases": phases,
+        "races": races,
+        "annotations": annotations,
+        "weekly_load": weekly,
+        "detection": detection,
         "unconfirmed": sum(1 for p in phases if not p["confirmed"]),
     }
 
@@ -753,11 +830,17 @@ def sessions_list(
         params.append(end + DAY)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     total = db.fetchone(f"SELECT count(*) FROM activities a {where}", params)[0]
-    items = with_grades(db, [_session_row(r) for r in rows(
+    items = with_grades(
         db,
-        f"SELECT {SESSION_COLUMNS} {SESSION_FROM} {where} ORDER BY a.start_time DESC LIMIT ? OFFSET ?",
-        [*params, limit, offset],
-    )])
+        [
+            _session_row(r)
+            for r in rows(
+                db,
+                f"SELECT {SESSION_COLUMNS} {SESSION_FROM} {where} ORDER BY a.start_time DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            )
+        ],
+    )
     return {"total": total, "items": items, "limit": limit, "offset": offset}
 
 
@@ -782,23 +865,38 @@ def session_detail(db: Database, activity_id: str) -> dict[str, Any] | None:
 
     detail["grade"] = latest_grade(db, activity_id)
     detail["grade_pending"] = bool(grade_chips(db, [activity_id]).get(activity_id, {}).get("pending"))
-    detail["grade_versions"] = [r[0] for r in db.fetchall(
-        "SELECT version FROM session_grades WHERE activity_id = ? ORDER BY version DESC", [activity_id])]
+    detail["grade_versions"] = [
+        r[0]
+        for r in db.fetchall(
+            "SELECT version FROM session_grades WHERE activity_id = ? ORDER BY version DESC", [activity_id]
+        )
+    ]
     if detail["grade"] and detail["grade"].get("claude_run_id"):
-        run = one(db, "SELECT transcript, model, num_turns, duration_ms FROM claude_runs WHERE id = ?",
-                  [detail["grade"]["claude_run_id"]])
+        run = one(
+            db,
+            "SELECT transcript, model, num_turns, duration_ms FROM claude_runs WHERE id = ?",
+            [detail["grade"]["claude_run_id"]],
+        )
         if run:
-            transcript = json.loads(run["transcript"]) if isinstance(run["transcript"], str) else (run["transcript"] or {})
-            detail["grade_run"] = {"model": run["model"], "turns": run["num_turns"], "ms": run["duration_ms"],
-                                   "tool_calls": transcript.get("tool_calls", [])}
+            transcript = (
+                json.loads(run["transcript"]) if isinstance(run["transcript"], str) else (run["transcript"] or {})
+            )
+            detail["grade_run"] = {
+                "model": run["model"],
+                "turns": run["num_turns"],
+                "ms": run["duration_ms"],
+                "tool_calls": transcript.get("tool_calls", []),
+            }
     detail["has_streams"] = db.fetchone(
         "SELECT count(*) > 0 FROM activity_streams WHERE activity_id = ?", [activity_id]
     )[0]
     detail["feedback"] = {
-        "rpe": detail.get("rpe") if detail.get("rpe") is not None else (
-            round(detail["garmin_rpe"] / 10) if detail.get("garmin_rpe") else None),
-        "feel": detail.get("feel") if detail.get("feel") is not None else (
-            round(detail["garmin_feel"] / 25) + 1 if detail.get("garmin_feel") is not None else None),
+        "rpe": detail.get("rpe")
+        if detail.get("rpe") is not None
+        else (round(detail["garmin_rpe"] / 10) if detail.get("garmin_rpe") else None),
+        "feel": detail.get("feel")
+        if detail.get("feel") is not None
+        else (round(detail["garmin_feel"] / 25) + 1 if detail.get("garmin_feel") is not None else None),
         "comment": detail.get("comment"),
         "saved": detail.get("rpe") is not None or detail.get("feel") is not None or bool(detail.get("comment")),
     }
@@ -841,8 +939,12 @@ def compare_candidates(db: Database, s: dict[str, Any]) -> list[dict[str, Any]]:
     (any duration for strength), last year, most recent first."""
     placeholders = ", ".join("?" for _ in INDOOR_SUBTYPES)
     indoor = f"a.sub_type IN ({placeholders})" if s["indoor"] else f"coalesce(a.sub_type, '') NOT IN ({placeholders})"
-    params: list[Any] = [s["sport_type"], *INDOOR_SUBTYPES, s["start_time"],
-                         s["start_time"] - datetime.timedelta(days=COMPARE_DAYS)]
+    params: list[Any] = [
+        s["sport_type"],
+        *INDOOR_SUBTYPES,
+        s["start_time"],
+        s["start_time"] - datetime.timedelta(days=COMPARE_DAYS),
+    ]
     duration = ""
     if s["sport_type"] != "strength" and s.get("duration_s"):
         duration = "AND coalesce(a.moving_seconds, a.elapsed_seconds) BETWEEN ? AND ? "
@@ -881,27 +983,43 @@ def session_compare(db: Database, activity_id: str, other_id: str | None = None)
     other = load(other_id)
 
     def rpe(x: dict[str, Any]) -> float | None:
-        return x.get("rpe") if x.get("rpe") is not None else (round(x["garmin_rpe"] / 10) if x.get("garmin_rpe") else None)
+        return (
+            x.get("rpe") if x.get("rpe") is not None else (round(x["garmin_rpe"] / 10) if x.get("garmin_rpe") else None)
+        )
 
     # (label, key or getter, unit, digits, better): better = "up" / "down" when the direction is clear.
     metrics: list[tuple[str, Any, str, int, str | None]] = [
         ("Duration", lambda x: round((x["duration_s"] or 0) / 60), "min", 0, None),
-        ("Distance", lambda x: round(x["distance_meters"] / 1000, 2) if x.get("distance_meters") else None, "km", 2, None),
+        (
+            "Distance",
+            lambda x: round(x["distance_meters"] / 1000, 2) if x.get("distance_meters") else None,
+            "km",
+            2,
+            None,
+        ),
         ("Avg HR", "avg_hr", "bpm", 0, None),
         ("Max HR", "max_hr", "bpm", 0, None),
     ]
     if this["sport_type"] == "bike":
-        metrics += [("Avg power", "avg_power", "W", 0, None), ("Normalized power", "normalized_power", "W", 0, None),
-                    ("Cadence", "avg_cadence", "rpm", 0, None)]
+        metrics += [
+            ("Avg power", "avg_power", "W", 0, None),
+            ("Normalized power", "normalized_power", "W", 0, None),
+            ("Cadence", "avg_cadence", "rpm", 0, None),
+        ]
     elif this["sport_type"] == "run":
         metrics += [("Pace", "avg_pace_sec_km", "pace", 0, "down"), ("Cadence", "avg_cadence", "spm", 0, None)]
     elif this["sport_type"] == "swim":
         metrics += [("Speed", "avg_speed_kmh", "km/h", 2, "up")]
     if this["sport_type"] != "strength":
-        metrics += [("Efficiency factor", "efficiency_factor", "", 2, "up"),
-                    ("Decoupling", "aerobic_decoupling_pct", "%", 1, "down")]
-    metrics += [("Load", "load", "", 0, None), ("Aerobic TE", "training_effect_aerobic", "", 1, None),
-                ("RPE", rpe, "/10", 0, None)]
+        metrics += [
+            ("Efficiency factor", "efficiency_factor", "", 2, "up"),
+            ("Decoupling", "aerobic_decoupling_pct", "%", 1, "down"),
+        ]
+    metrics += [
+        ("Load", "load", "", 0, None),
+        ("Aerobic TE", "training_effect_aerobic", "", 1, None),
+        ("RPE", rpe, "/10", 0, None),
+    ]
 
     out_rows = []
     for label, key, unit, digits, better in metrics:
@@ -913,8 +1031,17 @@ def session_compare(db: Database, activity_id: str, other_id: str | None = None)
         verdict = None
         if delta is not None and better and abs(delta) >= 1:
             verdict = "good" if (delta > 0) == (better == "up") else "bad"
-        out_rows.append({"label": label, "this": a, "other": b, "unit": unit, "digits": digits,
-                         "delta_pct": delta, "verdict": verdict})
+        out_rows.append(
+            {
+                "label": label,
+                "this": a,
+                "other": b,
+                "unit": unit,
+                "digits": digits,
+                "delta_pct": delta,
+                "verdict": verdict,
+            }
+        )
 
     zones = {"this": _zone_pct(this.get("hr_zone_seconds")), "other": _zone_pct(other.get("hr_zone_seconds"))}
     exercises = []
@@ -924,8 +1051,12 @@ def session_compare(db: Database, activity_id: str, other_id: str | None = None)
         for name in [*mine, *[n for n in theirs if n not in mine]]:
             exercises.append({"exercise": name, "this": mine.get(name), "other": theirs.get(name)})
     return {
-        "candidates": candidates, "other": {**other, "id": other_id}, "rows": out_rows,
-        "zones": zones if zones["this"] or zones["other"] else None, "exercises": exercises,
-        "similar_rule": "same sport and indoor/outdoor" + ("" if this["sport_type"] == "strength" else ", duration ±25%")
-                        + f", last {COMPARE_DAYS} days",
+        "candidates": candidates,
+        "other": {**other, "id": other_id},
+        "rows": out_rows,
+        "zones": zones if zones["this"] or zones["other"] else None,
+        "exercises": exercises,
+        "similar_rule": "same sport and indoor/outdoor"
+        + ("" if this["sport_type"] == "strength" else ", duration ±25%")
+        + f", last {COMPARE_DAYS} days",
     }

@@ -16,7 +16,8 @@ import itertools
 import json
 import logging
 import threading
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from hart.storage.database import Database
 
@@ -30,8 +31,9 @@ LANES: dict[str, str] = {"grade": "claude", "suggest": "claude", "garmin_workout
 
 
 # Jobs that reach Garmin, Claude or Discord: refused on a `hart demo` database.
-DEMO_BLOCKED = frozenset({"sync", "sync_light", "grade", "suggest", "garmin_workout", "evening_message",
-                          "vo2max_backfill"})
+DEMO_BLOCKED = frozenset(
+    {"sync", "sync_light", "grade", "suggest", "garmin_workout", "evening_message", "vo2max_backfill"}
+)
 
 
 def lane_of(job_type: str) -> str:
@@ -49,8 +51,7 @@ PRIORITY: dict[str, int] = {
 }
 
 _JOB_COLUMNS = (
-    "id, type, payload, status, attempts, error, result, trigger, dedupe_key, "
-    "created_at, started_at, finished_at"
+    "id, type, payload, status, attempts, error, result, trigger, dedupe_key, created_at, started_at, finished_at"
 )
 
 
@@ -63,7 +64,7 @@ class JobFailed(Exception):
 
 
 def _now() -> datetime.datetime:
-    return datetime.datetime.now(tz=datetime.timezone.utc)
+    return datetime.datetime.now(tz=datetime.UTC)
 
 
 def _dumps(value: Any) -> str | None:

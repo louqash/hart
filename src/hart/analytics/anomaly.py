@@ -30,7 +30,6 @@ from hart.models.activity import SportType
 from hart.models.metrics import Anomaly, AnomalySeverity
 from hart.storage.database import Database
 
-
 # ---------------------------------------------------------------------------
 # Utility
 # ---------------------------------------------------------------------------
@@ -79,7 +78,7 @@ def _make_anomaly(
     """Factory for creating Anomaly model instances."""
     return Anomaly(
         id=str(uuid.uuid4()),
-        detected_at=datetime.datetime.now(tz=datetime.timezone.utc),
+        detected_at=datetime.datetime.now(tz=datetime.UTC),
         anomaly_type=anomaly_type,
         severity=severity,
         sport_type=sport_type,
@@ -188,14 +187,10 @@ def detect_anomalies(db: Database, lookback_days: int = 90) -> list[Anomaly]:
         "SELECT date, sleep_score, total_sleep_sec FROM sleep_records WHERE date >= ? ORDER BY date",
         [str(cutoff)],
     )
-    sleep_data = [
-        {"date": row[0], "sleep_score": row[1], "total_sleep_sec": row[2]}
-        for row in sleep_rows
-    ]
+    sleep_data = [{"date": row[0], "sleep_score": row[1], "total_sleep_sec": row[2]} for row in sleep_rows]
 
     hrv_rows = db.fetchall(
-        "SELECT date, hrv_last_night_ms, baseline_low_ms, hrv_status "
-        "FROM hrv_daily WHERE date >= ? ORDER BY date",
+        "SELECT date, hrv_last_night_ms, baseline_low_ms, hrv_status FROM hrv_daily WHERE date >= ? ORDER BY date",
         [str(cutoff)],
     )
     hrv_data = [
@@ -208,9 +203,7 @@ def detect_anomalies(db: Database, lookback_days: int = 90) -> list[Anomaly]:
         for row in hrv_rows
     ]
 
-    anomalies.extend(
-        check_recovery_anomalies(recovery_scores, sleep_data, hrv_data)
-    )
+    anomalies.extend(check_recovery_anomalies(recovery_scores, sleep_data, hrv_data))
 
     # Sort: critical > warning > info.
     severity_order = {
@@ -276,8 +269,7 @@ def check_overtraining_risk(
                     severity=AnomalySeverity.critical,
                     metric_name="tsb",
                     description=(
-                        f"Severe overreaching: TSB = {tsb:.1f} on {entry['date']}. "
-                        "Immediate recovery recommended."
+                        f"Severe overreaching: TSB = {tsb:.1f} on {entry['date']}. Immediate recovery recommended."
                     ),
                     actual_value=tsb,
                     expected_value=-20.0,
@@ -339,10 +331,7 @@ def check_overtraining_risk(
                     anomaly_type="overtraining",
                     severity=AnomalySeverity.warning,
                     metric_name="ctl_ramp_rate",
-                    description=(
-                        f"Ramp rate too high: {ramp_per_week:.1f} TSS/week "
-                        f"(safe range: 3-7 TSS/week)."
-                    ),
+                    description=(f"Ramp rate too high: {ramp_per_week:.1f} TSS/week (safe range: 3-7 TSS/week)."),
                     actual_value=ramp_per_week,
                     expected_value=5.0,
                 )
@@ -476,10 +465,7 @@ def check_performance_decline(
     anomalies: list[Anomaly] = []
 
     # Filter to the target sport.
-    sport_metrics = [
-        m for m in metrics
-        if m.get("sport_type") == sport_type and m.get("efficiency_factor") is not None
-    ]
+    sport_metrics = [m for m in metrics if m.get("sport_type") == sport_type and m.get("efficiency_factor") is not None]
 
     if len(sport_metrics) < 8:
         # Need at least ~4 weeks of data (2 sessions/week).
@@ -489,7 +475,7 @@ def check_performance_decline(
 
     # Check for declining trend using linear regression on the last 28 days
     # worth of EF values.
-    recent_ef = ef_values[-min(len(ef_values), 20):]
+    recent_ef = ef_values[-min(len(ef_values), 20) :]
     if len(recent_ef) < 8:
         return anomalies
 
@@ -602,11 +588,7 @@ def check_recovery_anomalies(
         for entry in hrv_data:
             hrv_val = entry.get("hrv_last_night_ms")
             baseline_low = entry.get("baseline_low_ms")
-            if (
-                hrv_val is not None
-                and baseline_low is not None
-                and hrv_val < baseline_low
-            ):
+            if hrv_val is not None and baseline_low is not None and hrv_val < baseline_low:
                 consecutive_suppressed += 1
             else:
                 consecutive_suppressed = 0
@@ -628,11 +610,7 @@ def check_recovery_anomalies(
 
     # ---- Sleep score declining trend ----
     if len(sleep_data) >= 14:
-        recent_sleep = [
-            s["sleep_score"]
-            for s in sleep_data[-14:]
-            if s.get("sleep_score") is not None
-        ]
+        recent_sleep = [s["sleep_score"] for s in sleep_data[-14:] if s.get("sleep_score") is not None]
         if len(recent_sleep) >= 10:
             x = np.arange(len(recent_sleep), dtype=np.float64)
             y = np.array(recent_sleep, dtype=np.float64)

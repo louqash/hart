@@ -13,12 +13,12 @@ from typing import Any
 import pytest
 from claude_agent_sdk import AssistantMessage, TextBlock
 
-from tests.test_chat import FakeClient, _result
-from tests.test_grading import H, W, _activity, _wait_job
 from hart.analytics.guardrails import GuardContext, check, limits
 from hart.config import ServerSettings, get_config
 from hart.server import plan, suggestions
 from hart.storage.database import Database
+from tests.test_chat import FakeClient, _result
+from tests.test_grading import H, W, _activity, _wait_job
 
 D = datetime.date
 THU = D(2026, 10, 1)
@@ -61,8 +61,9 @@ def test_red_readiness_blocks_hard_work() -> None:
 def test_swim_only_on_thursday_once() -> None:
     tue = GuardContext(date=TUE, readiness="green", rules=[SWIM_RULES])
     assert any("only on thu" in p for p in check("free_choice", [_s("swim")], tue))
-    thu = GuardContext(date=THU, readiness="green", rules=[SWIM_RULES],
-                       coach_sessions=[_s("swim", 80)], week_counts={"swim": 0})
+    thu = GuardContext(
+        date=THU, readiness="green", rules=[SWIM_RULES], coach_sessions=[_s("swim", 80)], week_counts={"swim": 0}
+    )
     assert check("as_planned", [_s("swim", 80)], thu) == []
     thu.week_counts = {"swim": 1}  # already swam this week
     assert any("allows 1" in p for p in check("as_planned", [_s("swim", 80)], thu))
@@ -90,8 +91,9 @@ def test_comeback_cap() -> None:
 
 
 def _row(d: D, sport: str = "bike", minutes: int = 60, **kw: Any) -> plan.PlanRowIn:
-    return plan.PlanRowIn(date=d, sport_type=sport, title=kw.pop("title", f"{sport} {minutes}"),
-                          duration_min=minutes, **kw)
+    return plan.PlanRowIn(
+        date=d, sport_type=sport, title=kw.pop("title", f"{sport} {minutes}"), duration_min=minutes, **kw
+    )
 
 
 def test_auto_match_picks_closest_duration(db: Database) -> None:
@@ -135,8 +137,9 @@ def client(tmp_path: Path):
     for i in range(1, 5):
         _activity(seed, f"old{i}", now - datetime.timedelta(days=3 * i), hr=135)
     seed.close()
-    config = dataclasses.replace(get_config(), db_path=db_path,
-                                 server=ServerSettings(env="production", seed_dir=tmp_path / "seed"))
+    config = dataclasses.replace(
+        get_config(), db_path=db_path, server=ServerSettings(env="production", seed_dir=tmp_path / "seed")
+    )
     app = create_app(config, run_scheduler=False, claude_client_factory=FakeClient)
     with TestClient(app, base_url="https://hart.example.ts.net") as c:
         yield c
@@ -146,11 +149,25 @@ PASTE = "Monday, September 28\nBike 1:00:00\n15'- progresja do 170W, kadencja >8
 
 
 def test_parse_and_import(client) -> None:
-    FakeClient.scripts.append([_result(structured_output={
-        "sessions": [{"date": "2026-09-28", "sport_type": "bike", "title": "Progression + 3x5'", "duration_min": 60,
-                      "intensity": "tempo", "description": PASTE.split("\n", 2)[2].strip()}],
-        "warnings": ["Couldn't read the TSS line"],
-    })])
+    FakeClient.scripts.append(
+        [
+            _result(
+                structured_output={
+                    "sessions": [
+                        {
+                            "date": "2026-09-28",
+                            "sport_type": "bike",
+                            "title": "Progression + 3x5'",
+                            "duration_min": 60,
+                            "intensity": "tempo",
+                            "description": PASTE.split("\n", 2)[2].strip(),
+                        }
+                    ],
+                    "warnings": ["Couldn't read the TSS line"],
+                }
+            )
+        ]
+    )
     out = client.post("/api/plan/parse", headers=W, json={"text": PASTE}).json()
     assert out["sessions"][0]["duration_min"] == 60 and out["warnings"]
     opts = FakeClient.instances[0].options
@@ -164,14 +181,26 @@ def test_parse_and_import(client) -> None:
 
 
 def test_garmin_text_is_cached(client) -> None:
-    row = client.post("/api/plan", headers=W, json={
-        "date": "2026-09-28", "sport_type": "bike", "title": "Intervals", "duration_min": 60,
-        "description": "10x1'-250W 75-80 + 1'-150W 75-80"}).json()
-    FakeClient.scripts.append([
-        AssistantMessage(content=[TextBlock(text="```text\nSet 1 10x\n- 1m 245-255w 75-80rpm\n- 1m 145-155w 75-80rpm\n```")],
-                         model="claude-sonnet-5"),
-        _result(),
-    ])
+    row = client.post(
+        "/api/plan",
+        headers=W,
+        json={
+            "date": "2026-09-28",
+            "sport_type": "bike",
+            "title": "Intervals",
+            "duration_min": 60,
+            "description": "10x1'-250W 75-80 + 1'-150W 75-80",
+        },
+    ).json()
+    FakeClient.scripts.append(
+        [
+            AssistantMessage(
+                content=[TextBlock(text="```text\nSet 1 10x\n- 1m 245-255w 75-80rpm\n- 1m 145-155w 75-80rpm\n```")],
+                model="claude-sonnet-5",
+            ),
+            _result(),
+        ]
+    )
     out = client.post(f"/api/plan/{row['id']}/garmin", headers=W, json={}).json()
     assert out["garmin_text"].startswith("Set 1 10x") and not out["cached"]
     assert "Garmin Workout Formatter" in FakeClient.instances[0].options.system_prompt
@@ -180,11 +209,16 @@ def test_garmin_text_is_cached(client) -> None:
 
 
 def _suggestion(rec: str, sessions: list[dict[str, Any]]) -> dict[str, Any]:
-    return {"week_review": "One ride this week so far.", "recommendation": rec,
-            "summary": "Shorter and easier today.", "cautions": [],
-            "sessions": [{**s, "rationale": "Readiness is unknown.", "structure": "10' easy\n30' Z2\n5' easy"}
-                         for s in sessions],
-            "citations": []}
+    return {
+        "week_review": "One ride this week so far.",
+        "recommendation": rec,
+        "summary": "Shorter and easier today.",
+        "cautions": [],
+        "sessions": [
+            {**s, "rationale": "Readiness is unknown.", "structure": "10' easy\n30' Z2\n5' easy"} for s in sessions
+        ],
+        "citations": [],
+    }
 
 
 def _regenerate(client, d: D) -> dict[str, Any]:
@@ -194,9 +228,18 @@ def _regenerate(client, d: D) -> dict[str, Any]:
 
 def test_suggestion_repaired_then_accepted(client) -> None:
     today = datetime.date.today()
-    coach = client.post("/api/plan", headers=W, json={
-        "date": str(today), "sport_type": "bike", "title": "Coach ride", "duration_min": 60,
-        "intensity": "endurance", "description": "60' Z2"}).json()
+    coach = client.post(
+        "/api/plan",
+        headers=W,
+        json={
+            "date": str(today),
+            "sport_type": "bike",
+            "title": "Coach ride",
+            "duration_min": 60,
+            "intensity": "endurance",
+            "description": "60' Z2",
+        },
+    ).json()
     FakeClient.scripts.append([_result(structured_output=_suggestion("modify", [_s(minutes=90)]))])
     FakeClient.scripts.append([_result(structured_output=_suggestion("modify", [_s(minutes=45)]))])
     job = _regenerate(client, today)
@@ -219,8 +262,10 @@ def test_suggestion_failing_guardrails_twice_is_not_shown(client) -> None:
     today = datetime.date.today()
     bad = _suggestion("free_choice", [_s(intensity="vo2", minutes=200)])
     with client.app.state.db.cursor() as cur:
-        cur.execute("INSERT INTO athlete_notes (category, title, body, rules, status, source) VALUES "
-                    "('constraint', 'Easy only', 'x', '{\"max_intensity\": {\"bike\": \"endurance\"}}', 'active', 'manual')")
+        cur.execute(
+            "INSERT INTO athlete_notes (category, title, body, rules, status, source) VALUES "
+            "('constraint', 'Easy only', 'x', '{\"max_intensity\": {\"bike\": \"endurance\"}}', 'active', 'manual')"
+        )
     FakeClient.scripts.extend([[_result(structured_output=bad)], [_result(structured_output=bad)]])
     job = _regenerate(client, today)
     assert job["result"]["status"] == "failed" and "Easy only" in job["result"]["error"]
@@ -230,15 +275,20 @@ def test_suggestion_failing_guardrails_twice_is_not_shown(client) -> None:
 
 def test_race_day_has_no_suggestion(client) -> None:
     race_day = datetime.date.today() + datetime.timedelta(days=3)
-    client.post("/api/races", headers=W, json={"name": "Test Tri", "race_date": str(race_day),
-                                               "distance": "olympic", "priority": "B"})
+    client.post(
+        "/api/races",
+        headers=W,
+        json={"name": "Test Tri", "race_date": str(race_day), "distance": "olympic", "priority": "B"},
+    )
     r = client.post(f"/api/suggestions/{race_day}/regenerate", headers=W, json={})
     assert r.status_code == 400 and "Race day" in r.json()["error"]["message"]
 
 
 def test_pwa_files(client) -> None:
     sw = client.get("/sw.js", headers=H)
-    assert sw.status_code == 200 and "caches.open" in sw.text and sw.headers["content-type"].startswith("text/javascript")
+    assert (
+        sw.status_code == 200 and "caches.open" in sw.text and sw.headers["content-type"].startswith("text/javascript")
+    )
     m = client.get("/manifest.webmanifest", headers=H).json()
     assert m["display"] == "standalone" and any(i.get("purpose") == "maskable" for i in m["icons"])
     assert 'rel="manifest"' in client.get("/plan", headers=H).text
@@ -250,8 +300,8 @@ def test_pwa_files(client) -> None:
 
 
 def test_scheduler_suggestion_slots(db: Database) -> None:
-    from tests.test_server import RecordingRunner, TestScheduler
     from hart.server.jobs.scheduler import Scheduler
+    from tests.test_server import RecordingRunner, TestScheduler
 
     at = TestScheduler()._at
     runner = RecordingRunner()
@@ -268,10 +318,13 @@ def test_scheduler_suggestion_slots(db: Database) -> None:
 def test_final_regenerated_once_after_fallback(db: Database) -> None:
     today = D(2026, 9, 26)
     assert suggestions.should_generate_final(db, today)
-    suggestions.store(db, today, {"kind": "final", "readiness": "unknown", "status": "ok",
-                                  "context": {"trigger": "fallback"}})
+    suggestions.store(
+        db, today, {"kind": "final", "readiness": "unknown", "status": "ok", "context": {"trigger": "fallback"}}
+    )
     assert suggestions.should_generate_final(db, today)
-    suggestions.store(db, today, {"kind": "final", "readiness": "green", "status": "ok", "context": {"trigger": "sync"}})
+    suggestions.store(
+        db, today, {"kind": "final", "readiness": "green", "status": "ok", "context": {"trigger": "sync"}}
+    )
     assert not suggestions.should_generate_final(db, today)
 
 
@@ -290,23 +343,29 @@ def test_required_session_guardrail() -> None:
     assert any("must include" in p for p in check("rest", [], ctx))
     ctx.readiness = "red"
     assert check("rest", [], ctx) == []
-    coach = GuardContext(date=SUN, readiness="green", coach_sessions=[_s("run", 30)],
-                         required_today={"strength": "owed"})
+    coach = GuardContext(
+        date=SUN, readiness="green", coach_sessions=[_s("run", 30)], required_today={"strength": "owed"}
+    )
     assert check("as_planned", [_s("run", 30)], coach) == []  # the coach's plan wins
 
 
 def _note(db: Database, rules: dict[str, Any]) -> None:
     import json as _json
-    db.execute("INSERT INTO athlete_notes (category, title, body, rules, status, source) VALUES "
-               "('constraint', 'Weekly structure', 'Two strength sessions: A Tue, B Sat.', ?, 'active', 'manual')",
-               [_json.dumps(rules)])
+
+    db.execute(
+        "INSERT INTO athlete_notes (category, title, body, rules, status, source) VALUES "
+        "('constraint', 'Weekly structure', 'Two strength sessions: A Tue, B Sat.', ?, 'active', 'manual')",
+        [_json.dumps(rules)],
+    )
 
 
 def test_week_targets_and_history(db: Database) -> None:
     fri = datetime.datetime(2026, 9, 25, 18)
     _activity(db, "gym", fri, sport="strength", sub="strength_training", power=None)
-    db.execute("INSERT INTO strength_sets (activity_id, set_index, set_type, repetitions, weight_kg, exercise_name) "
-               "VALUES ('gym', 0, 'active', 5, 60, 'Deadlift')")
+    db.execute(
+        "INSERT INTO strength_sets (activity_id, set_index, set_type, repetitions, weight_kg, exercise_name) "
+        "VALUES ('gym', 0, 'active', 5, 60, 'Deadlift')"
+    )
     _activity(db, "ride", datetime.datetime(2026, 9, 26, 10))
     _note(db, {"min_sessions_per_week": {"strength": 2}, "preferred_weekdays": {"strength": ["tue", "sat"]}})
     notes = suggestions.active_notes(db, SUN)
@@ -324,8 +383,9 @@ def test_week_targets_and_history(db: Database) -> None:
 def test_regeneration_sees_previous_version(client) -> None:
     today = datetime.date.today()
     FakeClient.scripts.append([_result(structured_output=_suggestion("free_choice", [_s("run", 30)]))])
-    FakeClient.scripts.append([_result(structured_output={
-        **_suggestion("free_choice", [_s("run", 30)]), "changed_from_previous": None})])
+    FakeClient.scripts.append(
+        [_result(structured_output={**_suggestion("free_choice", [_s("run", 30)]), "changed_from_previous": None})]
+    )
     _regenerate(client, today)
     first = FakeClient.instances[0]
     assert first.options.model == "claude-opus-5-5"
@@ -348,8 +408,17 @@ def test_plan_change_refreshes_suggestion(client) -> None:
     _regenerate(client, today)
     # Coach sends today's session later: the free-choice suggestion is outdated → regenerated.
     FakeClient.scripts.append([_result(structured_output=_suggestion("as_planned", [_s("bike", 60)]))])
-    out = client.post("/api/plan", headers=W, json={"date": str(today), "sport_type": "bike", "title": "Coach ride",
-                                                    "duration_min": 60, "description": "60' Z2"}).json()
+    out = client.post(
+        "/api/plan",
+        headers=W,
+        json={
+            "date": str(today),
+            "sport_type": "bike",
+            "title": "Coach ride",
+            "duration_min": 60,
+            "description": "60' Z2",
+        },
+    ).json()
     assert out["suggestions_refreshed"] == [str(today)]
     for _ in range(300):
         s = client.get(f"/api/suggestions/{today}", headers=H).json()
@@ -358,12 +427,28 @@ def test_plan_change_refreshes_suggestion(client) -> None:
         time.sleep(0.02)
     assert s["recommendation"] == "as_planned" and s["context"]["trigger"] == "plan_changed"
     # Accepting a suggestion isn't a coach-plan change; nor is a day outside today/tomorrow.
-    far = client.post("/api/plan", headers=W, json={"date": str(today + datetime.timedelta(days=5)), "sport_type": "run",
-                                                    "title": "Later", "duration_min": 30}).json()
+    far = client.post(
+        "/api/plan",
+        headers=W,
+        json={
+            "date": str(today + datetime.timedelta(days=5)),
+            "sport_type": "run",
+            "title": "Later",
+            "duration_min": 30,
+        },
+    ).json()
     assert far["suggestions_refreshed"] == []
-    same = client.put(f"/api/plan/{out['id']}", headers=W, json={"date": str(today), "sport_type": "bike",
-                                                                 "title": "Coach ride", "duration_min": 60,
-                                                                 "description": "60' Z2"}).json()
+    same = client.put(
+        f"/api/plan/{out['id']}",
+        headers=W,
+        json={
+            "date": str(today),
+            "sport_type": "bike",
+            "title": "Coach ride",
+            "duration_min": 60,
+            "description": "60' Z2",
+        },
+    ).json()
     assert same["suggestions_refreshed"] == []  # nothing actually changed
 
 
@@ -378,23 +463,35 @@ def test_ember_proposes_plan_changes(client) -> None:
     from hart import mcp_server
 
     day = datetime.date.today() + datetime.timedelta(days=4)
-    out = json.loads(mcp_server.propose_plan_change(
-        action="create", reason="Two strength sessions this week", date=str(day), sport_type="strength",
-        title="Session B", duration_min=50, intensity="strength"))
+    out = json.loads(
+        mcp_server.propose_plan_change(
+            action="create",
+            reason="Two strength sessions this week",
+            date=str(day),
+            sport_type="strength",
+            title="Session B",
+            duration_min=50,
+            intensity="strength",
+        )
+    )
     assert out["status"] == "pending" and "Session B" in out["summary"]
     assert client.get(f"/api/plan?start={day}&end={day}", headers=H).json()["items"] == []  # nothing yet
     assert "Suggested by Ember" in client.get("/plan", headers=H).text
     applied = client.post(f"/api/season/proposals/{out['id']}/apply", headers=W, json={}).json()
     row = client.get(f"/api/plan?start={day}&end={day}", headers=H).json()["items"][0]
     assert applied["planned_id"] == row["id"] and row["title"] == "Session B" and row["duration_min"] == 50
-    move = json.loads(mcp_server.propose_plan_change(action="update", reason="Legs need 48 h", target_id=row["id"],
-                                                     date=str(day + datetime.timedelta(days=1))))
+    move = json.loads(
+        mcp_server.propose_plan_change(
+            action="update", reason="Legs need 48 h", target_id=row["id"], date=str(day + datetime.timedelta(days=1))
+        )
+    )
     assert "date" in move["summary"]
     client.post(f"/api/season/proposals/{move['id']}/apply", headers=W, json={})
     assert client.get(f"/api/plan?start={day}&end={day}", headers=H).json()["items"] == []
     gone = json.loads(mcp_server.propose_plan_change(action="delete", reason="Rest instead", target_id=row["id"]))
     client.post(f"/api/season/proposals/{gone['id']}/apply", headers=W, json={})
     assert client.get("/api/plan", headers=H).json()["items"] == []
-    bad = json.loads(mcp_server.propose_plan_change(action="create", reason="x", date=str(day), sport_type="yoga",
-                                                    title="Flow"))
+    bad = json.loads(
+        mcp_server.propose_plan_change(action="create", reason="x", date=str(day), sport_type="yoga", title="Flow")
+    )
     assert "Invalid planned session" in bad["error"]

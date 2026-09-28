@@ -15,7 +15,7 @@ GARMIN_RATE_LIMIT_STREAK = "garmin_rate_limit_streak"
 DEMO_MODE = "demo_mode"  # set by `hart demo`: no syncs, no Claude, no Garmin uploads
 
 
-def is_demo(db: "Database") -> bool:
+def is_demo(db: Database) -> bool:
     return bool(get_setting(db, DEMO_MODE, False))
 
 
@@ -29,7 +29,7 @@ def get_setting(db: Database, key: str, default: Any = None) -> Any:
 def set_setting(db: Database, key: str, value: Any) -> None:
     db.execute(
         "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
-        [key, json.dumps(value, default=str), datetime.datetime.now(tz=datetime.timezone.utc)],
+        [key, json.dumps(value, default=str), datetime.datetime.now(tz=datetime.UTC)],
     )
 
 

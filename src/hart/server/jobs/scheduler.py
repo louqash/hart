@@ -31,15 +31,20 @@ MAX_GRADE_FAILURES = 2
 def ungraded_recent(db: Database, days: int = SWEEP_DAYS) -> list[str]:
     """Recent activities with no graded/ungraded result, fewer than 2 failed
     attempts, and no grading job queued or running."""
-    return [r[0] for r in db.fetchall(
-        "SELECT a.activity_id FROM activities a WHERE a.start_time >= current_date - ? * INTERVAL 1 DAY "
-        "AND NOT EXISTS (SELECT 1 FROM session_grades g WHERE g.activity_id = a.activity_id "
-        "  AND g.status IN ('graded', 'ungraded')) "
-        "AND (SELECT count(*) FROM session_grades g WHERE g.activity_id = a.activity_id AND g.status = 'failed') < ? "
-        "AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.dedupe_key = 'grade:' || a.activity_id "
-        "  AND j.status IN ('queued', 'running')) ORDER BY a.start_time",
-        [days, MAX_GRADE_FAILURES],
-    )]
+    return [
+        r[0]
+        for r in db.fetchall(
+            "SELECT a.activity_id FROM activities a WHERE a.start_time >= current_date - ? * INTERVAL 1 DAY "
+            "AND NOT EXISTS (SELECT 1 FROM session_grades g WHERE g.activity_id = a.activity_id "
+            "  AND g.status IN ('graded', 'ungraded')) "
+            "AND (SELECT count(*) FROM session_grades g WHERE g.activity_id = a.activity_id AND g.status = 'failed') < ? "
+            "AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.dedupe_key = 'grade:' || a.activity_id "
+            "  AND j.status IN ('queued', 'running')) ORDER BY a.start_time",
+            [days, MAX_GRADE_FAILURES],
+        )
+    ]
+
+
 STALE_AFTER = datetime.timedelta(minutes=60)
 RECENT_SYNC = datetime.timedelta(minutes=20)
 
@@ -81,14 +86,18 @@ class Scheduler:
     async def _loop(self) -> None:
         while True:
             try:
-                await asyncio.to_thread(self.tick, datetime.datetime.now(tz=datetime.timezone.utc))
+                await asyncio.to_thread(self.tick, datetime.datetime.now(tz=datetime.UTC))
             except Exception:  # noqa: BLE001 — a bad tick must not kill the scheduler
                 logger.exception("Scheduler tick failed")
             await asyncio.sleep(TICK_SECONDS)
 
     def _suggest(self, for_date: datetime.date, kind: str, trigger: str) -> None:
-        self._runner.enqueue("suggest", {"date": for_date.isoformat(), "kind": kind, "trigger": trigger},
-                             trigger="schedule", dedupe_key=f"suggest:{for_date}")
+        self._runner.enqueue(
+            "suggest",
+            {"date": for_date.isoformat(), "kind": kind, "trigger": trigger},
+            trigger="schedule",
+            dedupe_key=f"suggest:{for_date}",
+        )
 
     def suggestions_due(self, local: datetime.datetime) -> list[str]:
         """Fallback for today's final suggestion (end of the morning check) and
@@ -123,7 +132,7 @@ class Scheduler:
         return fired
 
     def on_startup(self) -> None:
-        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        now = datetime.datetime.now(tz=datetime.UTC)
         with contextlib.closing(self._db.cursor()) as cur:
             if state.is_demo(cur):
                 return
@@ -153,8 +162,12 @@ class Scheduler:
 
                 if not claude_paused(cur):
                     for activity_id in ungraded_recent(cur):
-                        self._runner.enqueue("grade", {"activity_id": activity_id, "trigger": "sweep"},
-                                             trigger="schedule", dedupe_key=f"grade:{activity_id}")
+                        self._runner.enqueue(
+                            "grade",
+                            {"activity_id": activity_id, "trigger": "sweep"},
+                            trigger="schedule",
+                            dedupe_key=f"grade:{activity_id}",
+                        )
                         fired.append(f"grade:{activity_id}")
 
         fired += self.suggestions_due(local)

@@ -1,7 +1,6 @@
-"""MCP server exposing triathlon training data and analytics as tools.
+"""MCP server exposing hart's training data and analytics as tools.
 
-This is the core interface between Claude Code agents and the triathlon
-analytics platform.  It uses the ``mcp`` package with ``FastMCP`` to
+This is the core interface between Claude Code (Ember, agents) and hart.  It uses the ``mcp`` package with ``FastMCP`` to
 expose all training data, analytics computations, sync operations, and
 pre-aggregated context bundles over the stdio transport.
 
@@ -20,7 +19,8 @@ import json
 import logging
 import threading
 import traceback
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import anyio
 from mcp.server.fastmcp import FastMCP
@@ -61,6 +61,7 @@ def _tool(*tool_args: Any, **tool_kwargs: Any) -> Callable[[Callable[..., Any]],
         return fn
 
     return decorator
+
 
 # ---------------------------------------------------------------------------
 # Lazy initialisation helpers
@@ -219,20 +220,22 @@ def athlete_profile_resource() -> str:
     config = _get_config()
     db = _get_db()
 
-    return _json({
-        "athlete": {
-            "name": settings.get(db, "athlete_name"),
-            "max_hr": settings.get(db, "athlete_max_hr"),
-            "power_single_sided": settings.get(db, "power_single_sided"),
-            "has_coach": settings.get(db, "has_coach"),
-        },
-        "analytics": {
-            "ctl_time_constant": config.analytics.ctl_time_constant,
-            "atl_time_constant": config.analytics.atl_time_constant,
-            "anomaly_z_threshold": config.analytics.anomaly_z_threshold,
-            "recovery_weights": dataclasses.asdict(config.analytics.recovery_weights),
-        },
-    })
+    return _json(
+        {
+            "athlete": {
+                "name": settings.get(db, "athlete_name"),
+                "max_hr": settings.get(db, "athlete_max_hr"),
+                "power_single_sided": settings.get(db, "power_single_sided"),
+                "has_coach": settings.get(db, "has_coach"),
+            },
+            "analytics": {
+                "ctl_time_constant": config.analytics.ctl_time_constant,
+                "atl_time_constant": config.analytics.atl_time_constant,
+                "anomaly_z_threshold": config.analytics.anomaly_z_threshold,
+                "recovery_weights": dataclasses.asdict(config.analytics.recovery_weights),
+            },
+        }
+    )
 
 
 @mcp.resource(
@@ -249,10 +252,7 @@ def schema_tables_resource() -> str:
     db = _get_db()
 
     rows = db.fetchdf(
-        "SELECT table_name, estimated_size "
-        "FROM duckdb_tables() "
-        "WHERE schema_name = 'main' "
-        "ORDER BY table_name"
+        "SELECT table_name, estimated_size FROM duckdb_tables() WHERE schema_name = 'main' ORDER BY table_name"
     ).to_dict(orient="records")  # type: ignore[union-attr]
 
     _TABLE_DESCRIPTIONS: dict[str, str] = {
@@ -276,11 +276,13 @@ def schema_tables_resource() -> str:
     tables = []
     for row in rows:
         name = row["table_name"]
-        tables.append({
-            "table": name,
-            "description": _TABLE_DESCRIPTIONS.get(name, ""),
-            "estimated_rows": row.get("estimated_size"),
-        })
+        tables.append(
+            {
+                "table": name,
+                "description": _TABLE_DESCRIPTIONS.get(name, ""),
+                "estimated_rows": row.get("estimated_size"),
+            }
+        )
 
     return _json({"tables": tables, "total": len(tables)})
 
@@ -315,11 +317,13 @@ def schema_table_resource(table_name: str) -> str:
     except Exception:
         samples = []
 
-    return _json({
-        "table": table_name,
-        "columns": cols,
-        "sample_rows": samples,
-    })
+    return _json(
+        {
+            "table": table_name,
+            "columns": cols,
+            "sample_rows": samples,
+        }
+    )
 
 
 # =========================================================================
@@ -442,8 +446,7 @@ def _strength_summary(db: Any, activity_id: str) -> dict[str, Any]:
 
     sets = get_strength_sets(db, activity_id)
     if not sets:
-        return {"sets_available": False,
-                "note": "No set data stored — run `hart sync backfill-strength`."}
+        return {"sets_available": False, "note": "No set data stored — run `hart sync backfill-strength`."}
     return {"sets_available": True, **summarize_strength_sets(sets)}
 
 
@@ -506,16 +509,16 @@ def get_strength_history(
             history = lift["sessions"]
             if not history or history[-1]["date"] != d:
                 history.append({"date": d, "sets": []})
-            history[-1]["sets"].append(
-                {"reps": reps, "weight_kg": kg, "duration_sec": dur}
-            )
+            history[-1]["sets"].append({"reps": reps, "weight_kg": kg, "duration_sec": dur})
 
-        return _json({
-            "period": {"start": start, "end": datetime.date.today()},
-            "session_count": len(sessions),
-            "sessions": sessions,
-            "exercise_progression": progression,
-        })
+        return _json(
+            {
+                "period": {"start": start, "end": datetime.date.today()},
+                "session_count": len(sessions),
+                "sessions": sessions,
+                "exercise_progression": progression,
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -794,8 +797,10 @@ def analyze_activity(activity_id: str) -> str:
         from hart.storage.queries import (
             get_activities,
             get_activity_by_id,
-            get_activity_metrics as _qam,
             get_activity_streams,
+        )
+        from hart.storage.queries import (
+            get_activity_metrics as _qam,
         )
 
         db = _get_db()
@@ -824,6 +829,8 @@ def analyze_activity(activity_id: str) -> str:
             if sport == "bike" and power_series:
                 from hart.analytics.power import (
                     normalized_power as _np_calc,
+                )
+                from hart.analytics.power import (
                     power_duration_curve,
                 )
 
@@ -883,7 +890,6 @@ def analyze_activity(activity_id: str) -> str:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
 
-
 @_tool()
 def get_power_curve(days_back: int = 90) -> str:
     """Get best power for various durations over a recent period.
@@ -932,10 +938,19 @@ def get_power_curve(days_back: int = 90) -> str:
 
         # Format durations as human-readable labels
         duration_labels = {
-            1: "1s", 5: "5s", 10: "10s", 30: "30s",
-            60: "1min", 120: "2min", 300: "5min", 600: "10min",
-            1200: "20min", 1800: "30min", 3600: "60min",
-            5400: "90min", 7200: "120min",
+            1: "1s",
+            5: "5s",
+            10: "10s",
+            30: "30s",
+            60: "1min",
+            120: "2min",
+            300: "5min",
+            600: "10min",
+            1200: "20min",
+            1800: "30min",
+            3600: "60min",
+            5400: "90min",
+            7200: "120min",
         }
 
         formatted = {}
@@ -943,12 +958,14 @@ def get_power_curve(days_back: int = 90) -> str:
             label = duration_labels.get(dur_sec, f"{dur_sec}s")
             formatted[label] = best_power[dur_sec]
 
-        return _json({
-            "days_back": days_back,
-            "activities_analysed": activities_with_power,
-            "power_curve": formatted,
-            "power_curve_raw_seconds": best_power,
-        })
+        return _json(
+            {
+                "days_back": days_back,
+                "activities_analysed": activities_with_power,
+                "power_curve": formatted,
+                "power_curve_raw_seconds": best_power,
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -976,7 +993,11 @@ def compare_periods(
     try:
         from hart.storage.queries import (
             get_activities,
+        )
+        from hart.storage.queries import (
             get_activity_metrics as _qam,
+        )
+        from hart.storage.queries import (
             get_training_load as _qtl,
         )
 
@@ -1045,9 +1066,18 @@ def compare_periods(
 
         # Compute deltas
         deltas: dict[str, Any] = {}
-        for key in ["activity_count", "total_duration_hours", "total_distance_km",
-                     "total_tss", "avg_tss", "avg_ef", "avg_decoupling_pct",
-                     "end_ctl", "end_atl", "end_tsb"]:
+        for key in [
+            "activity_count",
+            "total_duration_hours",
+            "total_distance_km",
+            "total_tss",
+            "avg_tss",
+            "avg_ef",
+            "avg_decoupling_pct",
+            "end_ctl",
+            "end_atl",
+            "end_tsb",
+        ]:
             v1 = p1_stats.get(key)
             v2 = p2_stats.get(key)
             if v1 is not None and v2 is not None:
@@ -1058,11 +1088,13 @@ def compare_periods(
                     "change_pct": round((v2 - v1) / v1 * 100, 1) if v1 != 0 else None,
                 }
 
-        return _json({
-            "period1": p1_stats,
-            "period2": p2_stats,
-            "deltas": deltas,
-        })
+        return _json(
+            {
+                "period1": p1_stats,
+                "period2": p2_stats,
+                "deltas": deltas,
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -1079,9 +1111,7 @@ def _run_sync(manual_days: int) -> dict[str, Any]:
 
     from hart.server.jobs.pipeline import run_sync_pipeline
 
-    return run_sync_pipeline(
-        _get_db(), _get_config(), health_days=manual_days, activity_days=manual_days
-    )
+    return run_sync_pipeline(_get_db(), _get_config(), health_days=manual_days, activity_days=manual_days)
 
 
 @_tool()
@@ -1149,19 +1179,21 @@ def get_athlete_context() -> str:
                 grouped.setdefault(n["category"], []).append(
                     {k: v for k, v in n.items() if k not in ("status", "category") and v is not None}
                 )
-        return _json({
-            "today": today,
-            "notes": grouped,
-            "awaiting_approval": [n["title"] for n in notes if n["status"] == "proposed"],
-            "races": rows(db, "SELECT name, race_date, distance, priority, notes FROM races ORDER BY race_date"),
-            "current_phase": phase_on(db, today),
-            "annotations": rows(
-                db,
-                "SELECT kind, label, start_date, end_date FROM annotations "
-                "WHERE end_date IS NULL OR end_date >= ? ORDER BY start_date",
-                [today - datetime.timedelta(days=120)],
-            ),
-        })
+        return _json(
+            {
+                "today": today,
+                "notes": grouped,
+                "awaiting_approval": [n["title"] for n in notes if n["status"] == "proposed"],
+                "races": rows(db, "SELECT name, race_date, distance, priority, notes FROM races ORDER BY race_date"),
+                "current_phase": phase_on(db, today),
+                "annotations": rows(
+                    db,
+                    "SELECT kind, label, start_date, end_date FROM annotations "
+                    "WHERE end_date IS NULL OR end_date >= ? ORDER BY start_date",
+                    [today - datetime.timedelta(days=120)],
+                ),
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -1199,8 +1231,13 @@ def propose_athlete_note(
             "VALUES (?, ?, ?, ?, ?, 'proposed', 'claude_proposed') RETURNING id",
             [category, title.strip(), body.strip(), _parse_date(valid_from), _parse_date(valid_to)],
         )[0]
-        return _json({"id": new_id, "status": "proposed",
-                      "message": "Saved as a proposal; the athlete approves it on the Notes page."})
+        return _json(
+            {
+                "id": new_id,
+                "status": "proposed",
+                "message": "Saved as a proposal; the athlete approves it on the Notes page.",
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -1279,8 +1316,9 @@ def get_health_checks(status: str = "") -> str:
 
 
 @_tool()
-def propose_health_check(title: str, rationale: str, kind: str = "other", due_date: str = "",
-                         markers: list[str] | None = None) -> str:
+def propose_health_check(
+    title: str, rationale: str, kind: str = "other", due_date: str = "", markers: list[str] | None = None
+) -> str:
     """Propose a health check (e.g. a lab re-test or a doctor's visit); the
     athlete approves or dismisses it on the Health page.
 
@@ -1297,15 +1335,22 @@ def propose_health_check(title: str, rationale: str, kind: str = "other", due_da
         from hart.server.health import CheckIn, HealthError, create_check
 
         try:
-            body = CheckIn(kind=kind, title=title, rationale=rationale, due_date=_parse_date(due_date),
-                           markers=markers or [])
+            body = CheckIn(
+                kind=kind, title=title, rationale=rationale, due_date=_parse_date(due_date), markers=markers or []
+            )
             if not rationale.strip():
                 raise HealthError("rationale is required")
             check_id = create_check(_get_db(), body, source="claude_proposed")
         except (ValidationError, HealthError) as exc:
             return _json({"error": str(exc)})
-        return _json({"id": check_id, "status": "proposed", "title": body.title,
-                      "message": "Proposed — the athlete approves it on the Health page."})
+        return _json(
+            {
+                "id": check_id,
+                "status": "proposed",
+                "title": body.title,
+                "message": "Proposed — the athlete approves it on the Health page.",
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -1340,8 +1385,14 @@ def propose_plan_change(
     try:
         from hart.server.season_ops import SeasonError, create_proposal
 
-        payload = {"date": date, "sport_type": sport_type, "title": title, "duration_min": duration_min or None,
-                   "intensity": intensity, "description": description}
+        payload = {
+            "date": date,
+            "sport_type": sport_type,
+            "title": title,
+            "duration_min": duration_min or None,
+            "intensity": intensity,
+            "description": description,
+        }
         try:
             result = create_proposal(_get_db(), "plan", action, reason, target_id or None, payload)
         except SeasonError as exc:
@@ -1395,11 +1446,15 @@ def propose_season_change(
         from hart.server.season_ops import SeasonError, create_proposal
 
         if kind == "phase":
-            payload = {"name": name, "phase_type": phase_type, "start_date": start_date, "end_date": end_date,
-                       "goal": goal}
+            payload = {
+                "name": name,
+                "phase_type": phase_type,
+                "start_date": start_date,
+                "end_date": end_date,
+                "goal": goal,
+            }
         elif kind == "race":
-            payload = {"name": name, "race_date": race_date, "distance": distance, "priority": priority,
-                       "notes": notes}
+            payload = {"name": name, "race_date": race_date, "distance": distance, "priority": priority, "notes": notes}
         else:
             payload = {"label": label, "kind": annotation_kind, "start_date": start_date, "end_date": end_date}
         try:
@@ -1437,15 +1492,17 @@ def get_session_grades(start_date: str = "", end_date: str = "") -> str:
 
         start = _parse_date(start_date) or _default_start(30)
         end = _parse_date(end_date) or datetime.date.today()
-        return _json(rows(
-            _get_db(),
-            "SELECT CAST(a.start_time AS DATE) AS date, a.activity_id, a.sport_type, a.name, g.status, g.letter, "
-            "g.overall_score, g.session_type, g.confidence, g.summary, g.ungraded_reason FROM activities a "
-            "JOIN (SELECT *, row_number() OVER (PARTITION BY activity_id ORDER BY version DESC) AS rn "
-            "      FROM session_grades) g ON g.activity_id = a.activity_id AND g.rn = 1 "
-            "WHERE a.start_time >= ? AND a.start_time < ? + INTERVAL 1 DAY ORDER BY a.start_time",
-            [start, end],
-        ))
+        return _json(
+            rows(
+                _get_db(),
+                "SELECT CAST(a.start_time AS DATE) AS date, a.activity_id, a.sport_type, a.name, g.status, g.letter, "
+                "g.overall_score, g.session_type, g.confidence, g.summary, g.ungraded_reason FROM activities a "
+                "JOIN (SELECT *, row_number() OVER (PARTITION BY activity_id ORDER BY version DESC) AS rn "
+                "      FROM session_grades) g ON g.activity_id = a.activity_id AND g.rn = 1 "
+                "WHERE a.start_time >= ? AND a.start_time < ? + INTERVAL 1 DAY ORDER BY a.start_time",
+                [start, end],
+            )
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -1605,11 +1662,7 @@ def send_discord_message(channel_type: str, message: str) -> str:
         if not bot_token:
             return _json({"error": "Discord bot token not configured"})
 
-        channel_id = (
-            config.discord.alert_channel_id
-            if channel_type == "alert"
-            else config.discord.channel_id
-        )
+        channel_id = config.discord.alert_channel_id if channel_type == "alert" else config.discord.channel_id
 
         if not channel_id:
             return _json({"error": f"Discord {channel_type} channel ID not configured"})
@@ -1625,17 +1678,21 @@ def send_discord_message(channel_type: str, message: str) -> str:
         response = httpx.post(url, headers=headers, json=payload, timeout=10.0)
 
         if response.status_code in (200, 201):
-            return _json({
-                "status": "sent",
-                "channel_type": channel_type,
-                "channel_id": channel_id,
-                "message_length": len(message),
-            })
+            return _json(
+                {
+                    "status": "sent",
+                    "channel_type": channel_type,
+                    "channel_id": channel_id,
+                    "message_length": len(message),
+                }
+            )
         else:
-            return _json({
-                "error": f"Discord API returned {response.status_code}",
-                "detail": response.text[:500],
-            })
+            return _json(
+                {
+                    "error": f"Discord API returned {response.status_code}",
+                    "detail": response.text[:500],
+                }
+            )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -1662,13 +1719,15 @@ def acknowledge_anomaly(anomaly_id: int) -> str:
         if row is None:
             return _json({"error": f"Anomaly {anomaly_id} not found"})
 
-        return _json({
-            "status": "acknowledged",
-            "anomaly_id": row[0],
-            "anomaly_type": row[1],
-            "severity": row[2],
-            "acknowledged": row[3],
-        })
+        return _json(
+            {
+                "status": "acknowledged",
+                "anomaly_id": row[0],
+                "anomaly_type": row[1],
+                "severity": row[2],
+                "acknowledged": row[3],
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -1695,9 +1754,15 @@ def get_new_activity_context(activity_id: str) -> str:
             get_activities,
             get_activity_by_id,
             get_activity_laps,
-            get_activity_metrics as _qam,
             get_activity_streams,
+        )
+        from hart.storage.queries import (
+            get_activity_metrics as _qam,
+        )
+        from hart.storage.queries import (
             get_athlete_profile as _qap,
+        )
+        from hart.storage.queries import (
             get_training_load as _qtl,
         )
 
@@ -1730,12 +1795,14 @@ def get_new_activity_context(activity_id: str) -> str:
             stream_info: dict[str, Any] = {"total_points": len(streams)}
             if hr_vals:
                 stream_info["hr"] = {
-                    "min": int(min(hr_vals)), "max": int(max(hr_vals)),
+                    "min": int(min(hr_vals)),
+                    "max": int(max(hr_vals)),
                     "avg": round(float(np.mean(hr_vals)), 1),
                 }
             if power_vals:
                 stream_info["power"] = {
-                    "min": int(min(power_vals)), "max": int(max(power_vals)),
+                    "min": int(min(power_vals)),
+                    "max": int(max(power_vals)),
                     "avg": round(float(np.mean(power_vals)), 1),
                 }
                 # Power duration curve for bike
@@ -1822,9 +1889,17 @@ def get_morning_briefing_data() -> str:
     try:
         from hart.storage.queries import (
             get_daily_health as _qdh,
+        )
+        from hart.storage.queries import (
             get_hrv_trend as _qhrv,
+        )
+        from hart.storage.queries import (
             get_recovery_scores as _qrs,
+        )
+        from hart.storage.queries import (
             get_sleep_data as _qsd,
+        )
+        from hart.storage.queries import (
             get_training_load as _qtl,
         )
 
@@ -1846,11 +1921,7 @@ def get_morning_briefing_data() -> str:
             if len(hrv) > 1:
                 import numpy as np
 
-                hrv_vals = [
-                    h["hrv_weekly_avg_ms"]
-                    for h in hrv
-                    if h.get("hrv_weekly_avg_ms")
-                ]
+                hrv_vals = [h["hrv_weekly_avg_ms"] for h in hrv if h.get("hrv_weekly_avg_ms")]
                 if hrv_vals:
                     briefing["hrv_7d_avg"] = round(float(np.mean(hrv_vals)), 1)
 
@@ -1909,11 +1980,13 @@ def get_morning_briefing_data() -> str:
         if recovery_7d:
             from hart.analytics.recovery import recovery_trend
 
-            trend = recovery_trend([
-                {"date": r.get("date"), "recovery_score": r.get("recovery_score")}
-                for r in recovery_7d
-                if r.get("recovery_score") is not None
-            ])
+            trend = recovery_trend(
+                [
+                    {"date": r.get("date"), "recovery_score": r.get("recovery_score")}
+                    for r in recovery_7d
+                    if r.get("recovery_score") is not None
+                ]
+            )
             briefing["recovery_trend"] = {
                 "direction": trend.get("direction"),
                 "days_below_60": trend.get("days_below_60"),
@@ -1935,10 +2008,20 @@ def get_weekly_report_data() -> str:
     try:
         from hart.storage.queries import (
             get_activities,
+        )
+        from hart.storage.queries import (
             get_activity_metrics as _qam,
+        )
+        from hart.storage.queries import (
             get_anomalies as _qan,
+        )
+        from hart.storage.queries import (
             get_recovery_scores as _qrs,
+        )
+        from hart.storage.queries import (
             get_training_load as _qtl,
+        )
+        from hart.storage.queries import (
             get_weekly_summaries as _qws,
         )
 
@@ -2043,15 +2126,13 @@ def get_weekly_report_data() -> str:
                 report["week_over_week"] = {
                     "sessions_delta": len(activities) - len(prev_activities),
                     "duration_delta_sec": curr_dur - prev_duration,
-                    "duration_delta_pct": round(
-                        (curr_dur - prev_duration) / prev_duration * 100, 1
-                    ) if prev_duration > 0 else None,
-                    "tss_delta": round(
-                        report["week_totals"]["total_tss"] - prev_tss, 1
-                    ),
-                    "tss_delta_pct": round(
-                        (report["week_totals"]["total_tss"] - prev_tss) / prev_tss * 100, 1
-                    ) if prev_tss > 0 else None,
+                    "duration_delta_pct": round((curr_dur - prev_duration) / prev_duration * 100, 1)
+                    if prev_duration > 0
+                    else None,
+                    "tss_delta": round(report["week_totals"]["total_tss"] - prev_tss, 1),
+                    "tss_delta_pct": round((report["week_totals"]["total_tss"] - prev_tss) / prev_tss * 100, 1)
+                    if prev_tss > 0
+                    else None,
                 }
 
         # Training load at week boundaries (for CTL/ATL/TSB progression)
@@ -2064,7 +2145,7 @@ def get_weekly_report_data() -> str:
         if load_extended:
             report["ctl_progression"] = {
                 "start_of_week": next(
-                    (l for l in load_extended if l.get("date") and str(l["date"]) >= week_start.isoformat()),
+                    (row for row in load_extended if row.get("date") and str(row["date"]) >= week_start.isoformat()),
                     None,
                 ),
                 "end_of_week": load_extended[-1] if load_extended else None,
@@ -2129,10 +2210,7 @@ def describe_schema(table_name: str = "") -> str:
 
         if not table_name:
             rows = db.fetchdf(
-                "SELECT table_name, estimated_size "
-                "FROM duckdb_tables() "
-                "WHERE schema_name = 'main' "
-                "ORDER BY table_name"
+                "SELECT table_name, estimated_size FROM duckdb_tables() WHERE schema_name = 'main' ORDER BY table_name"
             ).to_dict(orient="records")  # type: ignore[union-attr]
 
             tables = [
@@ -2154,10 +2232,12 @@ def describe_schema(table_name: str = "") -> str:
         ).to_dict(orient="records")  # type: ignore[union-attr]
 
         if not cols:
-            return _json({
-                "error": f"Table '{table_name}' not found.",
-                "tip": "Call describe_schema() with no argument for valid table names.",
-            })
+            return _json(
+                {
+                    "error": f"Table '{table_name}' not found.",
+                    "tip": "Call describe_schema() with no argument for valid table names.",
+                }
+            )
 
         try:
             sample_df = db.fetchdf(f"SELECT * FROM {table_name} LIMIT 3")  # noqa: S608
@@ -2165,12 +2245,14 @@ def describe_schema(table_name: str = "") -> str:
         except Exception:
             samples = []
 
-        return _json({
-            "table": table_name,
-            "description": _TABLE_DESCRIPTIONS.get(table_name, ""),
-            "columns": cols,
-            "sample_rows": samples,
-        })
+        return _json(
+            {
+                "table": table_name,
+                "description": _TABLE_DESCRIPTIONS.get(table_name, ""),
+                "columns": cols,
+                "sample_rows": samples,
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -2195,8 +2277,14 @@ def get_health(
     try:
         from hart.storage.queries import (
             get_daily_health as _qdh,
+        )
+        from hart.storage.queries import (
             get_hrv_trend as _qhrv,
+        )
+        from hart.storage.queries import (
             get_recovery_scores as _qrs,
+        )
+        from hart.storage.queries import (
             get_sleep_data as _qsd,
         )
 
@@ -2268,10 +2356,21 @@ def get_activity_streams(
 
         # Validate metric names against allowed columns
         _VALID_METRICS = {
-            "heart_rate", "power", "cadence", "speed", "altitude", "distance",
-            "latitude", "longitude", "temperature", "grade_percent",
-            "ground_contact_time_ms", "vertical_oscillation_mm",
-            "vertical_ratio_pct", "stride_length_m", "respiration_rate",
+            "heart_rate",
+            "power",
+            "cadence",
+            "speed",
+            "altitude",
+            "distance",
+            "latitude",
+            "longitude",
+            "temperature",
+            "grade_percent",
+            "ground_contact_time_ms",
+            "vertical_oscillation_mm",
+            "vertical_ratio_pct",
+            "stride_length_m",
+            "respiration_rate",
         }
         requested = [m.strip() for m in metrics.split(",") if m.strip()]
         valid = [m for m in requested if m in _VALID_METRICS]
@@ -2296,10 +2395,7 @@ def get_activity_streams(
 
         # Extract requested columns (always include timestamp_sec)
         output_cols = ["timestamp_sec"] + (valid or list(_VALID_METRICS))
-        result_rows = [
-            {col: row.get(col) for col in output_cols if col in row}
-            for row in sliced
-        ]
+        result_rows = [{col: row.get(col) for col in output_cols if col in row} for row in sliced]
 
         # Summary stats for each metric
         import numpy as np
@@ -2315,20 +2411,22 @@ def get_activity_streams(
                     "samples": len(vals),
                 }
 
-        return _json({
-            "activity_id": activity_id,
-            "total_stream_points": total,
-            "slice": {
-                "start_pct": start_pct,
-                "end_pct": end_pct,
-                "points_in_slice": end_idx - start_idx,
-                "points_returned": len(sliced),
-            },
-            "metrics_requested": requested,
-            "metrics_invalid": invalid,
-            "stats": stats,
-            "data": result_rows,
-        })
+        return _json(
+            {
+                "activity_id": activity_id,
+                "total_stream_points": total,
+                "slice": {
+                    "start_pct": start_pct,
+                    "end_pct": end_pct,
+                    "points_in_slice": end_idx - start_idx,
+                    "points_returned": len(sliced),
+                },
+                "metrics_requested": requested,
+                "metrics_invalid": invalid,
+                "stats": stats,
+                "data": result_rows,
+            }
+        )
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 
@@ -2354,11 +2452,23 @@ def get_training_timeline(
     try:
         from hart.storage.queries import (
             get_activities as _qa,
+        )
+        from hart.storage.queries import (
             get_anomalies as _qan,
+        )
+        from hart.storage.queries import (
             get_daily_health as _qdh,
+        )
+        from hart.storage.queries import (
             get_hrv_trend as _qhrv,
+        )
+        from hart.storage.queries import (
             get_recovery_scores as _qrs,
+        )
+        from hart.storage.queries import (
             get_sleep_data as _qsd,
+        )
+        from hart.storage.queries import (
             get_training_load as _qtl,
         )
 
@@ -2440,7 +2550,7 @@ def _load_agent(name: str) -> str:
     if text.startswith("---"):
         end = text.find("---", 3)
         if end != -1:
-            text = text[end + 3:].lstrip("\n")
+            text = text[end + 3 :].lstrip("\n")
     return text
 
 
@@ -2481,7 +2591,6 @@ def post_activity_prompt(activity_id: str = "") -> str:
 )
 def weekly_reporter_prompt() -> str:
     return _load_agent("weekly-reporter")
-
 
 
 @mcp.prompt(

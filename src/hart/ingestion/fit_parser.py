@@ -58,14 +58,46 @@ _FIT_SUB_SPORT_MAP: dict[str, SportType] = {
 }
 
 # FIT SDK ``exercise_category`` enum (used by ``set`` messages).
-_FIT_EXERCISE_CATEGORY: dict[int, str] = dict(enumerate([
-    "BENCH_PRESS", "CALF_RAISE", "CARDIO", "CARRY", "CHOP", "CORE", "CRUNCH",
-    "CURL", "DEADLIFT", "FLYE", "HIP_RAISE", "HIP_STABILITY", "HIP_SWING",
-    "HYPEREXTENSION", "LATERAL_RAISE", "LEG_CURL", "LEG_RAISE", "LUNGE",
-    "OLYMPIC_LIFT", "PLANK", "PLYO", "PULL_UP", "PUSH_UP", "ROW",
-    "SHOULDER_PRESS", "SHOULDER_STABILITY", "SHRUG", "SIT_UP", "SQUAT",
-    "TOTAL_BODY", "TRICEPS_EXTENSION", "WARM_UP", "RUN", "BIKE",
-]))
+_FIT_EXERCISE_CATEGORY: dict[int, str] = dict(
+    enumerate(
+        [
+            "BENCH_PRESS",
+            "CALF_RAISE",
+            "CARDIO",
+            "CARRY",
+            "CHOP",
+            "CORE",
+            "CRUNCH",
+            "CURL",
+            "DEADLIFT",
+            "FLYE",
+            "HIP_RAISE",
+            "HIP_STABILITY",
+            "HIP_SWING",
+            "HYPEREXTENSION",
+            "LATERAL_RAISE",
+            "LEG_CURL",
+            "LEG_RAISE",
+            "LUNGE",
+            "OLYMPIC_LIFT",
+            "PLANK",
+            "PLYO",
+            "PULL_UP",
+            "PUSH_UP",
+            "ROW",
+            "SHOULDER_PRESS",
+            "SHOULDER_STABILITY",
+            "SHRUG",
+            "SIT_UP",
+            "SQUAT",
+            "TOTAL_BODY",
+            "TRICEPS_EXTENSION",
+            "WARM_UP",
+            "RUN",
+            "BIKE",
+        ]
+    )
+)
 
 
 # ---------------------------------------------------------------------------
@@ -158,10 +190,7 @@ class FitParser:
                 set_msgs.append(msg_fields)
 
         if not sessions:
-            raise ValueError(
-                f"No session message found in {fit_path} — "
-                "file is likely not an activity recording."
-            )
+            raise ValueError(f"No session message found in {fit_path} — file is likely not an activity recording.")
 
         # Use the first (and usually only) session message.
         session = sessions[0]
@@ -203,9 +232,7 @@ class FitParser:
         end_timestamp = self._get_datetime(session, "timestamp")
         sport_raw = str(session.get("sport", "other")).lower()
         sub_sport = session.get("sub_sport")
-        sport_type = _FIT_SUB_SPORT_MAP.get(
-            str(sub_sport).lower(), _FIT_SPORT_MAP.get(sport_raw, SportType.other)
-        )
+        sport_type = _FIT_SUB_SPORT_MAP.get(str(sub_sport).lower(), _FIT_SPORT_MAP.get(sport_raw, SportType.other))
 
         elapsed = self._get_int(session, "total_elapsed_time")
         if elapsed is None and start_time and end_timestamp:
@@ -234,12 +261,9 @@ class FitParser:
             sub_type=str(sub_sport) if sub_sport else None,
             name=None,
             description=None,
-            start_time=start_time or datetime.datetime.now(tz=datetime.timezone.utc),
+            start_time=start_time or datetime.datetime.now(tz=datetime.UTC),
             elapsed_seconds=elapsed or 0,
-            moving_seconds=(
-                self._get_int(session, "total_moving_time")
-                or self._get_int(session, "total_timer_time")
-            ),
+            moving_seconds=(self._get_int(session, "total_moving_time") or self._get_int(session, "total_timer_time")),
             distance_meters=distance,
             total_elevation_m=self._get_float(session, "total_ascent"),
             avg_hr=self._get_int(session, "avg_heart_rate"),
@@ -252,14 +276,10 @@ class FitParser:
             avg_speed_kmh=avg_speed_kmh,
             calories=self._get_int(session, "total_calories"),
             avg_temperature=self._get_float(session, "avg_temperature"),
-            training_effect_aerobic=self._get_float(
-                session, "total_training_effect"
-            ),
-            training_effect_anaerobic=self._get_float(
-                session, "total_anaerobic_training_effect"
-            ),
+            training_effect_aerobic=self._get_float(session, "total_training_effect"),
+            training_effect_anaerobic=self._get_float(session, "total_anaerobic_training_effect"),
             fit_file_path=str(fit_path),
-            imported_at=datetime.datetime.now(tz=datetime.timezone.utc),
+            imported_at=datetime.datetime.now(tz=datetime.UTC),
         )
 
     # ------------------------------------------------------------------
@@ -282,15 +302,11 @@ class FitParser:
             lon = (lon_raw * _SEMICIRCLE_TO_DEG) if lon_raw is not None else None
 
             # Speed: m/s → km/h
-            speed_ms = self._get_float(rec, "speed") or self._get_float(
-                rec, "enhanced_speed"
-            )
+            speed_ms = self._get_float(rec, "speed") or self._get_float(rec, "enhanced_speed")
             speed_kmh = (speed_ms * 3.6) if speed_ms is not None else None
 
             # Altitude: prefer enhanced_altitude for sub-meter resolution
-            altitude = self._get_float(rec, "enhanced_altitude") or self._get_float(
-                rec, "altitude"
-            )
+            altitude = self._get_float(rec, "enhanced_altitude") or self._get_float(rec, "altitude")
 
             points.append(
                 StreamPoint(
@@ -305,12 +321,8 @@ class FitParser:
                     longitude=lon,
                     temperature=self._get_float(rec, "temperature"),
                     grade_percent=self._get_float(rec, "grade"),
-                    ground_contact_time_ms=self._get_float(
-                        rec, "ground_contact_time"
-                    ),
-                    vertical_oscillation_mm=self._get_float(
-                        rec, "vertical_oscillation"
-                    ),
+                    ground_contact_time_ms=self._get_float(rec, "ground_contact_time"),
+                    vertical_oscillation_mm=self._get_float(rec, "vertical_oscillation"),
                     vertical_ratio_pct=self._get_float(rec, "vertical_ratio"),
                     stride_length_m=self._get_float(rec, "step_length"),
                     respiration_rate=self._get_float(rec, "respiration_rate"),
@@ -342,10 +354,7 @@ class FitParser:
                     lap_index=idx,
                     start_time=self._get_datetime(msg, "start_time"),
                     elapsed_seconds=elapsed,
-                    moving_seconds=(
-                        self._get_int(msg, "total_moving_time")
-                        or self._get_int(msg, "total_timer_time")
-                    ),
+                    moving_seconds=(self._get_int(msg, "total_moving_time") or self._get_int(msg, "total_timer_time")),
                     distance_meters=distance,
                     avg_hr=self._get_int(msg, "avg_heart_rate"),
                     max_hr=self._get_int(msg, "max_heart_rate"),
@@ -376,28 +385,26 @@ class FitParser:
             category = msg.get("category")
             if isinstance(category, (list, tuple)):
                 category = category[0] if category else None
-            category_name = (
-                _FIT_EXERCISE_CATEGORY.get(category) if isinstance(category, int) else None
-            )
+            category_name = _FIT_EXERCISE_CATEGORY.get(category) if isinstance(category, int) else None
             set_type = str(msg.get("set_type") or "active").lower()
-            sets.append(StrengthSet(
-                set_index=idx,
-                set_type=set_type,
-                start_time=self._get_datetime(msg, "start_time"),
-                duration_sec=self._get_float(msg, "duration"),
-                repetitions=self._get_int(msg, "repetitions"),
-                weight_kg=self._get_float(msg, "weight"),
-                exercise_category=category_name if set_type == "active" else None,
-            ))
+            sets.append(
+                StrengthSet(
+                    set_index=idx,
+                    set_type=set_type,
+                    start_time=self._get_datetime(msg, "start_time"),
+                    duration_sec=self._get_float(msg, "duration"),
+                    repetitions=self._get_int(msg, "repetitions"),
+                    weight_kg=self._get_float(msg, "weight"),
+                    exercise_category=category_name if set_type == "active" else None,
+                )
+            )
         return sets
 
     # ------------------------------------------------------------------
     # HRV
     # ------------------------------------------------------------------
 
-    def _build_hrv(
-        self, hrv_msgs: list[dict[str, Any]]
-    ) -> list[tuple[int, float]]:
+    def _build_hrv(self, hrv_msgs: list[dict[str, Any]]) -> list[tuple[int, float]]:
         """Extract R-R intervals from FIT HRV messages.
 
         FIT HRV messages contain a ``time`` field that is an array of R-R
@@ -432,9 +439,7 @@ class FitParser:
     # Device info / Favero Assioma detection
     # ------------------------------------------------------------------
 
-    def _parse_device_info(
-        self, device_msgs: list[dict[str, Any]]
-    ) -> tuple[bool, bool, dict[str, Any]]:
+    def _parse_device_info(self, device_msgs: list[dict[str, Any]]) -> tuple[bool, bool, dict[str, Any]]:
         """Inspect device_info messages for power-meter metadata.
 
         Returns
@@ -468,10 +473,7 @@ class FitParser:
 
             # Detect Favero Assioma
             is_favero = manufacturer == "favero" or "favero" in product_name
-            is_assioma = (
-                "assioma" in product_name
-                or "assioma" in product
-            )
+            is_assioma = "assioma" in product_name or "assioma" in product
 
             if is_favero or is_assioma:
                 has_favero = True
@@ -479,10 +481,7 @@ class FitParser:
                 aggregated["power_meter_product"] = product_name or product
 
                 # Detect single-sided (Uno / left-only)
-                if any(
-                    kw in product_name or kw in product
-                    for kw in ("uno", "left", " l")
-                ):
+                if any(kw in product_name or kw in product for kw in ("uno", "left", " l")):
                     is_single_sided = True
                 elif "left" in device_index:
                     is_single_sided = True
@@ -509,13 +508,13 @@ class FitParser:
             return None
         if isinstance(val, datetime.datetime):
             if val.tzinfo is None:
-                return val.replace(tzinfo=datetime.timezone.utc)
+                return val.replace(tzinfo=datetime.UTC)
             return val
         # fitparse sometimes returns a string; try parsing it
         try:
             dt = datetime.datetime.fromisoformat(str(val))
             if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=datetime.timezone.utc)
+                dt = dt.replace(tzinfo=datetime.UTC)
             return dt
         except (ValueError, TypeError):
             return None

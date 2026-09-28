@@ -6,7 +6,6 @@ utilities for pool and open-water swimming.
 
 from __future__ import annotations
 
-
 # ---------------------------------------------------------------------------
 # Critical Swim Speed (CSS)
 # ---------------------------------------------------------------------------
@@ -41,9 +40,7 @@ def swim_css(t400_sec: float, t200_sec: float) -> float:
         If t400 <= t200 (the 400m must take longer than the 200m).
     """
     if t400_sec <= t200_sec:
-        raise ValueError(
-            f"400m time ({t400_sec}s) must be greater than 200m time ({t200_sec}s)"
-        )
+        raise ValueError(f"400m time ({t400_sec}s) must be greater than 200m time ({t200_sec}s)")
     if t200_sec <= 0:
         raise ValueError(f"200m time must be positive, got {t200_sec}s")
 

@@ -88,8 +88,7 @@ class TestCTLATLTSB:
         for i, (d, tss) in enumerate(sample_daily_tss):
             if tss == 0 and i > 5:
                 if result[i - 1]["atl"] > result[i - 1]["ctl"]:
-                    assert result[i]["tsb"] > result[i - 1]["tsb"], \
-                        "TSB should improve on rest day when fatigued"
+                    assert result[i]["tsb"] > result[i - 1]["tsb"], "TSB should improve on rest day when fatigued"
                 break
 
     def test_monotony_strain(self):

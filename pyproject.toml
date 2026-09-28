@@ -5,6 +5,8 @@ description = "Self-hosted endurance training companion: Garmin sync, analytics,
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [{ name = "louqash" }]
+keywords = ["garmin", "triathlon", "endurance", "training", "mcp", "claude", "duckdb"]
 requires-python = ">=3.12"
 dependencies = [
     # Core
@@ -42,7 +44,13 @@ dev = [
     "pytest>=8.0",
     "pytest-asyncio>=0.24",
     "pytest-cov>=6.0",
+    "ruff>=0.8",
 ]
+
+[project.urls]
+Homepage = "https://github.com/louqash/hart"
+Repository = "https://github.com/louqash/hart"
+Issues = "https://github.com/louqash/hart/issues"
 
 [project.scripts]
 hart = "hart.interfaces.cli.app:app"
@@ -64,6 +72,14 @@ pythonpath = ["src"]
 [tool.ruff]
 line-length = 120
 target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP"]
+# Long lines are left to the formatter (prompt strings and SQL stay readable); StrEnum isn't worth the churn.
+ignore = ["E501", "UP042"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["hart", "tests"]
 
 [tool.ruff.lint.per-file-ignores]
 # pytest fixtures imported from other test modules are "redefined" by the test parameters that use them.

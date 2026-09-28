@@ -42,18 +42,18 @@ GLOSSARY: dict[str, str] = {
     "sleep_chart": "Hours slept (bars) and Garmin's sleep score (line). Gaps are nights without the watch.",
     "weekly_volume": "Hours per week by sport (bars) and total weekly training load (line). Walks and hikes count as 'other'.",
     "coach_plan": "Your coach's sessions for this day, pasted or added on the Plan page — shown word for "
-                  "word. The coach's plan always takes priority over the suggestion.",
+    "word. The coach's plan always takes priority over the suggestion.",
     "suggestion": "Made by Ember from your readiness, the coach's plan, your season phase, this week's sessions "
-                  "and your notes. Code checks it afterwards against hard limits (red readiness means no hard "
-                  "sessions; note rules like 'swim only on Thursday'; comeback caps of 1.25x your longest recent "
-                  "session) and rejects it if it breaks any. Made each morning once sleep syncs (10:30 at the "
-                  "latest), and at 20:00 for tomorrow.",
+    "and your notes. Code checks it afterwards against hard limits (red readiness means no hard "
+    "sessions; note rules like 'swim only on Thursday'; comeback caps of 1.25x your longest recent "
+    "session) and rejects it if it breaks any. Made each morning once sleep syncs (10:30 at the "
+    "latest), and at 20:00 for tomorrow.",
     "health_checks": "Reminders computed from your results, season and notes: a blood panel every 6 months (plus "
-                     "one before Build and ~10 weeks before the A-race), follow-ups on results outside the lab range "
-                     "or close to a limit after a big change, re-checks planned in notes, markers not tested for a "
-                     "year (vitamin D timed for February–March), a pre-race medical exam with ECG, and physio "
-                     "check-ins for active injuries. Lab checks close themselves when newer results cover them.",
+    "one before Build and ~10 weeks before the A-race), follow-ups on results outside the lab range "
+    "or close to a limit after a big change, re-checks planned in notes, markers not tested for a "
+    "year (vitamin D timed for February–March), a pre-race medical exam with ECG, and physio "
+    "check-ins for active injuries. Lab checks close themselves when newer results cover them.",
     "lab_trends": "Each dot is one test; amber dots were outside the lab range or flagged. The shaded band is the "
-                  "lab's reference range from the latest test (ranges can differ between labs). Red/amber areas "
-                  "mark illness and injury periods.",
+    "lab's reference range from the latest test (ranges can differ between labs). Red/amber areas "
+    "mark illness and injury periods.",
 }

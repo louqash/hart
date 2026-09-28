@@ -44,16 +44,19 @@ def refresh_suggestions(request: Request, db: Database, dates: list[datetime.dat
     queued = []
     for d in suggestions.stale_for_plan(db, window):
         request.app.state.runner.enqueue(
-            "suggest", {"date": d.isoformat(), "kind": "manual", "trigger": "plan_changed"},
-            trigger="chain", dedupe_key=f"suggest:{d}",
+            "suggest",
+            {"date": d.isoformat(), "kind": "manual", "trigger": "plan_changed"},
+            trigger="chain",
+            dedupe_key=f"suggest:{d}",
         )
         queued.append(d.isoformat())
     return queued
 
 
 def enqueue_garmin(request: Request, planned_id: int) -> dict[str, Any]:
-    return request.app.state.runner.enqueue("garmin_workout", {"planned_id": planned_id}, trigger="manual",
-                                            dedupe_key=f"garmin_workout:{planned_id}")
+    return request.app.state.runner.enqueue(
+        "garmin_workout", {"planned_id": planned_id}, trigger="manual", dedupe_key=f"garmin_workout:{planned_id}"
+    )
 
 
 def _plan_error(exc: plan.PlanError) -> HTTPException:
@@ -76,17 +79,30 @@ def _claude(request: Request) -> Any:
 @router.get("/plan", response_class=HTMLResponse, include_in_schema=False)
 def plan_page(request: Request, db: Database = Depends(get_db), config=Depends(get_config)) -> HTMLResponse:
     today = data.local_today(config)
-    return page(request, "plan.html", {
-        "nav": "plan", "today": today, "tomorrow": today + datetime.timedelta(days=1),
-        "weeks": plan.calendar(db, today),
-        "suggestion": suggestions.dashboard_card(db, config),
-        "garmin_auto_send": garmin_workouts.auto_send(db),
-        "plan_proposals": data.rows(db, "SELECT id, kind, action, summary, reason, created_at FROM season_proposals "
-                                        "WHERE status = 'pending' AND kind = 'plan' ORDER BY id"),
-        "garmin_pending": {int(r[0].split(":")[1]) for r in db.fetchall(
-            "SELECT dedupe_key FROM jobs WHERE type = 'garmin_workout' AND status IN ('queued', 'running') "
-            "AND dedupe_key IS NOT NULL")},
-    })
+    return page(
+        request,
+        "plan.html",
+        {
+            "nav": "plan",
+            "today": today,
+            "tomorrow": today + datetime.timedelta(days=1),
+            "weeks": plan.calendar(db, today),
+            "suggestion": suggestions.dashboard_card(db, config),
+            "garmin_auto_send": garmin_workouts.auto_send(db),
+            "plan_proposals": data.rows(
+                db,
+                "SELECT id, kind, action, summary, reason, created_at FROM season_proposals "
+                "WHERE status = 'pending' AND kind = 'plan' ORDER BY id",
+            ),
+            "garmin_pending": {
+                int(r[0].split(":")[1])
+                for r in db.fetchall(
+                    "SELECT dedupe_key FROM jobs WHERE type = 'garmin_workout' AND status IN ('queued', 'running') "
+                    "AND dedupe_key IS NOT NULL"
+                )
+            },
+        },
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +111,12 @@ def plan_page(request: Request, db: Database = Depends(get_db), config=Depends(g
 
 
 @router.get("/api/plan")
-def api_plan(start: datetime.date | None = None, end: datetime.date | None = None,
-             db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+def api_plan(
+    start: datetime.date | None = None,
+    end: datetime.date | None = None,
+    db: Database = Depends(get_db),
+    config=Depends(get_config),
+) -> dict[str, Any]:
     today = data.local_today(config)
     start = start or data.monday(today)
     end = end or start + datetime.timedelta(days=20)
@@ -112,7 +132,9 @@ def api_create_plan(body: plan.PlanRowIn, request: Request, db: Database = Depen
 
 
 @router.put("/api/plan/{row_id}")
-def api_update_plan(row_id: int, body: plan.PlanRowIn, request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
+def api_update_plan(
+    row_id: int, body: plan.PlanRowIn, request: Request, db: Database = Depends(get_db)
+) -> dict[str, Any]:
     old = db.fetchone("SELECT date FROM planned_sessions WHERE id = ?", [row_id])
     try:
         plan.update_row(db, row_id, body)
@@ -132,8 +154,12 @@ def api_delete_plan(row_id: int, request: Request, db: Database = Depends(get_db
     refreshed = refresh_suggestions(request, db, [old[0]]) if old else []
     garmin = None
     if workout_id:
-        garmin = request.app.state.runner.enqueue("garmin_workout", {"delete_workout_id": workout_id},
-                                                  trigger="manual", dedupe_key=f"garmin_delete:{workout_id}")
+        garmin = request.app.state.runner.enqueue(
+            "garmin_workout",
+            {"delete_workout_id": workout_id},
+            trigger="manual",
+            dedupe_key=f"garmin_delete:{workout_id}",
+        )
     return {"deleted": row_id, "garmin": garmin, "suggestions_refreshed": refreshed}
 
 
@@ -169,15 +195,25 @@ async def api_parse_plan(body: ParseIn, request: Request) -> dict[str, Any]:
     try:
         with request.app.state.db.cursor() as cur:
             model = settings.get(cur, "model_parse")
-        result = await plan.parse_paste(_claude(request), model, body.text, data.local_today(config),
-                                        default_date=body.default_date)
+        result = await plan.parse_paste(
+            _claude(request), model, body.text, data.local_today(config), default_date=body.default_date
+        )
     except plan.PlanError as exc:
         raise _plan_error(exc) from exc
     with request.app.state.db.cursor() as cur:
         dates = sorted({s["date"] for s in result["sessions"]})
-        existing = {str(r[0]) for r in cur.fetchall(
-            "SELECT DISTINCT date FROM planned_sessions WHERE source = 'coach_import' AND date IN "
-            f"({', '.join('?' for _ in dates)})", dates)} if dates else set()
+        existing = (
+            {
+                str(r[0])
+                for r in cur.fetchall(
+                    "SELECT DISTINCT date FROM planned_sessions WHERE source = 'coach_import' AND date IN "
+                    f"({', '.join('?' for _ in dates)})",
+                    dates,
+                )
+            }
+            if dates
+            else set()
+        )
     result["dates_with_existing_import"] = sorted(existing)
     return result
 
@@ -186,8 +222,12 @@ async def api_parse_plan(body: ParseIn, request: Request) -> dict[str, Any]:
 def api_import_plan(body: ImportIn, request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
     result = plan.import_rows(db, body.sessions, body.replace_existing)
     for workout_id in result.pop("garmin_workouts_removed", []):
-        request.app.state.runner.enqueue("garmin_workout", {"delete_workout_id": workout_id},
-                                         trigger="manual", dedupe_key=f"garmin_delete:{workout_id}")
+        request.app.state.runner.enqueue(
+            "garmin_workout",
+            {"delete_workout_id": workout_id},
+            trigger="manual",
+            dedupe_key=f"garmin_delete:{workout_id}",
+        )
     result["suggestions_refreshed"] = refresh_suggestions(request, db, [s.date for s in body.sessions])
     return result
 
@@ -229,8 +269,9 @@ def api_suggestion(for_date: datetime.date, db: Database = Depends(get_db)) -> d
 
 
 @router.post("/api/suggestions/{for_date}/regenerate")
-def api_regenerate(for_date: datetime.date, request: Request, db: Database = Depends(get_db),
-                   config=Depends(get_config)) -> dict[str, Any]:
+def api_regenerate(
+    for_date: datetime.date, request: Request, db: Database = Depends(get_db), config=Depends(get_config)
+) -> dict[str, Any]:
     today = data.local_today(config)
     if not today - datetime.timedelta(days=1) <= for_date <= today + datetime.timedelta(days=7):
         raise HTTPException(400, detail="suggestions are made for yesterday to a week ahead")
@@ -238,8 +279,10 @@ def api_regenerate(for_date: datetime.date, request: Request, db: Database = Dep
     if race:
         raise HTTPException(400, detail=f"Race day — {race['name']}: no suggestion")
     return request.app.state.runner.enqueue(
-        "suggest", {"date": for_date.isoformat(), "kind": "manual", "trigger": "manual"},
-        trigger="manual", dedupe_key=f"suggest:{for_date}",
+        "suggest",
+        {"date": for_date.isoformat(), "kind": "manual", "trigger": "manual"},
+        trigger="manual",
+        dedupe_key=f"suggest:{for_date}",
     )
 
 
@@ -251,8 +294,16 @@ def api_accept(suggestion_id: int, request: Request, db: Database = Depends(get_
         raise HTTPException(404 if "not found" in str(exc) else 400, detail=str(exc)) from exc
     garmin = []
     if garmin_workouts.auto_send(db):
-        sendable = [r[0] for r in db.fetchall(
-            f"SELECT id FROM planned_sessions WHERE id IN ({', '.join('?' for _ in ids)}) AND sport_type IN ('run', 'bike')",
-            ids)] if ids else []
+        sendable = (
+            [
+                r[0]
+                for r in db.fetchall(
+                    f"SELECT id FROM planned_sessions WHERE id IN ({', '.join('?' for _ in ids)}) AND sport_type IN ('run', 'bike')",
+                    ids,
+                )
+            ]
+            if ids
+            else []
+        )
         garmin = [enqueue_garmin(request, i) for i in sendable]
     return {"planned_ids": ids, "garmin": garmin}

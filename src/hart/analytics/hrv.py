@@ -24,7 +24,6 @@ import math
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # RMSSD computation
 # ---------------------------------------------------------------------------
@@ -95,7 +94,7 @@ def rmssd(rr_intervals_ms: list[float]) -> float:
     if len(diffs) == 0:
         return 0.0
 
-    return float(np.sqrt(np.mean(diffs ** 2)))
+    return float(np.sqrt(np.mean(diffs**2)))
 
 
 def ln_rmssd(rr_intervals_ms: list[float]) -> float:
@@ -209,9 +208,7 @@ def hrv_trend_analysis(
           below the 30-day mean.
     """
     if len(dates) != len(hrv_values):
-        raise ValueError(
-            f"dates length ({len(dates)}) != hrv_values length ({len(hrv_values)})"
-        )
+        raise ValueError(f"dates length ({len(dates)}) != hrv_values length ({len(hrv_values)})")
 
     n = len(hrv_values)
     arr = np.array(hrv_values, dtype=np.float64)

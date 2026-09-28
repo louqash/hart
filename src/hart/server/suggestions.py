@@ -55,20 +55,29 @@ class SuggestedSession(BaseModel):
     title: str = Field(max_length=100)
     duration_min: int = Field(ge=5, le=480)
     intensity: Literal["recovery", "endurance", "tempo", "threshold", "vo2", "strength", "mixed"]
-    structure: str | None = Field(default=None, max_length=1500,
-                                  description="Steps, one per line (warm-up, main set, cool-down)")
-    garmin_text: str | None = Field(default=None, max_length=2500,
-                                    description="Bike sessions with power steps only: Garmin workout text")
+    structure: str | None = Field(
+        default=None, max_length=1500, description="Steps, one per line (warm-up, main set, cool-down)"
+    )
+    garmin_text: str | None = Field(
+        default=None, max_length=2500, description="Bike sessions with power steps only: Garmin workout text"
+    )
     rationale: str = Field(max_length=500)
 
 
 class SuggestionOutput(BaseModel):
-    week_review: str = Field(max_length=900, description=(
-        "Write this first. Go through training_history and week_targets against the weekly structure in the "
-        "athlete notes: what was done, what was missed or is still owed this week, and what that means for "
-        "the target date."))
-    changed_from_previous: str | None = Field(default=None, max_length=400, description=(
-        "Only when previous_suggestion exists: what you changed and why (null if you kept it)."))
+    week_review: str = Field(
+        max_length=900,
+        description=(
+            "Write this first. Go through training_history and week_targets against the weekly structure in the "
+            "athlete notes: what was done, what was missed or is still owed this week, and what that means for "
+            "the target date."
+        ),
+    )
+    changed_from_previous: str | None = Field(
+        default=None,
+        max_length=400,
+        description=("Only when previous_suggestion exists: what you changed and why (null if you kept it)."),
+    )
     recommendation: Recommendation
     sessions: list[SuggestedSession] = Field(default_factory=list, max_length=2)
     summary: str = Field(max_length=700)
@@ -131,9 +140,12 @@ def system_prompt(profile: dict[str, Any]) -> str:
     from hart.server.claude.prompts import coach_notes, data_notes
 
     # str.replace, not format: the Garmin rules contain braces.
-    return (_SYSTEM.replace("{name}", profile["name"]).replace("{coach_notes}", coach_notes(profile))
-            .replace("{data_notes}", data_notes(profile))
-            .replace("{garmin_rules}", garmin_rules() or "(not available — leave garmin_text null)"))
+    return (
+        _SYSTEM.replace("{name}", profile["name"])
+        .replace("{coach_notes}", coach_notes(profile))
+        .replace("{data_notes}", data_notes(profile))
+        .replace("{garmin_rules}", garmin_rules() or "(not available — leave garmin_text null)")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -156,8 +168,12 @@ def active_notes(db: Database, d: datetime.date) -> list[dict[str, Any]]:
 
 def _event_days(db: Database, since: datetime.date, until: datetime.date) -> set[datetime.date]:
     days: set[datetime.date] = set()
-    for a in rows(db, "SELECT start_date, end_date FROM annotations WHERE kind = 'event' AND start_date <= ? "
-                      "AND coalesce(end_date, ?) >= ?", [until, until, since]):
+    for a in rows(
+        db,
+        "SELECT start_date, end_date FROM annotations WHERE kind = 'event' AND start_date <= ? "
+        "AND coalesce(end_date, ?) >= ?",
+        [until, until, since],
+    ):
         d = max(a["start_date"], since)
         while d <= min(a["end_date"] or until, until):
             days.add(d)
@@ -220,24 +236,38 @@ def week_targets(db: Database, d: datetime.date, notes: list[dict[str, Any]]) ->
     days_after = 6 - d.weekday()
     out = []
     for sport, target in targets.items():
-        done_days = [r[0] for r in db.fetchall(
-            "SELECT CAST(start_time AS DATE) FROM activities WHERE sport_type = ? AND start_time >= ? "
-            "AND start_time < ? ORDER BY 1", [sport, start, d + DAY])]
+        done_days = [
+            r[0]
+            for r in db.fetchall(
+                "SELECT CAST(start_time AS DATE) FROM activities WHERE sport_type = ? AND start_time >= ? "
+                "AND start_time < ? ORDER BY 1",
+                [sport, start, d + DAY],
+            )
+        ]
         planned_later = db.fetchone(
             "SELECT count(*) FROM planned_sessions p WHERE p.sport_type = ? AND p.date > ? AND p.date < ? "
             "AND p.activity_id IS NULL AND NOT EXISTS (SELECT 1 FROM planned_sessions r WHERE r.replaces_id = p.id)",
-            [sport, d, start + 7 * DAY])[0]
+            [sport, d, start + 7 * DAY],
+        )[0]
         owed = max(0, int(target) - len(done_days) - planned_later)
         days = [x.lower()[:3] for x in preferred.get(sport, [])]
-        missed_days = [wd for wd in days if WEEKDAYS.index(wd) < d.weekday()
-                       and start + WEEKDAYS.index(wd) * DAY not in done_days]
-        out.append({
-            "sport": sport, "target_per_week": int(target), "done_this_week": len(done_days),
-            "done_on": done_days, "planned_later_this_week": planned_later, "still_owed": owed,
-            "days_left_after_target_date": days_after, "preferred_weekdays": days or None,
-            "preferred_days_missed": missed_days or None,
-            "required_today": owed > days_after,
-        })
+        missed_days = [
+            wd for wd in days if WEEKDAYS.index(wd) < d.weekday() and start + WEEKDAYS.index(wd) * DAY not in done_days
+        ]
+        out.append(
+            {
+                "sport": sport,
+                "target_per_week": int(target),
+                "done_this_week": len(done_days),
+                "done_on": done_days,
+                "planned_later_this_week": planned_later,
+                "still_owed": owed,
+                "days_left_after_target_date": days_after,
+                "preferred_weekdays": days or None,
+                "preferred_days_missed": missed_days or None,
+                "required_today": owed > days_after,
+            }
+        )
     return out
 
 
@@ -251,12 +281,19 @@ def training_history(db: Database, d: datetime.date, days: int = HISTORY_DAYS) -
         total = sum(v for v in zones.values() if v) if isinstance(zones, dict) else 0
         grade = s.get("grade") or {}
         item: dict[str, Any] = {
-            "date": s["date"], "weekday": s["date"].strftime("%a"), "sport": s["sport_type"], "indoor": s["indoor"],
-            "name": s["name"], "minutes": round((s["duration_s"] or 0) / 60), "load": s.get("load"),
+            "date": s["date"],
+            "weekday": s["date"].strftime("%a"),
+            "sport": s["sport_type"],
+            "indoor": s["indoor"],
+            "name": s["name"],
+            "minutes": round((s["duration_s"] or 0) / 60),
+            "load": s.get("load"),
             "avg_hr": s.get("avg_hr"),
             "hr_zones_pct": {z: round(100 * v / total) for z, v in sorted(zones.items()) if v} if total else None,
             "grade": grade.get("letter"),
-            "my_rpe": s.get("rpe"), "my_feel": s.get("feel"), "my_comment": s.get("comment"),
+            "my_rpe": s.get("rpe"),
+            "my_feel": s.get("feel"),
+            "my_comment": s.get("comment"),
         }
         if s["sport_type"] == "strength":
             summary = strength_summary(db, s) or {}
@@ -299,10 +336,14 @@ def previous_for(db: Database, d: datetime.date, bundle: dict[str, Any]) -> dict
     changed = [k for k in FINGERPRINT_SECTIONS if old.get(k) != bundle["fingerprint"].get(k)] if old else None
     return {
         "previous_suggestion": {
-            "version": prev["version"], "made_at": prev["created_at"], "recommendation": prev["recommendation"],
+            "version": prev["version"],
+            "made_at": prev["created_at"],
+            "recommendation": prev["recommendation"],
             "summary": prev["summary"],
-            "sessions": [{k: x.get(k) for k in ("sport_type", "title", "duration_min", "intensity")}
-                         for x in prev.get("sessions") or []],
+            "sessions": [
+                {k: x.get(k) for k in ("sport_type", "title", "duration_min", "intensity")}
+                for x in prev.get("sessions") or []
+            ],
         },
         "since_previous": {"changed": changed} if changed is not None else {"changed": "unknown (older version)"},
     }
@@ -310,9 +351,17 @@ def previous_for(db: Database, d: datetime.date, bundle: dict[str, Any]) -> dict
 
 def coach_plan_view(db: Database, d: datetime.date) -> list[dict[str, Any]]:
     """The coach's plan for a day as given to Claude (and stored in the suggestion's context)."""
-    return [{"sport_type": r["sport_type"], "title": r["title"], "duration_min": r["duration_min"],
-             "intensity": r["intensity"], "coach_text": r["description"], "source": r["source"]}
-            for r in coach_plan_for(db, d)]
+    return [
+        {
+            "sport_type": r["sport_type"],
+            "title": r["title"],
+            "duration_min": r["duration_min"],
+            "intensity": r["intensity"],
+            "coach_text": r["description"],
+            "source": r["source"],
+        }
+        for r in coach_plan_for(db, d)
+    ]
 
 
 def stale_for_plan(db: Database, dates: list[datetime.date]) -> list[datetime.date]:
@@ -320,7 +369,9 @@ def stale_for_plan(db: Database, dates: list[datetime.date]) -> list[datetime.da
     the one stored now (e.g. the coach sent tomorrow's session after 20:00)."""
     out = []
     for d in sorted(set(dates)):
-        latest_row = one(db, "SELECT context FROM daily_suggestions WHERE for_date = ? ORDER BY version DESC LIMIT 1", [d])
+        latest_row = one(
+            db, "SELECT context FROM daily_suggestions WHERE for_date = ? ORDER BY version DESC LIMIT 1", [d]
+        )
         if latest_row is None or pending(db, d) or race_on(db, d):
             continue
         context = latest_row["context"]
@@ -334,13 +385,15 @@ def race_on(db: Database, d: datetime.date) -> dict[str, Any] | None:
     race = one(db, "SELECT name, distance, priority FROM races WHERE race_date = ?", [d])
     if race:
         return race
-    phase = one(db, "SELECT name FROM training_phases WHERE phase_type = 'race' AND start_date <= ? "
-                    "AND end_date >= ?", [d, d])
+    phase = one(
+        db, "SELECT name FROM training_phases WHERE phase_type = 'race' AND start_date <= ? AND end_date >= ?", [d, d]
+    )
     return {"name": phase["name"], "distance": None, "priority": None} if phase else None
 
 
-def build_context(db: Database, config: HartSettings, for_date: datetime.date,
-                  kind: str) -> tuple[dict[str, Any], GuardContext]:
+def build_context(
+    db: Database, config: HartSettings, for_date: datetime.date, kind: str
+) -> tuple[dict[str, Any], GuardContext]:
     t = state.get_thresholds(db)
     today = local_today(config)
     readiness = readiness_on(db, for_date, t)
@@ -353,13 +406,25 @@ def build_context(db: Database, config: HartSettings, for_date: datetime.date,
     notes = active_notes(db, for_date)
     coach = coach_plan_for(db, for_date)
     targets = week_targets(db, for_date, notes)
-    injury_annotation = one(db, "SELECT label FROM annotations WHERE kind = 'injury' AND start_date <= ? "
-                                "AND (end_date IS NULL OR end_date >= ?)", [for_date, for_date])
+    injury_annotation = one(
+        db,
+        "SELECT label FROM annotations WHERE kind = 'injury' AND start_date <= ? "
+        "AND (end_date IS NULL OR end_date >= ?)",
+        [for_date, for_date],
+    )
     guard = GuardContext(
         date=for_date,
         readiness=readiness["level"],
-        coach_sessions=[{"sport_type": r["sport_type"], "duration_min": r["duration_min"],
-                         "intensity": r["intensity"], "title": r["title"]} for r in coach if r["sport_type"] != "rest"],
+        coach_sessions=[
+            {
+                "sport_type": r["sport_type"],
+                "duration_min": r["duration_min"],
+                "intensity": r["intensity"],
+                "title": r["title"],
+            }
+            for r in coach
+            if r["sport_type"] != "rest"
+        ],
         rules=[(n["title"], n["rules"]) for n in notes if n.get("rules")],
         week_counts=week_counts(db, for_date),
         comeback=bool(season["phase"] and season["phase"]["phase_type"] == "comeback"),
@@ -367,8 +432,9 @@ def build_context(db: Database, config: HartSettings, for_date: datetime.date,
         injury_active=bool(injury_annotation) or any(n["category"] == "injury" for n in notes),
         required_today={
             t["sport"]: f"{t['still_owed']} {t['sport']} session(s) still owed this week and "
-                        f"{t['days_left_after_target_date']} day(s) left after {for_date:%A}"
-            for t in targets if t["required_today"]
+            f"{t['days_left_after_target_date']} day(s) left after {for_date:%A}"
+            for t in targets
+            if t["required_today"]
         },
     )
     # A plan row "rest" still means the coach planned the day.
@@ -380,25 +446,41 @@ def build_context(db: Database, config: HartSettings, for_date: datetime.date,
     history = training_history(db, for_date)
 
     bundle = {
-        "target_date": for_date, "weekday": for_date.strftime("%A"), "kind": kind, "generated_for": basis,
+        "target_date": for_date,
+        "weekday": for_date.strftime("%A"),
+        "kind": kind,
+        "generated_for": basis,
         "readiness": {k: readiness.get(k) for k in ("level", "reason", "inputs", "hits")} | {"basis": basis},
         "coach_plan": coach_plan_view(db, for_date),
         "season": {
-            "phase": season["phase"], "observed_state": season["state"], "flags": season["flags"],
+            "phase": season["phase"],
+            "observed_state": season["state"],
+            "flags": season["flags"],
         },
         "training_history": history,
         "weekly_totals": weekly_totals(db, for_date),
         "week_targets": targets,
         "this_week": {
             "week_of": week_start,
-            "planned": [{"date": r["date"], "sport_type": r["sport_type"], "title": r["title"],
-                         "duration_min": r["duration_min"], "done": bool(r["activity_id"])}
-                        for r in rows(db, "SELECT * FROM planned_sessions WHERE date >= ? AND date <= ? ORDER BY date",
-                                      [week_start, week_start + 6 * DAY])],
+            "planned": [
+                {
+                    "date": r["date"],
+                    "sport_type": r["sport_type"],
+                    "title": r["title"],
+                    "duration_min": r["duration_min"],
+                    "done": bool(r["activity_id"]),
+                }
+                for r in rows(
+                    db,
+                    "SELECT * FROM planned_sessions WHERE date >= ? AND date <= ? ORDER BY date",
+                    [week_start, week_start + 6 * DAY],
+                )
+            ],
         },
         "done_on_target_date": [h for h in history if h["date"] == for_date],
-        "athlete_notes": [{"category": n["category"], "title": n["title"], "body": n["body"], "rules": n.get("rules")}
-                          for n in notes],
+        "athlete_notes": [
+            {"category": n["category"], "title": n["title"], "body": n["body"], "rules": n.get("rules")} for n in notes
+        ],
         "limits": limits(guard),
     }
     bundle["fingerprint"] = {k: _digest(bundle[k]) for k in FINGERPRINT_SECTIONS}
@@ -412,15 +494,17 @@ def build_context(db: Database, config: HartSettings, for_date: datetime.date,
 
 
 def _next_version(db: Database, for_date: datetime.date) -> int:
-    return db.fetchone("SELECT coalesce(max(version), 0) + 1 FROM daily_suggestions WHERE for_date = ?",
-                       [for_date])[0]
+    return db.fetchone("SELECT coalesce(max(version), 0) + 1 FROM daily_suggestions WHERE for_date = ?", [for_date])[0]
 
 
 def store(db: Database, for_date: datetime.date, fields: dict[str, Any]) -> int:
     version = _next_version(db, for_date)
     cols = ["for_date", "version", *fields]
-    values = [for_date, version, *[json.dumps(v, default=str) if isinstance(v, dict | list) else v
-                                   for v in fields.values()]]
+    values = [
+        for_date,
+        version,
+        *[json.dumps(v, default=str) if isinstance(v, dict | list) else v for v in fields.values()],
+    ]
     return db.fetchone(
         f"INSERT INTO daily_suggestions ({', '.join(cols)}) VALUES ({', '.join('?' for _ in cols)}) RETURNING id",
         values,
@@ -464,11 +548,20 @@ def generate(
     bundle, guard = build_context(db, config, for_date, kind)
     bundle["trigger"] = trigger
     facts = json.dumps(bundle, default=str, indent=1)
-    prompt = f"Suggest the training for {for_date.isoformat()} ({for_date.strftime('%A')}). Facts:\n```json\n{facts}\n```"
+    prompt = (
+        f"Suggest the training for {for_date.isoformat()} ({for_date.strftime('%A')}). Facts:\n```json\n{facts}\n```"
+    )
     spec = RunSpec(
-        purpose="suggest", prompt=prompt, model=settings.get(db, "model_suggest"), system_prompt=system_prompt(athlete_profile(db)),
-        prompt_version=SUGGEST_PROMPT_VERSION, policy=read_only_policy(), max_turns=12, timeout_s=300,
-        background=True, output_schema=SuggestionOutput.model_json_schema(),
+        purpose="suggest",
+        prompt=prompt,
+        model=settings.get(db, "model_suggest"),
+        system_prompt=system_prompt(athlete_profile(db)),
+        prompt_version=SUGGEST_PROMPT_VERSION,
+        policy=read_only_policy(),
+        max_turns=12,
+        timeout_s=300,
+        background=True,
+        output_schema=SuggestionOutput.model_json_schema(),
     )
 
     def run(s: RunSpec) -> RunOutcome:
@@ -486,8 +579,13 @@ def generate(
         violations = check(output.recommendation, [s.model_dump() for s in output.sessions], guard)
     if (output is None and outcome.status == "ok") or violations:
         problem = f"it broke these limits: {'; '.join(violations)}" if violations else f"it failed validation: {error}"
-        repair = RunSpec(**{**spec.__dict__, "resume": outcome.session_id,
-                            "prompt": f"Your previous answer was rejected because {problem}. Return a corrected suggestion."})
+        repair = RunSpec(
+            **{
+                **spec.__dict__,
+                "resume": outcome.session_id,
+                "prompt": f"Your previous answer was rejected because {problem}. Return a corrected suggestion.",
+            }
+        )
         outcome = run(repair)
         if outcome.status in ("usage_limited", "auth_failed"):
             pause_claude(db, outcome)
@@ -497,8 +595,9 @@ def generate(
 
     if output is None or violations:
         reason = ("guardrails: " + "; ".join(violations)) if violations else (error or outcome.error or "no output")
-        suggestion_id = store(db, for_date, {**base, "status": "failed", "error": reason[:1000],
-                                             "claude_run_id": outcome.run_id})
+        suggestion_id = store(
+            db, for_date, {**base, "status": "failed", "error": reason[:1000], "claude_run_id": outcome.run_id}
+        )
         return {"status": "failed", "suggestion_id": suggestion_id, "error": reason}
 
     bundle["week_review"] = output.week_review
@@ -508,10 +607,20 @@ def generate(
     for s in sessions:
         if s["sport_type"] != "bike":
             s["garmin_text"] = None
-    suggestion_id = store(db, for_date, {
-        **base, "recommendation": output.recommendation, "sessions": sessions, "cautions": output.cautions,
-        "summary": output.summary, "citations": citations, "status": "ok", "claude_run_id": outcome.run_id,
-    })
+    suggestion_id = store(
+        db,
+        for_date,
+        {
+            **base,
+            "recommendation": output.recommendation,
+            "sessions": sessions,
+            "cautions": output.cautions,
+            "summary": output.summary,
+            "citations": citations,
+            "status": "ok",
+            "claude_run_id": outcome.run_id,
+        },
+    )
     return {"status": "ok", "suggestion_id": suggestion_id, "recommendation": output.recommendation}
 
 
@@ -539,15 +648,22 @@ def get(db: Database, suggestion_id: int) -> dict[str, Any] | None:
 
 def latest(db: Database, for_date: datetime.date, *, ok_only: bool = False) -> dict[str, Any] | None:
     where = "AND status = 'ok'" if ok_only else ""
-    found = one(db, f"SELECT {COLUMNS} FROM daily_suggestions WHERE for_date = ? {where} ORDER BY version DESC LIMIT 1",
-                [for_date])
+    found = one(
+        db,
+        f"SELECT {COLUMNS} FROM daily_suggestions WHERE for_date = ? {where} ORDER BY version DESC LIMIT 1",
+        [for_date],
+    )
     if not found:
         return None
     s = _decode(found)
-    accepted = rows(db, "SELECT p.id, p.sport_type, p.garmin_status, p.garmin_error, "
-                        "EXISTS (SELECT 1 FROM jobs j WHERE j.dedupe_key = 'garmin_workout:' || p.id "
-                        "        AND j.status IN ('queued', 'running')) AS garmin_pending "
-                        "FROM planned_sessions p WHERE p.suggestion_id = ? ORDER BY p.id", [s["id"]])
+    accepted = rows(
+        db,
+        "SELECT p.id, p.sport_type, p.garmin_status, p.garmin_error, "
+        "EXISTS (SELECT 1 FROM jobs j WHERE j.dedupe_key = 'garmin_workout:' || p.id "
+        "        AND j.status IN ('queued', 'running')) AS garmin_pending "
+        "FROM planned_sessions p WHERE p.suggestion_id = ? ORDER BY p.id",
+        [s["id"]],
+    )
     s["accepted"] = [r["id"] for r in accepted]
     s["accepted_rows"] = accepted
     return s
@@ -565,8 +681,12 @@ def for_display(db: Database, for_date: datetime.date) -> dict[str, Any] | None:
 
 
 def pending(db: Database, for_date: datetime.date) -> bool:
-    return db.fetchone("SELECT 1 FROM jobs WHERE dedupe_key = ? AND status IN ('queued', 'running')",
-                       [f"suggest:{for_date}"]) is not None
+    return (
+        db.fetchone(
+            "SELECT 1 FROM jobs WHERE dedupe_key = ? AND status IN ('queued', 'running')", [f"suggest:{for_date}"]
+        )
+        is not None
+    )
 
 
 def accept(db: Database, suggestion_id: int) -> list[int]:
@@ -577,16 +697,24 @@ def accept(db: Database, suggestion_id: int) -> list[int]:
         raise ValueError("only free-choice, modified or replacement suggestions can be accepted")
     if db.fetchone("SELECT 1 FROM planned_sessions WHERE suggestion_id = ?", [suggestion_id]):
         raise ValueError("already accepted")
-    coach = [r for r in coach_plan_for(db, s["for_date"]) if r["replaced_by"] is None] \
-        if s["recommendation"] in ("modify", "replace") else []
+    coach = (
+        [r for r in coach_plan_for(db, s["for_date"]) if r["replaced_by"] is None]
+        if s["recommendation"] in ("modify", "replace")
+        else []
+    )
     ids = []
     for i, sess in enumerate(s["sessions"]):
         description = "\n\n".join(x for x in (sess.get("structure"), sess.get("rationale")) if x)
         new_id = create_row(
             db,
-            PlanRowIn(date=s["for_date"], sport_type=sess["sport_type"], title=sess["title"][:120],
-                      description=description or None, duration_min=sess["duration_min"],
-                      intensity=sess["intensity"]),
+            PlanRowIn(
+                date=s["for_date"],
+                sport_type=sess["sport_type"],
+                title=sess["title"][:120],
+                description=description or None,
+                duration_min=sess["duration_min"],
+                intensity=sess["intensity"],
+            ),
             "suggestion_accepted",
             replaces_id=coach[i]["id"] if i < len(coach) else None,
             suggestion_id=suggestion_id,
@@ -607,8 +735,12 @@ def local_now(config: HartSettings) -> datetime.datetime:
 
 
 def finals(db: Database, d: datetime.date) -> list[dict[str, Any]]:
-    return rows(db, "SELECT id, readiness, status, context->>'trigger' AS trigger FROM daily_suggestions "
-                    "WHERE for_date = ? AND kind = 'final' ORDER BY version", [d])
+    return rows(
+        db,
+        "SELECT id, readiness, status, context->>'trigger' AS trigger FROM daily_suggestions "
+        "WHERE for_date = ? AND kind = 'final' ORDER BY version",
+        [d],
+    )
 
 
 def should_generate_final(db: Database, d: datetime.date) -> bool:
@@ -646,8 +778,11 @@ def dashboard_card(db: Database, config: HartSettings) -> dict[str, Any]:
         if (plan and all(r["activity_id"] for r in plan)) or (not plan and done_training and latest(db, today)):
             key = plan[0]["activity_id"] if plan else done_training[0]["activity_id"]
             session = next((s for s in done if s["activity_id"] == key), done_training[0] if done_training else None)
-            card["done"] = {"activity_id": key, "name": session["name"] if session else None,
-                            "grade": (session or {}).get("grade")}
+            card["done"] = {
+                "activity_id": key,
+                "name": session["name"] if session else None,
+                "grade": (session or {}).get("grade"),
+            }
             card["tomorrow"] = latest(db, tomorrow, ok_only=True)
     card["suggestion"] = for_display(db, target)
     card["pending"] = pending(db, target)

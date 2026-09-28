@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import numpy as np
 
-
 # ---------------------------------------------------------------------------
 # Minetti cost-of-transport model
 # ---------------------------------------------------------------------------
@@ -134,16 +133,10 @@ def normalized_graded_pace(
     if not pace_series or not grade_series:
         return 0.0
     if len(pace_series) != len(grade_series):
-        raise ValueError(
-            f"pace_series length ({len(pace_series)}) != "
-            f"grade_series length ({len(grade_series)})"
-        )
+        raise ValueError(f"pace_series length ({len(pace_series)}) != grade_series length ({len(grade_series)})")
 
     # Step 1: compute GAP for each sample point.
-    gap_values = [
-        grade_adjusted_pace(p, g)
-        for p, g in zip(pace_series, grade_series)
-    ]
+    gap_values = [grade_adjusted_pace(p, g) for p, g in zip(pace_series, grade_series)]
 
     # Step 2: convert to speed (m/s) -- filter out zeros/invalid.
     speeds: list[float] = []

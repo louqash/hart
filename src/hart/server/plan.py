@@ -98,12 +98,16 @@ def calendar(db: Database, today: datetime.date, weeks: int = 3) -> list[dict[st
         days = []
         for i in range(7):
             d = start + (7 * w + i) * DAY
-            days.append({
-                "date": d, "is_today": d == today, "past": d < today,
-                "planned": by_day.get(d, []),
-                "unplanned": [a for a in done if a["date"] == d and a["activity_id"] not in matched],
-                "activities": [a for a in done if a["date"] == d],
-            })
+            days.append(
+                {
+                    "date": d,
+                    "is_today": d == today,
+                    "past": d < today,
+                    "planned": by_day.get(d, []),
+                    "unplanned": [a for a in done if a["date"] == d and a["activity_id"] not in matched],
+                    "activities": [a for a in done if a["date"] == d],
+                }
+            )
         out.append({"start": start + 7 * w * DAY, "days": days})
     return out
 
@@ -122,13 +126,28 @@ class PlanRowIn(BaseModel):
     intensity: Intensity | None = None
 
 
-def create_row(db: Database, row: PlanRowIn, source: str = "manual", *, replaces_id: int | None = None,
-               suggestion_id: int | None = None) -> int:
+def create_row(
+    db: Database,
+    row: PlanRowIn,
+    source: str = "manual",
+    *,
+    replaces_id: int | None = None,
+    suggestion_id: int | None = None,
+) -> int:
     new_id = db.fetchone(
         "INSERT INTO planned_sessions (date, sport_type, title, description, duration_min, intensity, source, "
         "replaces_id, suggestion_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING id",
-        [row.date, row.sport_type, row.title.strip(), (row.description or "").strip() or None, row.duration_min,
-         row.intensity, source, replaces_id, suggestion_id],
+        [
+            row.date,
+            row.sport_type,
+            row.title.strip(),
+            (row.description or "").strip() or None,
+            row.duration_min,
+            row.intensity,
+            source,
+            replaces_id,
+            suggestion_id,
+        ],
     )[0]
     auto_match(db, [row.date])
     return new_id
@@ -139,22 +158,36 @@ def update_row(db: Database, row_id: int, row: PlanRowIn) -> None:
     if old is None:
         raise PlanError("planned session not found")
     description = (row.description or "").strip() or None
-    before = db.fetchone("SELECT date, sport_type, title, description, duration_min, intensity FROM planned_sessions "
-                         "WHERE id = ?", [row_id])
+    before = db.fetchone(
+        "SELECT date, sport_type, title, description, duration_min, intensity FROM planned_sessions WHERE id = ?",
+        [row_id],
+    )
     db.execute(
         "UPDATE planned_sessions SET date = ?, sport_type = ?, title = ?, description = ?, duration_min = ?, "
         "intensity = ?, garmin_text = CASE WHEN ? THEN garmin_text ELSE NULL END, "
         "activity_id = CASE WHEN match_method = 'auto' THEN NULL ELSE activity_id END, "
         "match_method = CASE WHEN match_method = 'auto' THEN NULL ELSE match_method END WHERE id = ?",
-        [row.date, row.sport_type, row.title.strip(), description, row.duration_min, row.intensity,
-         description == old[1], row_id],
+        [
+            row.date,
+            row.sport_type,
+            row.title.strip(),
+            description,
+            row.duration_min,
+            row.intensity,
+            description == old[1],
+            row_id,
+        ],
     )
-    after = db.fetchone("SELECT date, sport_type, title, description, duration_min, intensity FROM planned_sessions "
-                        "WHERE id = ?", [row_id])
+    after = db.fetchone(
+        "SELECT date, sport_type, title, description, duration_min, intensity FROM planned_sessions WHERE id = ?",
+        [row_id],
+    )
     if before != after:
         # The workout on Garmin no longer matches the plan: offer a re-send.
-        db.execute("UPDATE planned_sessions SET garmin_status = 'outdated' WHERE id = ? AND garmin_workout_id IS NOT NULL",
-                   [row_id])
+        db.execute(
+            "UPDATE planned_sessions SET garmin_status = 'outdated' WHERE id = ? AND garmin_workout_id IS NOT NULL",
+            [row_id],
+        )
     auto_match(db, sorted({old[0], row.date}))
 
 
@@ -185,8 +218,9 @@ def link_activity(db: Database, row_id: int, activity_id: str | None) -> None:
         "WHERE activity_id = ? AND id <> ? AND match_method = 'auto'",
         [activity_id, row_id],
     )
-    db.execute("UPDATE planned_sessions SET activity_id = ?, match_method = 'manual' WHERE id = ?",
-               [activity_id, row_id])
+    db.execute(
+        "UPDATE planned_sessions SET activity_id = ?, match_method = 'manual' WHERE id = ?", [activity_id, row_id]
+    )
 
 
 def auto_match(db: Database, dates: list[datetime.date]) -> int:
@@ -205,22 +239,32 @@ def auto_match(db: Database, dates: list[datetime.date]) -> int:
         )
         if not planned:
             continue
-        taken = {r[0] for r in db.fetchall(
-            "SELECT activity_id FROM planned_sessions WHERE activity_id IS NOT NULL AND date = ?", [d])}
-        acts = [a for a in rows(
-            db,
-            "SELECT activity_id, sport_type, coalesce(moving_seconds, elapsed_seconds) AS seconds "
-            "FROM activities WHERE CAST(start_time AS DATE) = ?",
-            [d],
-        ) if a["activity_id"] not in taken]
+        taken = {
+            r[0]
+            for r in db.fetchall(
+                "SELECT activity_id FROM planned_sessions WHERE activity_id IS NOT NULL AND date = ?", [d]
+            )
+        }
+        acts = [
+            a
+            for a in rows(
+                db,
+                "SELECT activity_id, sport_type, coalesce(moving_seconds, elapsed_seconds) AS seconds "
+                "FROM activities WHERE CAST(start_time AS DATE) = ?",
+                [d],
+            )
+            if a["activity_id"] not in taken
+        ]
         for p in planned:
             candidates = [a for a in acts if a["sport_type"] == p["sport_type"]]
             if not candidates:
                 continue
             target = (p["duration_min"] or 0) * 60
             best = min(candidates, key=lambda a: abs((a["seconds"] or 0) - target) if target else 0)
-            db.execute("UPDATE planned_sessions SET activity_id = ?, match_method = 'auto' WHERE id = ?",
-                       [best["activity_id"], p["id"]])
+            db.execute(
+                "UPDATE planned_sessions SET activity_id = ?, match_method = 'auto' WHERE id = ?",
+                [best["activity_id"], p["id"]],
+            )
             acts.remove(best)
             linked += 1
     return linked
@@ -267,8 +311,9 @@ breaks). Include TSS/IF lines verbatim here but never interpret them.
 """
 
 
-async def parse_paste(claude: ClaudeRunner, model: str, text: str,
-                      today: datetime.date, default_date: datetime.date | None = None) -> dict[str, Any]:
+async def parse_paste(
+    claude: ClaudeRunner, model: str, text: str, today: datetime.date, default_date: datetime.date | None = None
+) -> dict[str, Any]:
     text = text.strip()
     if not text:
         raise PlanError("nothing to parse")
@@ -276,12 +321,22 @@ async def parse_paste(claude: ClaudeRunner, model: str, text: str,
         raise PlanError(f"paste is too long (max {MAX_PASTE_CHARS} characters) — paste one week at a time")
     spec = RunSpec(
         purpose="parse_plan",
-        prompt=(f"Reference date: {today.isoformat()} ({today.strftime('%A')}).\n"
-                + (f"Workouts the text doesn't date belong to {default_date.isoformat()} "
-                   f"({default_date.strftime('%A')}).\n" if default_date else "")
-                + f"\nPasted text:\n<<<\n{text}\n>>>"),
-        model=model, system_prompt=_PARSE_SYSTEM, prompt_version=PARSE_PROMPT_VERSION,
-        policy=ToolPolicy(allowed_mcp=frozenset(), web=False), max_turns=3, timeout_s=90,
+        prompt=(
+            f"Reference date: {today.isoformat()} ({today.strftime('%A')}).\n"
+            + (
+                f"Workouts the text doesn't date belong to {default_date.isoformat()} "
+                f"({default_date.strftime('%A')}).\n"
+                if default_date
+                else ""
+            )
+            + f"\nPasted text:\n<<<\n{text}\n>>>"
+        ),
+        model=model,
+        system_prompt=_PARSE_SYSTEM,
+        prompt_version=PARSE_PROMPT_VERSION,
+        policy=ToolPolicy(allowed_mcp=frozenset(), web=False),
+        max_turns=3,
+        timeout_s=90,
         output_schema=ParsedPlan.model_json_schema(),
     )
     outcome = await claude.run(spec)
@@ -291,8 +346,11 @@ async def parse_paste(claude: ClaudeRunner, model: str, text: str,
         parsed = ParsedPlan.model_validate(_structured_raw(outcome))
     except ValidationError as exc:
         raise PlanError(f"Couldn't read the plan: {str(exc)[:300]}") from exc
-    return {"sessions": [s.model_dump(mode="json") for s in parsed.sessions],
-            "warnings": parsed.warnings, "claude_run_id": outcome.run_id}
+    return {
+        "sessions": [s.model_dump(mode="json") for s in parsed.sessions],
+        "warnings": parsed.warnings,
+        "claude_run_id": outcome.run_id,
+    }
 
 
 def import_rows(db: Database, sessions: list[PlanRowIn], replace_existing: bool = True) -> dict[str, Any]:
@@ -304,19 +362,27 @@ def import_rows(db: Database, sessions: list[PlanRowIn], replace_existing: bool 
     garmin_removed: list[str] = []
     if replace_existing and dates:
         placeholders = ", ".join("?" for _ in dates)
-        old = [r[0] for r in db.fetchall(
-            f"SELECT id FROM planned_sessions WHERE source = 'coach_import' AND date IN ({placeholders}) "
-            "AND activity_id IS NULL", dates)]
+        old = [
+            r[0]
+            for r in db.fetchall(
+                f"SELECT id FROM planned_sessions WHERE source = 'coach_import' AND date IN ({placeholders}) "
+                "AND activity_id IS NULL",
+                dates,
+            )
+        ]
         for row_id in old:
             workout_id = delete_row(db, row_id)
             if workout_id:
                 garmin_removed.append(workout_id)
         removed = len(old)
-    ids = [db.fetchone(
-        "INSERT INTO planned_sessions (date, sport_type, title, description, duration_min, intensity, source) "
-        "VALUES (?, ?, ?, ?, ?, ?, 'coach_import') RETURNING id",
-        [s.date, s.sport_type, s.title.strip(), (s.description or "").strip() or None, s.duration_min, s.intensity],
-    )[0] for s in sessions]
+    ids = [
+        db.fetchone(
+            "INSERT INTO planned_sessions (date, sport_type, title, description, duration_min, intensity, source) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'coach_import') RETURNING id",
+            [s.date, s.sport_type, s.title.strip(), (s.description or "").strip() or None, s.duration_min, s.intensity],
+        )[0]
+        for s in sessions
+    ]
     auto_match(db, dates)
     return {"created": len(ids), "replaced": removed, "ids": ids, "garmin_workouts_removed": garmin_removed}
 
@@ -342,9 +408,14 @@ async def garmin_text(claude: ClaudeRunner, model: str, coach_text: str) -> str:
     if not rules:
         raise PlanError("Garmin formatter rules not found")
     spec = RunSpec(
-        purpose="garmin_text", prompt=f"Convert this workout:\n\n{coach_text.strip()}",
-        model=model, system_prompt=rules, prompt_version=GARMIN_PROMPT_VERSION,
-        policy=ToolPolicy(allowed_mcp=frozenset(), web=False), max_turns=2, timeout_s=120,
+        purpose="garmin_text",
+        prompt=f"Convert this workout:\n\n{coach_text.strip()}",
+        model=model,
+        system_prompt=rules,
+        prompt_version=GARMIN_PROMPT_VERSION,
+        policy=ToolPolicy(allowed_mcp=frozenset(), web=False),
+        max_turns=2,
+        timeout_s=120,
     )
     outcome = await claude.run(spec)
     if outcome.status != "ok":
@@ -353,4 +424,3 @@ async def garmin_text(claude: ClaudeRunner, model: str, coach_text: str) -> str:
     if not result:
         raise PlanError("Claude returned no workout text")
     return result
-
