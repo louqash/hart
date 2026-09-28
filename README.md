@@ -87,7 +87,7 @@ cp .env.example .env          # add GARMIN_EMAIL / GARMIN_PASSWORD, HART_TZ, HAR
 uv run hart-init-db
 uv run --extra auth playwright install chromium   # browser for the Garmin login (once)
 uv run --extra auth hart auth # one-time Garmin login in a browser
-uv run hart sync all          # pull the last 14 days
+uv run hart sync all --days 90   # load ~3 months of history (later syncs are automatic)
 HART_ENV=dev uv run hart serve
 ```
 
@@ -99,7 +99,7 @@ To run it for real — on a home server, reachable from your phone — see [docs
 
 **Tell it about yourself.** Ember and the suggestions know only what you tell hart: add notes on the
 Notes page (goals, injuries, constraints, baselines) or start from the files in [`examples/seed`](examples/seed),
-and set your name, coach platform and power meter on the Settings page.
+add your races on the Season page, and set your name, power meter and whether you have a coach on the Settings page.
 
 ## Documentation
 

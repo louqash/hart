@@ -4,7 +4,9 @@ A Discord bot (``DISCORD_BOT_TOKEN`` + ``DISCORD_CHANNEL_ID``) keeps a gateway
 connection open and listens in that channel. A message there that tags
 @Ember (a reply to the evening message included) opens a thread and a new
 Ember conversation; every message in the thread continues it, no tag needed.
-Untagged messages in the channel are left alone. The conversation is an ordinary chat
+Untagged messages in the channel are left alone. Direct messages need no tag:
+a DM continues one conversation until it has been quiet for six hours, or
+until you write "new". The conversation is an ordinary chat
 (same tools, same limits) and also appears on the Ember page.
 
 Only allowed Discord users are answered: ``HART_DISCORD_ALLOWED_USERS``, or by
@@ -17,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import datetime
 import logging
 import re
 from typing import Any
@@ -29,6 +32,9 @@ from hart.storage.database import Database
 logger = logging.getLogger(__name__)
 
 THREADS_KEY = "discord_threads"  # thread id → conversation id
+DMS_KEY = "discord_dms"  # DM channel id → the conversation it continues
+DM_IDLE = datetime.timedelta(hours=6)  # a DM after this long starts a new conversation
+NEW_COMMANDS = {"new", "/new", "reset", "new chat"}
 MESSAGE_LIMIT = 2000
 THREAD_NAME_LEN = 60
 
@@ -148,16 +154,35 @@ class DiscordChat:
         with contextlib.closing(self._db.cursor()) as cur:
             state.set_setting(cur, THREADS_KEY, threads)
 
+    def _dm_conversation(self, channel_id: int, fresh: bool) -> str:
+        """The conversation a DM continues: the last one, unless it has been idle for DM_IDLE."""
+        with contextlib.closing(self._db.cursor()) as cur:
+            dms = state.get_setting(cur, DMS_KEY, {}) or {}
+        conv = None if fresh else self._chat.get(dms.get(str(channel_id), ""))
+        if conv is not None:
+            updated = conv.get("updated_at")
+            if isinstance(updated, datetime.datetime):
+                if updated.tzinfo is None:
+                    updated = updated.replace(tzinfo=datetime.UTC)
+                if datetime.datetime.now(datetime.UTC) - updated < DM_IDLE:
+                    return conv["id"]
+        conv_id = self._chat.create(context_ref={"source": "discord", "label": "Discord (direct message)"})
+        dms[str(channel_id)] = conv_id
+        with contextlib.closing(self._db.cursor()) as cur:
+            state.set_setting(cur, DMS_KEY, dms)
+        return conv_id
+
     async def handle(self, message: Any) -> None:
         author = message.author
         if getattr(author, "bot", False) or getattr(message, "webhook_id", None):
             return
         channel = message.channel
+        is_dm = str(getattr(channel, "type", "")) == "private"
         in_thread = getattr(channel, "parent_id", None) == self._channel_id
-        if not in_thread and getattr(channel, "id", None) != self._channel_id:
+        if not (is_dm or in_thread) and getattr(channel, "id", None) != self._channel_id:
             return
-        if not in_thread and not self._asked(message):
-            return  # only answer in the channel when tagged; threads Ember started need no tag
+        if not (is_dm or in_thread) and not self._asked(message):
+            return  # only answer in the channel when tagged; DMs and Ember's threads need no tag
         if author.id not in self.allowed_users:
             logger.info("Discord: ignoring a message from user %s (not allowed)", author.id)
             return
@@ -165,7 +190,14 @@ class DiscordChat:
         if not text:
             return
 
-        if in_thread:
+        if is_dm:
+            fresh = text.lower().strip(" .!") in NEW_COMMANDS
+            conv_id = self._dm_conversation(channel.id, fresh)
+            if fresh:
+                await channel.send("Starting a new conversation — what's up?")
+                return
+            target = channel
+        elif in_thread:
             conv_id = self._threads().get(str(channel.id))
             if conv_id is None or self._chat.get(conv_id) is None:
                 return  # a thread hart didn't start
@@ -221,6 +253,7 @@ class DiscordBot:
 
         intents = discord.Intents.default()
         intents.message_content = True  # privileged: enable it on the bot's page in the developer portal
+        intents.dm_messages = True
         client = discord.Client(intents=intents, allowed_mentions=discord.AllowedMentions.none())
         self._client = client
 

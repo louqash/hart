@@ -44,17 +44,20 @@ def _get_db(config: HartSettings) -> Database:
     return open_local_db(config, console)
 
 
-def _sync_via_server(config: HartSettings) -> None:
+DAYS_HELP = "How many days back to fetch. Use e.g. 90 once to load your history (Garmin may rate-limit long runs)."
+
+
+def _sync_via_server(config: HartSettings, days: int) -> None:
     """Enqueue a manual sync on hart server and wait for it."""
     from hart.interfaces.cli import server_client
 
     try:
-        job = server_client.request(config, "POST", "/api/sync", {"full": True})
+        job = server_client.request(config, "POST", "/api/sync", {"full": True, "days": days})
         job_id = job["job_id"]
         if job["status"].startswith("already_"):
             console.print(f"[yellow]{job['message']}[/yellow] — waiting for it instead.")
         with console.status(f"Syncing on hart server (job #{job_id})..."):
-            final = server_client.wait_for_job(config, job_id)
+            final = server_client.wait_for_job(config, job_id, timeout_s=max(900, days * 20))
     except RuntimeError as exc:
         console.print(f"[red]Error:[/red] {exc}")
         raise typer.Exit(1) from exc
@@ -89,7 +92,7 @@ def _run_sync(days: int) -> None:
     """Run the canonical pipeline: through hart server if configured, else locally."""
     config = get_config()
     if config.server.server_url:
-        _sync_via_server(config)
+        _sync_via_server(config, days)
         return
 
     if not config.garmin.email or not config.garmin.password:
@@ -140,12 +143,12 @@ def _print_sync_summary(
 
 
 @sync_app.command("garmin")
-def sync_garmin() -> None:
+def sync_garmin(days: int = typer.Option(14, "--days", min=1, max=365, help=DAYS_HELP)) -> None:
     """Sync Garmin Connect and update all analytics (training load, recovery, anomalies).
 
     Uses hart server when HART_SERVER_URL is set.
     """
-    _run_sync(days=14)
+    _run_sync(days=days)
 
 
 @sync_app.command("fit")
@@ -606,7 +609,7 @@ def backfill_decoupling_cmd(
 
 
 @sync_app.command("all")
-def sync_all() -> None:
+def sync_all(days: int = typer.Option(14, "--days", min=1, max=365, help=DAYS_HELP)) -> None:
     """Sync Garmin data and update the analytics pipeline (same as `hart sync garmin`)."""
-    console.print(Panel("[bold cyan]Running full data sync[/bold cyan]", border_style="cyan"))
-    _run_sync(days=14)
+    console.print(Panel(f"[bold cyan]Running full data sync ({days} days)[/bold cyan]", border_style="cyan"))
+    _run_sync(days=days)

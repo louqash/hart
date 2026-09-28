@@ -406,6 +406,12 @@ class TestApp:
             time.sleep(0.05)
         assert status["status"] == "ok" and status["result"] == {"fake": True}
 
+    def test_sync_days_reach_the_job(self, client) -> None:
+        job = client.post("/api/sync", json={"full": True, "days": 90}, headers=WRITE).json()
+        assert client.get(f"/api/jobs/{job['job_id']}", headers=USER).json()["payload"] == {"manual": True, "days": 90}
+        too_long = client.post("/api/sync", json={"full": True, "days": 400}, headers=WRITE)
+        assert too_long.status_code == 422
+
     def test_system_page_renders(self, client) -> None:
         resp = client.get("/system", headers=USER)
         assert resp.status_code == 200 and "Sync now" in resp.text

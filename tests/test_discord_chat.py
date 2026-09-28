@@ -34,9 +34,10 @@ class Author:
 
 
 class Channel:
-    def __init__(self, id: int, parent_id: int | None = None) -> None:
+    def __init__(self, id: int, parent_id: int | None = None, type: str = "text") -> None:
         self.id = id
         self.parent_id = parent_id
+        self.type = type
         self.sent: list[str] = []
         self.history: dict[int, Any] = {}
 
@@ -185,3 +186,21 @@ def test_tagging_the_bots_role_counts(setup) -> None:
     other.guild, other.role_mentions = message.guild, [Author(556)]  # someone else's role
     asyncio.run(bot.handle(other))
     assert other.thread is None
+
+
+def test_direct_messages_need_no_tag_and_continue_one_conversation(setup) -> None:
+    bot, chat = setup
+    dm = Channel(500, type="private")
+    asyncio.run(bot.handle(Message(dm, "How did I sleep?", tagged=False)))
+    asyncio.run(bot.handle(Message(dm, "And the week before?", tagged=False)))
+    assert dm.sent == ["Your CTL is **20.1**.", "Your CTL is **20.1**."]
+    assert len(chat.list()) == 1 and len(chat.list()[0]["title"]) > 0
+
+    asyncio.run(bot.handle(Message(dm, "new", tagged=False)))  # a fresh conversation on request
+    assert dm.sent[-1].startswith("Starting a new conversation")
+    asyncio.run(bot.handle(Message(dm, "Plan for Sunday?", tagged=False)))
+    assert len(chat.list()) == 2
+
+    stranger = Message(Channel(501, type="private"), "hi", author=99, tagged=False)
+    asyncio.run(bot.handle(stranger))
+    assert not stranger.channel.sent  # DMs from anyone else are ignored

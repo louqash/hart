@@ -18,7 +18,7 @@ Variables are named `HART_*`.
 
 | Variable | What it is |
 |---|---|
-| `GARMIN_EMAIL`, `GARMIN_PASSWORD` | Garmin Connect login. After the first `hart auth` the OAuth tokens in `<data>/.garmin_tokens` are used; the password is only needed to refresh them. |
+| `GARMIN_EMAIL`, `GARMIN_PASSWORD` | Garmin Connect login. After `hart auth` the OAuth tokens in `<data>/.garmin_tokens` are used, so on a server the password can stay empty — `hart auth` from your laptop renews the tokens when Garmin logs you out. |
 | `HART_TZ` | Your time zone (e.g. `Europe/Berlin`). "Today", schedules and the evening message follow it. Default `UTC`. In Docker also set `TZ` to the same value. |
 
 ### Sign-in

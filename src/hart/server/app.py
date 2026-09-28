@@ -29,7 +29,7 @@ from hart.server.auth import AuthMiddleware
 from hart.server.chat import ChatService
 from hart.server.claude.runner import ClaudeRunner
 from hart.server.data import claude_status, claude_usage
-from hart.server.jobs.handlers import make_handlers
+from hart.server.jobs.handlers import MAX_SYNC_DAYS, make_handlers
 from hart.server.jobs.pipeline import has_sleep_for, row_dict
 from hart.server.jobs.runner import JobRunner
 from hart.server.jobs.scheduler import Scheduler, garmin_blocked, last_successful_sync
@@ -70,6 +70,7 @@ def _runner(request: Request) -> JobRunner:
 
 class SyncRequest(BaseModel):
     full: bool = True
+    days: int | None = Field(default=None, ge=1, le=MAX_SYNC_DAYS)  # history backfill: `hart sync all --days 90`
 
 
 class Vo2maxBackfillRequest(BaseModel):
@@ -388,7 +389,8 @@ def create_app(
     def api_sync(body: SyncRequest, request: Request) -> dict[str, Any]:
         # Manual syncs are allowed even while scheduled syncs are paused.
         job_type = "sync" if body.full else "sync_light"
-        return _runner(request).enqueue(job_type, {"manual": True}, trigger="manual", dedupe_key=job_type)
+        payload: dict[str, Any] = {"manual": True, **({"days": body.days} if body.days and body.full else {})}
+        return _runner(request).enqueue(job_type, payload, trigger="manual", dedupe_key=job_type)
 
     @app.post("/api/backfill/vo2max")
     def api_backfill_vo2max(body: Vo2maxBackfillRequest, request: Request) -> dict[str, Any]:

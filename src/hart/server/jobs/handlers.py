@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from hart.server.jobs.runner import JobRunner
 
 MANUAL_DAYS = 7
+MAX_SYNC_DAYS = 365  # a history backfill (`hart sync all --days N`); Garmin rate-limits long runs
 SCHEDULED_DAYS = 2
 MAX_BACKOFF_HOURS = 6
 
@@ -95,11 +96,23 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             result["suggestion_tomorrow"] = enqueue_suggestion(tomorrow, "preliminary", "sync")["status"]
 
     def sync(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
-        days = MANUAL_DAYS if payload.get("manual") else SCHEDULED_DAYS
+        days = payload.get("days") or (MANUAL_DAYS if payload.get("manual") else SCHEDULED_DAYS)
+        days = min(int(days), MAX_SYNC_DAYS)
         result = run_sync_pipeline(db, config, health_days=days, activity_days=days)
         apply_garmin_state(db, result["error_code"])
-        # New activities get graded (spec step 9), even after a partial sync.
-        enqueue_grades(result.get("new_activity_ids") or [], "sync")
+        # New activities get graded (spec step 9), even after a partial sync — but a history backfill
+        # grades only the last week, not months of old sessions (each grade is a Claude run).
+        new_ids = result.get("new_activity_ids") or []
+        if days > MANUAL_DAYS and new_ids:
+            since = datetime.date.today() - datetime.timedelta(days=MANUAL_DAYS)
+            new_ids = [
+                a
+                for a in new_ids
+                if db.fetchone(
+                    "SELECT 1 FROM activities WHERE activity_id = ? AND CAST(start_time AS DATE) >= ?", [a, since]
+                )
+            ]
+        enqueue_grades(new_ids, "sync")
 
         # Edited in Garmin after the session was graded: grade it again on the final data.
         # RPE/feel from Garmin only counts when there's no feedback given in the app (it wins).
