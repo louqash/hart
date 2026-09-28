@@ -97,21 +97,6 @@
   {% endif %}
 </section>
 
-<section class="card">
-  <h2 class="sunset">{{ icon("leaf") }}Changing Seasons <span class="plain">context</span></h2>
-  <div class="table-wrap"><table>
-    <tr><th>Kind</th><th>Label</th><th>From</th><th>To</th><th class="num">Source</th></tr>
-    {% for a in s.annotations %}
-    <tr><td><span class="kind {{ a.kind }}">{{ a.kind }}</span></td><td>{{ a.label }}</td>
-      <td class="dim">{{ a.start_date }}</td><td class="dim">{{ a.end_date or 'ongoing' }}</td><td class="source num">{{ a.source }}</td></tr>
-    {% else %}<tr><td colspan="5" class="empty">No annotations yet.</td></tr>{% endfor %}
-  </table></div>
-  {% if s.season_detection and s.season_detection.comeback_end %}
-  <div class="callout">{{ icon("tree") }}<div><strong>Healing roots:</strong> comeback phase ends
-    <strong style="color:var(--green)">{{ s.season_detection.comeback_end }}</strong> (return date + 8 weeks). Edit on the <a href="/season">Season</a> page.</div></div>
-  {% endif %}
-</section>
-
 <section class="card alt">
   <h2>{{ icon("list") }}Trail Crew <span class="plain">recent jobs</span></h2>
   <div class="table-wrap"><table>

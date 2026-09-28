@@ -33,7 +33,7 @@ from hart.server.jobs.handlers import make_handlers
 from hart.server.jobs.pipeline import has_sleep_for, row_dict
 from hart.server.jobs.runner import JobRunner
 from hart.server.jobs.scheduler import Scheduler, garmin_blocked, last_successful_sync
-from hart.server.seed import SEASON_DETECTION_KEY, seed_all
+from hart.server.seed import seed_all
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
@@ -232,13 +232,6 @@ def build_system(db: Database, config: HartSettings, runner: JobRunner) -> dict[
             "proposed_notes": count("SELECT count(*) FROM athlete_notes WHERE status = 'proposed'"),
             "annotations": count("SELECT count(*) FROM annotations"),
         },
-        "season_detection": state.get_setting(db, SEASON_DETECTION_KEY),
-        "annotations": [
-            {"kind": r[0], "label": r[1], "start_date": r[2], "end_date": r[3], "source": r[4]}
-            for r in db.fetchall(
-                "SELECT kind, label, start_date, end_date, source FROM annotations ORDER BY start_date"
-            )
-        ],
         "jobs": [{**j, "details": job_details(j)} for j in runner.list_jobs(limit=30)],
         "claude": claude_status(db, config, _local_today(config)),
         "claude_usage": claude_usage(db, _local_today(config)),
