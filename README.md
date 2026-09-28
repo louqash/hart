@@ -1,4 +1,8 @@
-# hart
+<p align="center">
+  <img src="src/hart/server/web/static/favicon.svg" width="96" height="96" alt="hart logo: a pine tree">
+</p>
+
+<h1 align="center">hart</h1>
 
 **A self-hosted training companion for endurance athletes.** hart syncs your Garmin data, turns it into
 training load, readiness and trends, grades every session, suggests the next day's training around your
