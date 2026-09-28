@@ -109,6 +109,9 @@ def build(db: Any, config: HartSettings) -> str:
         warnings.append(f"{al['health_overdue']} health check(s) due")
     if al.get("proposed_notes"):
         warnings.append(f"{al['proposed_notes']} note(s) waiting for approval")
+    problem = (al.get("claude") or {}).get("problem") or {}
+    if problem.get("status") == "auth_failed":
+        warnings.append("Claude can't sign in — renew the token (`claude setup-token`)")
     if (al.get("claude") or {}).get("token_warning"):
         warnings.append(f"Claude token expires {al['claude']['token_expires']}")
     if warnings:

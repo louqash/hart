@@ -12,6 +12,16 @@ you). Your data stays in one DuckDB file on your machine.
 > hart is a personal project, built for one athlete's triathlon training and shared as-is. It works for
 > running, cycling, swimming and strength; it isn't medical advice and doesn't replace a coach.
 
+![Today: target race, fitness and fatigue, recovery, and the day's suggestion](docs/images/today.webp)
+
+<p align="center">
+  <img src="docs/images/today-phone.webp" width="260" alt="Today on a phone: the day's suggestion first">
+  &nbsp;&nbsp;
+  <img src="docs/images/ember-phone.webp" width="260" alt="Ember answering a question about the athlete's data">
+</p>
+
+<sub>Screenshots use the fictional demo athlete from <code>hart demo</code>.</sub>
+
 ## What it does
 
 | | |
@@ -26,6 +36,14 @@ you). Your data stays in one DuckDB file on your machine.
 | **Ember** | Chat with an AI coach-analyst that reads your data through hart's tools, never invents numbers, and proposes changes (notes, plan, season, health checks) that you approve. |
 | **Evening message** | Tomorrow's plan and suggestion, today's sessions and open alerts, in Discord at the time you choose. |
 
+| Session grade and side-by-side | Daily suggestion around the coach's plan |
+|---|---|
+| ![A session graded B with execution, response and context scores, compared with a similar ride](docs/images/session.webp) | ![Next Steps: a suggested easy run with structure, rationale and cautions](docs/images/plan.webp) |
+| **Strength progression** | **Fitness, fatigue and form over the season** |
+| ![Deadlift top sets and estimated 1-rep max over six months](docs/images/strength.webp) | ![Performance-management chart with a cold and a training camp marked](docs/images/fitness.webp) |
+| **Health checks from lab results** | |
+| ![Reminders: a blood panel due, a vitamin D follow-up, a planned TSH re-check, a physio check-in](docs/images/health.webp) | |
+
 **Suggestions follow hard rules.** Code, not the model, checks every suggestion: no hard sessions on a red
 readiness day, the limits in your notes ("swim only on Thursday", weekly strength sessions), comeback
 duration caps and your coach's plan. A suggestion that breaks one is repaired or not shown.
@@ -34,6 +52,18 @@ duration caps and your coach's plan. A suggestion that breaks one is repaired or
 through the Claude Agent SDK with a token from `claude setup-token` — no API key and no per-token bill. Claude only
 sees your data through hart's read tools, can't touch files or run commands, and web search (optional,
 per chat) is filtered so your data never leaves in a query. See [docs/security.md](docs/security.md).
+
+## Try it with demo data
+
+No Garmin account needed — `hart demo` creates a database with six months of a fictional athlete's training,
+health, strength and lab data (syncs and Claude stay off for it):
+
+```bash
+git clone https://github.com/louqash/hart.git && cd hart
+uv sync
+uv run hart demo
+HART_ENV=dev HART_DB_PATH=data/demo.duckdb uv run hart serve   # http://127.0.0.1:8765
+```
 
 ## Quick start
 
@@ -45,6 +75,7 @@ git clone https://github.com/louqash/hart.git && cd hart
 uv sync --extra dev
 cp .env.example .env          # add GARMIN_EMAIL / GARMIN_PASSWORD, HART_TZ, HART_ATHLETE_NAME
 uv run hart-init-db
+uv run --extra auth playwright install chromium   # browser for the Garmin login (once)
 uv run --extra auth hart auth # one-time Garmin login in a browser
 uv run hart sync all          # pull the last 14 days
 HART_ENV=dev uv run hart serve

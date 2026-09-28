@@ -19,7 +19,8 @@
           title="Observed from your load curve (provisional thresholds)">{{ s.state.label }}{% if s.state.ramp_7d is not none %} · ramp {{ '%+.1f'|format(s.state.ramp_7d) }}/wk{% endif %}</span>{{ tip("state") }}
   </div>
   <div class="row">
-    {% if d.sync_age_minutes is none %}<span class="small err">never synced</span>
+    {% if d.demo %}<span class="small muted">demo data</span>
+    {% elif d.sync_age_minutes is none %}<span class="small err">never synced</span>
     {% elif d.sync_age_minutes > 1440 %}<span class="small err">synced {{ (d.sync_age_minutes / 1440)|round|int }} d ago</span>
     {% elif d.sync_age_minutes > 180 %}<span class="small warn">synced {{ (d.sync_age_minutes / 60)|round|int }} h ago</span>
     {% else %}<span class="small muted">synced {{ d.sync_age_minutes }} min ago</span>{% endif %}

@@ -84,6 +84,11 @@ HART_SERVER_URL=https://hart.<tailnet>.ts.net uv run --extra auth hart auth
 `hart auth` opens a browser, saves the Garmin tokens, and — with `HART_SERVER_URL` set — uploads them to the
 server, which resumes syncing. If Garmin ever logs you out, the dashboard says so; run the same command again.
 
+Garmin's login is behind Cloudflare, which temporarily blocks an IP address after too many logins in a short
+time ("Error 1015 — you are being rate limited"). `hart auth` recognises that page and stops. Wait an hour or
+two before trying again, since each attempt extends the block. Your server usually shares your home IP, so its
+syncs may pause too; they back off and resume on their own.
+
 ## 6. First sync and your phone
 
 Open hart, press **Sync** (or wait for the hourly sync). The first sync pulls the last 14 days; for more

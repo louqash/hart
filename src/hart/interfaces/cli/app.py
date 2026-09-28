@@ -167,7 +167,12 @@ def auth() -> None:
         from garminconnect import Garmin  # type: ignore[import-untyped]
 
         # Use Playwright to complete the browser login and capture the ticket
-        ticket = _playwright_garmin_login(config, signin_url)
+        try:
+            ticket = _playwright_garmin_login(config, signin_url)
+        except Exception as exc:
+            if "Executable doesn't exist" not in str(exc) or not _install_browser():
+                raise
+            ticket = _playwright_garmin_login(config, signin_url)  # browser just installed: try once more
 
         # Exchange CAS ticket for OAuth tokens via garminconnect's client
         console.print("[dim]Exchanging ticket for session tokens...[/dim]")
@@ -186,9 +191,28 @@ def auth() -> None:
     except KeyboardInterrupt:
         console.print("\n[yellow]Authentication cancelled.[/yellow]")
         raise typer.Exit(1)
-    except Exception as exc:
-        console.print(f"\n[red]Authentication failed:[/red] {exc}")
+    except GarminBlocked as exc:
+        console.print(f"\n[yellow]Garmin blocked the login:[/yellow] {exc}")
         raise typer.Exit(1)
+    except Exception as exc:
+        message = str(exc)
+        if "Executable doesn't exist" in message:
+            message = ("Playwright's browser isn't installed. Run "
+                       "[cyan]uv run --extra auth playwright install chromium[/cyan] and try again.")
+        console.print(f"\n[red]Authentication failed:[/red] {message}")
+        raise typer.Exit(1)
+
+
+def _install_browser() -> bool:
+    """Offer to download Playwright's Chromium (needed once for `hart auth`)."""
+    import subprocess
+    import sys
+
+    console.print("\n[yellow]The browser used for the Garmin login isn't installed yet.[/yellow]")
+    if not typer.confirm("Download Chromium for Playwright now (about 150 MB)?", default=True):
+        return False
+    result = subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=False)
+    return result.returncode == 0
 
 
 def _upload_garmin_tokens(config: HartSettings, token_path: Path) -> None:
@@ -210,6 +234,27 @@ def _upload_garmin_tokens(config: HartSettings, token_path: Path) -> None:
     )
 
 
+class GarminBlocked(Exception):
+    """Garmin's SSO (behind Cloudflare) is refusing logins from this IP for a while."""
+
+
+_BLOCK_MARKERS = ("error 1015", "you are being rate limited", "too many requests")
+
+
+def _check_not_blocked(page: Any) -> None:
+    try:
+        text = page.inner_text("body", timeout=2_000).lower()
+    except Exception:
+        return
+    if any(marker in text for marker in _BLOCK_MARKERS):
+        raise GarminBlocked(
+            "Garmin is temporarily blocking logins from your network (Cloudflare 1015 / rate limit). "
+            "This usually lifts within an hour or two. Don't retry until then — every attempt submits "
+            "another login and extends the block. Your server shares your home IP, so its syncs may "
+            "pause too; it backs off on its own."
+        )
+
+
 def _playwright_garmin_login(config: HartSettings, signin_url: str) -> str:
     """Open a browser for Garmin SSO login, return the CAS ticket."""
     import re
@@ -226,6 +271,7 @@ def _playwright_garmin_login(config: HartSettings, signin_url: str) -> str:
         page = context.new_page()
         page.goto(signin_url)
         page.wait_for_load_state("networkidle")
+        _check_not_blocked(page)
 
         # Pre-fill credentials if configured
         if config.garmin.email:
@@ -263,9 +309,15 @@ def _playwright_garmin_login(config: HartSettings, signin_url: str) -> str:
         page.on("request", _on_request)
 
         # Wait until we capture a ticket or the page lands on Connect
-        for _ in range(240):  # 2 minutes max
+        for i in range(240):  # 2 minutes max
             if captured_ticket:
                 break
+            if i % 10 == 9:  # every 5 s: stop early if Garmin shows its rate-limit page
+                try:
+                    _check_not_blocked(page)
+                except GarminBlocked:
+                    browser.close()
+                    raise
             page.wait_for_timeout(500)
 
         browser.close()
@@ -420,6 +472,20 @@ def serve(
         port=port or config.server.port,
         workers=1,
         log_level="info",
+    )
+
+
+@app.command("demo")
+def demo(
+    db_path: Annotated[Path, typer.Option("--db", help="Where to create the demo database.")] = Path("data/demo.duckdb"),
+) -> None:
+    """Create a demo database with a fictional athlete (six months of data) to try hart."""
+    from hart.demo import build
+
+    out = build(db_path.resolve())
+    console.print(
+        f"[green]Demo database created[/green] at [cyan]{out['path']}[/cyan] ({out['activities']} sessions).\n"
+        f"Start it with: [cyan]HART_ENV=dev HART_DB_PATH={db_path} uv run hart serve[/cyan]"
     )
 
 

@@ -29,6 +29,11 @@ Handler = Callable[[Database, dict[str, Any]], dict[str, Any] | None]
 LANES: dict[str, str] = {"grade": "claude", "suggest": "claude", "garmin_workout": "claude"}  # everything else: "io"
 
 
+# Jobs that reach Garmin, Claude or Discord: refused on a `hart demo` database.
+DEMO_BLOCKED = frozenset({"sync", "sync_light", "grade", "suggest", "garmin_workout", "evening_message",
+                          "vo2max_backfill"})
+
+
 def lane_of(job_type: str) -> str:
     return LANES.get(job_type, "io")
 
@@ -237,6 +242,10 @@ class JobRunner:
             )
             status, error, result = "ok", None, None
             try:
+                from hart.server import state
+
+                if job["type"] in DEMO_BLOCKED and state.is_demo(cur):
+                    raise JobFailed("Demo database: syncs, Claude runs and Garmin uploads are turned off")
                 result = self._handlers[job["type"]](cur, job["payload"] or {})
             except JobFailed as exc:
                 status, error, result = "error", str(exc), exc.result

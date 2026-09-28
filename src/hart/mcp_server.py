@@ -454,9 +454,12 @@ def get_strength_history(
 ) -> str:
     """Strength-training history: sessions and per-exercise progression.
 
-    Returns every strength session in the window and, per exercise, each
+    Returns every strength session in the window and, per lift, each
     session's individual sets (reps × weight, in order) so progression can be
-    read set by set.
+    read set by set. Lifts are grouped like on the Strength page: Garmin's
+    exercise and category-only names for the same lift are merged (e.g.
+    "Barbell Deadlift" and "Deadlift"), plus any merges the athlete made;
+    ``recorded_as`` lists the names Garmin actually stored.
 
     Parameters:
         days_back: How many days of history to include (default 180).
@@ -464,9 +467,11 @@ def get_strength_history(
             (e.g. "deadlift", "calf_raise"). Empty for all exercises.
     """
     try:
-        from hart.analytics.strength import exercise_label
+        from hart.analytics.strength import exercise_label as recorded_label
+        from hart.analytics.strength_progress import exercise_key, exercise_label, load_aliases
 
         db = _get_db()
+        aliases = load_aliases(db)
         start = datetime.date.today() - datetime.timedelta(days=days_back)
 
         sessions = db.fetchdf(
@@ -480,19 +485,25 @@ def get_strength_history(
             [start],
         ).to_dict(orient="records")
 
-        pattern = f"%{exercise.strip().replace(' ', '_')}%" if exercise.strip() else "%"
         rows = db.fetchall(
             "SELECT CAST(a.start_time AS DATE) AS date, s.exercise_category, s.exercise_name, "
             "s.repetitions, s.weight_kg, ROUND(s.duration_sec) AS duration_sec "
             "FROM strength_sets s JOIN activities a USING (activity_id) "
             "WHERE s.set_type = 'active' AND CAST(a.start_time AS DATE) >= ? "
-            "AND (COALESCE(s.exercise_name, '') ILIKE ? OR COALESCE(s.exercise_category, '') ILIKE ?) "
             "ORDER BY a.start_time, s.set_index",
-            [start, pattern, pattern],
+            [start],
         )
-        progression: dict[str, list[dict[str, Any]]] = {}
+        needle = exercise.strip().lower().replace(" ", "_")
+        progression: dict[str, dict[str, Any]] = {}
         for d, cat, name, reps, kg, dur in rows:
-            history = progression.setdefault(exercise_label(cat, name), [])
+            key = exercise_key(name, cat, aliases) or (name or cat or "unknown")
+            if needle and not any(needle in (x or "").lower() for x in (key, name, cat)):
+                continue
+            lift = progression.setdefault(exercise_label(key), {"recorded_as": [], "sessions": []})
+            recorded = recorded_label(cat, name)
+            if recorded not in lift["recorded_as"]:
+                lift["recorded_as"].append(recorded)
+            history = lift["sessions"]
             if not history or history[-1]["date"] != d:
                 history.append({"date": d, "sets": []})
             history[-1]["sets"].append(

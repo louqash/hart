@@ -125,6 +125,8 @@ class Scheduler:
     def on_startup(self) -> None:
         now = datetime.datetime.now(tz=datetime.timezone.utc)
         with contextlib.closing(self._db.cursor()) as cur:
+            if state.is_demo(cur):
+                return
             last = last_successful_sync(cur)
             if garmin_blocked(cur, now):
                 return
@@ -139,6 +141,9 @@ class Scheduler:
         local = now_utc.astimezone(self._tz)
         today = local.date()
         fired: list[str] = []
+        with contextlib.closing(self._db.cursor()) as cur:
+            if state.is_demo(cur):
+                return fired
 
         sweep_slot = f"sweep:{today}:{local.hour}"
         if sweep_slot not in self._fired:

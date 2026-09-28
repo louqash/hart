@@ -283,9 +283,16 @@ def create_app(
         db = Database(config.db_path).connect()
         with contextlib.closing(db.cursor()) as cur:
             try:
-                seed_all(cur, config.server.seed_dir)
+                # A `hart demo` database never reads seed files: they may hold real data.
+                if not state.is_demo(cur):
+                    seed_all(cur, config.server.seed_dir)
             except Exception:  # noqa: BLE001 — seeding must never block startup
                 logger.exception("Seeding failed")
+            # A restart is when a renewed Claude token arrives: don't keep background work paused
+            # for an old auth failure or usage limit (a still-bad token just pauses it again).
+            from hart.server.grading import CLAUDE_PAUSED_UNTIL
+
+            state.delete_setting(cur, CLAUDE_PAUSED_UNTIL)
 
         runner_ref: dict[str, JobRunner] = {}
         runner = JobRunner(db, handlers or make_handlers(config, runner_ref))

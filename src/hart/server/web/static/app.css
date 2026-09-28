@@ -370,7 +370,8 @@ details[open] > summary { margin-bottom: 8px; }
   .messages { padding: 16px; max-height: none; }
   .chat-panel { min-height: 70vh; }
   .bubble { max-width: 94%; }
-  .chat-head { padding: 14px 16px; }
+  .chat-head { padding: 14px 16px; flex-wrap: wrap; gap: 10px 14px; }
+  .chat-head .chat-head-text { flex-basis: calc(100% - 64px); }  /* title beside the badge; model picker on the next line */
 }
 
 /* ---- ⓘ metric tips ---- */
@@ -505,3 +506,4 @@ table.compare th a { color: var(--muted); }
 .setting-label .small.faint { flex-basis: 100%; }
 .setting-input select, .setting-input input:not([type=checkbox]) { width: 100%; }
 @media (max-width: 600px) { .setting { grid-template-columns: 1fr; gap: 6px; } }
+.chat-head-text { flex: 1; min-width: 0; }

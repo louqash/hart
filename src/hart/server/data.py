@@ -429,7 +429,9 @@ def header_status(db: Database, config: HartSettings) -> dict[str, Any]:
     blocked = garmin_blocked(db, now)
     last = last_successful_sync(db)
     age_h = None if last is None else (now - last).total_seconds() / 3600
-    if blocked == "garmin_auth":
+    if state.is_demo(db):
+        level, text, detail = "warn", "Demo data", "A fictional athlete — syncs and Claude are off (hart demo)"
+    elif blocked == "garmin_auth":
         level, text, detail = "err", "Garmin login expired", "Scheduled syncs are paused until `hart auth` runs"
     elif last is None or (age_h is not None and age_h > 24):
         level, text, detail = "err", "Sync stale", "No successful sync in over 24 hours"
@@ -479,6 +481,7 @@ def build_dashboard(db: Database, config: HartSettings) -> dict[str, Any]:
         "suggest": suggestions.dashboard_card(db, config),
         "last_successful_sync": last_sync,
         "sync_age_minutes": age,
+        "demo": state.is_demo(db),
     }
 
 

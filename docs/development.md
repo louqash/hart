@@ -9,6 +9,10 @@ uv run hart-init-db
 HART_ENV=dev uv run hart serve  # http://127.0.0.1:8765, no sign-in
 ```
 
+`uv run hart demo` creates `data/demo.duckdb` with a fictional athlete — run the server with
+`HART_DB_PATH=data/demo.duckdb` to work on the UI with realistic data (syncs, Claude and seed files are off for
+a demo database). The README screenshots come from it.
+
 With an empty database most pages show empty states; `uv run hart sync all` fills it from Garmin, or
 `uv run hart import <garmin-export.zip>` from FIT files. Seed files from `examples/seed` (copy them to
 `data/seed`) add a race, notes and lab results.

@@ -153,3 +153,18 @@ def test_edited_rpe_and_feel_are_refreshed(db: Database, monkeypatch) -> None:
     answers["777"] = {}  # Garmin didn't answer properly: keep what we have
     assert manager.refresh_recent_effort(days=3) == []
     assert db.fetchone("SELECT rpe, feel FROM activities WHERE activity_id = 'run'") == (40, 75)
+
+
+def test_auth_detects_garmin_rate_limit_page() -> None:
+    from hart.interfaces.cli.app import GarminBlocked, _check_not_blocked
+
+    class Page:
+        def __init__(self, text: str) -> None:
+            self.text = text
+
+        def inner_text(self, selector: str, timeout: int) -> str:
+            return self.text
+
+    _check_not_blocked(Page("Sign in to Garmin Connect"))  # normal page: no error
+    with pytest.raises(GarminBlocked, match="1015"):
+        _check_not_blocked(Page("Error 1015 Ray ID: x • You are being rate limited"))
