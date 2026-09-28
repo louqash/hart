@@ -131,7 +131,12 @@ class DiscordChat:
             return False
         mentioned = {getattr(u, "id", None) for u in getattr(message, "mentions", None) or []}
         content = message.content or ""
-        return self.bot_user_id in mentioned or any(f"<@{p}{self.bot_user_id}>" in content for p in ("", "!"))
+        if self.bot_user_id in mentioned or any(f"<@{p}{self.bot_user_id}>" in content for p in ("", "!")):
+            return True
+        # Discord gives every bot a role with its name; @-autocomplete may pick that role instead of the bot.
+        own_role = getattr(getattr(message, "guild", None), "self_role", None)
+        roles = {getattr(r, "id", None) for r in getattr(message, "role_mentions", None) or []}
+        return own_role is not None and own_role.id in roles
 
     def _threads(self) -> dict[str, str]:
         with contextlib.closing(self._db.cursor()) as cur:

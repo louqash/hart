@@ -172,3 +172,16 @@ def test_mentions_are_removed_from_the_question_and_thread_name(setup) -> None:
     assert message.thread.name == "What should I do tomorrow?"
     prompt = FakeClient.instances[0].prompt
     assert "<@" not in prompt and "what should I do tomorrow?\nMy legs are sore." in prompt
+
+
+def test_tagging_the_bots_role_counts(setup) -> None:
+    bot, _chat = setup
+    message = Message(Channel(CHANNEL), "<@&555> how was my week?", tagged=False)
+    message.guild = type("Guild", (), {"self_role": Author(555)})()
+    message.role_mentions = [Author(555)]
+    asyncio.run(bot.handle(message))
+    assert message.thread is not None and message.thread.name == "How was my week?"
+    other = Message(Channel(CHANNEL), "<@&556> hi", tagged=False)
+    other.guild, other.role_mentions = message.guild, [Author(556)]  # someone else's role
+    asyncio.run(bot.handle(other))
+    assert other.thread is None
