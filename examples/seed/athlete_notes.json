@@ -1,0 +1,41 @@
+[
+  {
+    "category": "goal",
+    "title": "A-race: Example Ironman",
+    "body": "First full-distance race. Priorities: durability on long rides, pacing, fueling."
+  },
+  {
+    "category": "baseline",
+    "title": "Previous half-distance time",
+    "body": "Half-distance finish in 5:30 last season. About 2 years of triathlon experience."
+  },
+  {
+    "category": "injury",
+    "title": "Achilles: tendinopathy (physio ongoing)",
+    "body": "Right Achilles flares up after sudden jumps in running volume. Physio-led calf loading twice a week. Build running gradually.",
+    "rules": {"max_intensity": {"run": "tempo"}}
+  },
+  {
+    "category": "constraint",
+    "title": "Weekly structure",
+    "body": "Two strength sessions per week (Tuesday and Saturday). The coached swim is on Thursday.",
+    "rules": {
+      "min_sessions_per_week": {"strength": 2},
+      "preferred_weekdays": {"strength": ["tue", "sat"], "swim": ["thu"]},
+      "allowed_weekdays": {"swim": ["thu"]},
+      "max_sessions_per_week": {"swim": 1}
+    }
+  },
+  {
+    "category": "health",
+    "title": "Check TSH again",
+    "body": "TSH was near the top of the range in the last panel; the doctor asked for a re-test.",
+    "valid_from": "2027-01-10",
+    "rules": {"planned_labs": [{"markers": ["tsh"], "due": "2027-03-01", "after": "2027-01-10"}]}
+  },
+  {
+    "category": "equipment",
+    "title": "Devices",
+    "body": "Garmin watch and bike computer, chest strap, single-sided power pedals."
+  }
+]

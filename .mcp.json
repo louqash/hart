@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "hart": {
+      "type": "stdio",
+      "command": "uv",
+      "args": ["run", "hart-mcp"],
+      "env": {}
+    }
+  }
+}

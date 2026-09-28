@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Strength{% endblock %}
+{% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>{% endblock %}
+{% macro top(h, bodyweight) -%}
+  {%- if bodyweight and not h.max_reps %}{{ h.sets }} timed set{{ 's' if h.sets != 1 }}{% elif bodyweight %}{{ h.max_reps }} reps{% elif h.top_kg %}{{ h.top_kg|num(1) }} kg × {{ h.top_reps or '?' }}{% else %}—{% endif -%}
+{%- endmacro %}
+{% macro spark(history, metric) -%}
+  {%- set vals = history|map(attribute=metric)|select|list -%}
+  {%- if vals|length >= 2 -%}
+    {%- set lo, hi = vals|min, vals|max -%}{%- set span = (hi - lo) or 1 -%}
+    <svg class="spark-line" viewBox="0 0 100 24" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="2"
+      points="{% for v in vals %}{{ (100 * loop.index0 / (vals|length - 1))|round(1) }},{{ (22 - 20 * (v - lo) / span)|round(1) }} {% endfor %}"/></svg>
+  {%- endif -%}
+{%- endmacro %}
+{% block content %}
+<h1 style="margin-top:18px">Iron Roots <span class="plain">strength progression</span></h1>
+
+<section class="card alt">
+  <div class="spread">
+    <h2>{{ icon("calendar") }}Rhythm <span class="plain">gym sessions per week</span></h2>
+    {% if target %}<span class="small muted">target {{ target }} a week (from your notes)</span>{% endif %}
+  </div>
+  <div class="week-bars">
+    {% for w in weeks %}
+    <div class="wb{{ ' short' if target and w.sessions < target and not loop.last }}" title="Week of {{ w.week|date('%d %b') }}: {{ w.sessions }}">
+      <span class="n">{{ w.sessions }}</span>
+      <i style="height: {{ (4 if w.sessions == 0 else 12 + 18 * w.sessions) }}px{{ '; opacity:.3' if w.sessions == 0 }}"></i>
+      <span class="d">{{ w.week|date('%d %b') }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  <p class="small faint" style="margin:6px 0 0">Last {{ weeks|length }} weeks{% if target %}; amber weeks fell short of {{ target }}{% endif %}. The current week is still open.</p>
+</section>
+
+{% if not p.exercises %}
+<section class="card"><p class="empty">No strength sets yet. Garmin records sets for strength activities — they appear here after the next sync.</p></section>
+{% else %}
+{% set e = selected %}
+<section class="card hero" id="exercise">
+  <div class="spread">
+    <h2 class="sunset">{{ icon("zap") }}{{ e.label }}</h2>
+    <select onchange="location.href='?ex=' + encodeURIComponent(this.value) + '#exercise'">
+      {% for x in p.exercises %}<option value="{{ x.key }}"{{ ' selected' if x.key == e.key }}>{{ x.label }} ({{ x.sessions }})</option>{% endfor %}
+    </select>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="label">Latest</div><div class="value" style="font-size:22px">{{ top(e.latest, e.bodyweight) }}</div>
+      <div class="delta">{{ e.latest.date|date('%d %b %Y') }} · {{ e.latest.sets }} sets</div></div>
+    {% if not e.bodyweight %}
+    <div class="stat"><div class="label">Est. 1-rep max</div><div class="value">{{ e.latest.e1rm|num(1) if e.latest.e1rm else '—' }}<small> kg</small></div>
+      <div class="delta">best {{ e.best|num(1) if e.best else '—' }} kg</div></div>
+    {% else %}
+    <div class="stat"><div class="label">Best</div><div class="value">{{ e.best or '—' }}<small> reps</small></div><div class="delta">bodyweight</div></div>
+    {% endif %}
+    <div class="stat"><div class="label">Last {{ 8 }} weeks</div>
+      <div class="value {{ 'ok' if e.block_change_pct and e.block_change_pct > 0 else '' }}">{{ '%+.1f'|format(e.block_change_pct) ~ '%' if e.block_change_pct is not none else '—' }}</div>
+      <div class="delta">{{ e.block_sessions }} session{{ 's' if e.block_sessions != 1 }}{% if e.block_change_pct is none %} · needs 2 to compare{% endif %}</div></div>
+    <div class="stat"><div class="label">History</div><div class="value">{{ e.sessions }}</div><div class="delta">since {{ e.first|date('%b %Y') }}</div></div>
+  </div>
+  <div id="ex-chart" class="chart short" style="margin-top:12px"></div>
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th class="num">Top set</th><th class="num">Sets</th>{% if not e.bodyweight %}<th class="num">Volume</th><th class="num">Est. 1RM</th>{% endif %}</tr>
+    {% for h in e.history|reverse %}{% if loop.index <= 12 %}
+    <tr><td><a href="/sessions/{{ h.activity_id }}">{{ h.date|date('%a %d %b %Y') }}</a>{% if h.date >= p.block_start %} <span class="chip green small-chip">block</span>{% endif %}</td>
+      <td class="num">{{ top(h, e.bodyweight) }}</td><td class="num">{{ h.sets }}</td>
+      {% if not e.bodyweight %}<td class="num">{{ h.volume }} kg</td><td class="num">{{ h.e1rm|num(1) if h.e1rm else '—' }}</td>{% endif %}</tr>
+    {% endif %}{% endfor %}
+  </table></div>
+  <p class="small faint" style="margin:8px 0 0">Est. 1-rep max uses the Epley formula (weight × (1 + reps/30)) from sets of 1–12 reps — a trend marker, not a test. Sets edited in Garmin Connect update on the next sync.</p>
+</section>
+
+<section class="card">
+  <h2>{{ icon("list") }}All Exercises <span class="plain">most recent first</span></h2>
+  <div class="table-wrap"><table>
+    <tr><th>Exercise</th><th class="num">Latest</th><th>Trend</th><th class="num">8 weeks</th><th class="num">Sessions</th><th>Same lift as</th></tr>
+    {% for x in p.exercises %}
+    <tr>
+      <td><a href="?ex={{ x.key|urlencode }}#exercise">{{ x.label }}</a></td>
+      <td class="num">{{ top(x.latest, x.bodyweight) }} <span class="faint small">· {{ x.last|date('%d %b') }}</span></td>
+      <td class="spark-cell">{{ spark(x.history, x.metric) }}</td>
+      <td class="num {{ 'ok' if x.block_change_pct and x.block_change_pct > 0 else 'warn' if x.block_change_pct and x.block_change_pct < 0 else 'faint' }}">{{ '%+.1f'|format(x.block_change_pct) ~ '%' if x.block_change_pct is not none else '—' }}</td>
+      <td class="num">{{ x.sessions }}</td>
+      <td><select class="small-select" onchange="mergeLift(this, '{{ x.key }}')" title="Garmin recorded this lift under another name too? Merge them.">
+        <option value="">—</option>
+        {% for y in p.exercises if y.key != x.key %}<option value="{{ y.key }}">{{ y.label }}</option>{% endfor %}
+      </select></td>
+    </tr>
+    {% endfor %}
+  </table></div>
+  <p class="small faint" style="margin:8px 0 0">Garmin sometimes records a lift by exercise (Barbell Deadlift) and sometimes only by category (Deadlift); those are merged automatically. Use “Same lift as” for anything else.</p>
+  {% if aliases %}
+  <div class="eyebrow" style="margin-top:12px">Merged by you</div>
+  <ul class="list">{% for a in aliases %}
+    <li><span>{{ a.from_label }} → {{ a.to_label }}</span>
+      <button class="small secondary" onclick="act(this, () => api.post('/api/strength/aliases', {name: '{{ a.from }}', same_as: null}))">Undo</button></li>
+  {% endfor %}</ul>
+  {% endif %}
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  function mergeLift(select, name) {
+    if (!select.value) return;
+    const label = select.options[select.selectedIndex].text;
+    act(select, () => api.post("/api/strength/aliases", { name, same_as: select.value }),
+        { confirmText: `Treat this lift as ${label} everywhere (history, comparisons, grading)?` });
+  }
+</script>
+{% if selected %}
+<script>
+  const ex = {{ selected|tojson }};
+  const heavy = !ex.bodyweight;
+  const series = heavy ? [
+    { name: "Top set (kg)", type: "line", data: ex.history.filter((h) => h.top_kg).map((h) => [h.date, h.top_kg]), color: css("--green"), symbolSize: 7 },
+    { name: "Est. 1-rep max (kg)", type: "line", data: ex.history.filter((h) => h.e1rm).map((h) => [h.date, h.e1rm]), color: css("--sunset"), lineStyle: { type: "dashed" }, symbolSize: 5 },
+  ] : [
+    { name: "Most reps", type: "line", data: ex.history.filter((h) => h.max_reps).map((h) => [h.date, h.max_reps]), color: css("--green"), symbolSize: 7 },
+  ];
+  makeChart("ex-chart", {
+    grid: { left: 44, right: 16, top: 34, bottom: 28 },
+    tooltip: { trigger: "axis" },
+    xAxis: { type: "time" },
+    yAxis: { type: "value", scale: true, name: heavy ? "kg" : "reps" },
+    series,
+  });
+</script>
+{% endif %}
+{% endblock %}

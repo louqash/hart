@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_grade.html" import grade_chip %}
+{% from "_legend.html" import load_legend, tip %}
+{% from "_suggestion.html" import suggestion_card %}
+{% block title %}Today{% endblock %}
+{% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>{% endblock %}
+{% block content %}
+{% set s = d.season %}
+{% set r = d.readiness %}
+{% set i = r.inputs %}
+{% set l = d.load.latest %}
+
+<div class="spread" style="margin-top:14px">
+  <div class="strip">
+    <span class="eyebrow" style="margin-right:6px">{{ d.today|date('%A, %d %B') }}</span>
+    {% if s.phase %}<a class="chip green" href="/season">{{ s.phase.name }} · week {{ s.phase.week }}/{{ s.phase.weeks }}{% if not s.phase.confirmed %} · proposed{% endif %}</a>{% endif %}
+    <span class="chip {{ {'building':'green','overreaching_risk':'red','detraining':'amber'}.get(s.state.state, '') }}"
+          title="Observed from your load curve (provisional thresholds)">{{ s.state.label }}{% if s.state.ramp_7d is not none %} · ramp {{ '%+.1f'|format(s.state.ramp_7d) }}/wk{% endif %}</span>{{ tip("state") }}
+  </div>
+  <div class="row">
+    {% if d.sync_age_minutes is none %}<span class="small err">never synced</span>
+    {% elif d.sync_age_minutes > 1440 %}<span class="small err">synced {{ (d.sync_age_minutes / 1440)|round|int }} d ago</span>
+    {% elif d.sync_age_minutes > 180 %}<span class="small warn">synced {{ (d.sync_age_minutes / 60)|round|int }} h ago</span>
+    {% else %}<span class="small muted">synced {{ d.sync_age_minutes }} min ago</span>{% endif %}
+    <button class="small" onclick="syncNow(this)">{{ icon("activity") }}Sync</button>
+  </div>
+</div>
+{% for f in s.flags %}<div class="flag">{{ f }}</div>{% endfor %}
+
+{# On phones the day's suggestion comes first (see .today-stack in app.css). #}
+<div class="today-stack">
+
+<section class="card hero">
+  <h2 class="sunset">{{ icon("sunrise") }}The Canopy</h2>
+  <div class="hero-grid">
+    <div>
+      {% macro countdown(days) -%}
+        {%- if days == 0 %}race day — good luck!{% elif days == 1 %}tomorrow{% elif days < 60 %}in {{ days }} days
+        {%- else %}in {{ (days / 7)|round|int }} weeks <span class="faint small" style="font-weight:400">· {{ days }} days</span>{% endif -%}
+      {%- endmacro %}
+      <div class="eyebrow">Target summit</div>
+      {% if d.race %}
+      <a class="summit" href="/season#races" title="Edit races on the Season page">{{ d.race.name }}</a>
+      <div class="sunset" style="font-weight:600">{{ countdown(d.race.days_to_race) }}</div>
+      <div class="faint small">{{ d.race.race_date|date('%a %d %b %Y') }} · {{ d.race.distance }}</div>
+      {% else %}
+      <div class="summit faint">No A-race set</div>
+      <a class="small" href="/season#races">Add your main race →</a>
+      {% endif %}
+      {% if d.next_race %}
+      <div class="small muted" style="margin-top:8px">Next up: <a href="/season#races">{{ d.next_race.name }}</a>
+        · {{ d.next_race.priority }}-race · {{ countdown(d.next_race.days_to_race) }}</div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="eyebrow">Current load{{ tip("ctl") }}</div>
+      {% if l %}
+      <div class="big">{{ l.ctl|num(1) }}<small>CTL</small></div>
+      <div class="row small" style="margin-top:8px; gap:14px">
+        <span style="color:var(--cream)">ATL {{ l.atl|num(1) }}{{ tip("atl") }}</span><span class="faint">•</span>
+        <span class="sunset">TSB {{ l.tsb|num(1) }}{{ tip("tsb") }}</span>
+        {% if d.load.ramp_7d is not none %}<span class="faint">•</span><span class="muted">{{ '%+.1f'|format(d.load.ramp_7d) }} in 7 d{{ tip("ramp") }}</span>{% endif %}
+      </div>
+      {% else %}<div class="empty">No training load yet.</div>{% endif %}
+    </div>
+    <div>
+      <div class="eyebrow" style="text-align:right">Vitality{{ tip("recovery_score") }}</div>
+      {% set rec = i.recovery_score %}
+      <div class="ring-wrap" style="justify-content:flex-end">
+        <div style="text-align:right">
+          <div style="color:var(--cream); font-weight:600; font-size:17px">{{ rec|num if rec is not none else '—' }} / 100</div>
+          <div class="faint small">recovery score</div>
+        </div>
+        <div class="ring">
+          <svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" fill="none" stroke="#1a2f23" stroke-width="8"/>
+            {% if rec is not none %}<circle cx="50" cy="50" r="44" fill="none" stroke="{{ '#6eb886' if rec >= 55 else '#e2a45f' if rec >= 35 else '#e5604a' }}" stroke-width="8"
+              stroke-linecap="round" stroke-dasharray="276.5" stroke-dashoffset="{{ 276.5 * (1 - rec / 100) }}" style="filter: drop-shadow(0 0 6px rgba(110,184,134,.5))"/>{% endif %}</svg>
+          <span>{{ rec|num if rec is not none else '—' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  {% if d.load.series %}
+  <div class="divider"></div>
+  <div class="chart-label">Fitness elevation (CTL) · fatigue (ATL, dashed) · last 90 days</div>
+  <div id="spark" class="chart spark"></div>
+  {% endif %}
+  {% if d.load.per_sport %}
+  <div class="row small muted" style="margin-top:6px">
+    {% for p in d.load.per_sport %}<span><span class="sport {{ p.sport_type }}"></span>{{ p.sport_type }} {{ p.ctl|num(1) }}</span>{% endfor %}
+    <span class="faint">· load = Garmin's EPOC-based score</span>
+  </div>
+  {% endif %}
+  {{ load_legend() }}
+</section>
+
+<div class="m-first">{{ suggestion_card(d.suggest, compact=true) }}</div>
+
+<div class="grid two">
+  <section class="card">
+    <h2>{{ icon("sun") }}Morning Light <span class="plain">readiness</span>{{ tip("readiness") }}</h2>
+    <div class="row" style="margin-bottom:18px; gap:12px">
+      <span class="readiness-dot {{ r.level }}"></span>
+      <span class="serif" style="font-size:20px">{{ {'green':'Clear trail','amber':'Tread lightly','red':'Make camp','unknown':'Fog on the trail'}[r.level] }}</span>
+    </div>
+    <p class="small muted" style="margin:-10px 0 16px">{{ {'green':'Good to train as planned','amber':'Take it easier today','red':'Back off — rest or very easy','unknown':'Not enough data to judge'}[r.level] }} — {{ r.reason }}</p>
+    <div class="stats">
+      <div class="stat"><div class="label">Sleep{{ tip("sleep") }}</div>
+        <div class="value">{{ i.sleep_hours|num(1) }}{% if i.sleep_hours is not none %}<small> h</small>{% endif %}</div>
+        <div class="delta">{% if i.sleep_score is not none %}score {{ i.sleep_score }}{% else %}no data{% endif %}</div></div>
+      <div class="stat"><div class="label">HRV{{ tip("hrv") }}</div>
+        <div class="value">{{ i.hrv_last_night|num }}{% if i.hrv_last_night is not none %}<small> ms</small>{% endif %}</div>
+        <div class="delta">{% if i.hrv_pct is not none %}{{ '%+.0f'|format(i.hrv_pct) }}% vs {{ i.hrv_baseline|num }}{% elif i.hrv_last_night is not none %}no baseline yet{% else %}no data{% endif %}</div></div>
+      <div class="stat"><div class="label">Resting HR{{ tip("rhr") }}</div>
+        <div class="value">{{ i.resting_hr|num }}{% if i.resting_hr is not none %}<small> bpm</small>{% endif %}</div>
+        <div class="delta">{% if i.rhr_delta is not none %}{{ '%+.0f'|format(i.rhr_delta) }} vs {{ i.rhr_baseline|num }}{% elif i.resting_hr is not none %}no baseline yet{% else %}no data{% endif %}</div></div>
+      <div class="stat"><div class="label">Body Battery{{ tip("body_battery") }}</div>
+        <div class="value">{{ i.body_battery|num }}</div><div class="delta">{{ 'at wake' if i.body_battery is not none else 'no data' }}</div></div>
+      <div class="stat"><div class="label">Readiness{{ tip("training_readiness") }}</div>
+        <div class="value">{{ i.training_readiness|num }}</div><div class="delta">{{ 'Garmin' if i.training_readiness is not none else 'no data' }}</div></div>
+      <div class="stat"><div class="label">Form{{ tip("form_yesterday") }}</div>
+        <div class="value">{{ i.tsb_yesterday|num(1) }}</div><div class="delta">TSB yesterday</div></div>
+    </div>
+    {% if r.level == 'unknown' and r.missing_detail %}
+    <div class="callout" style="margin-top:14px">{{ icon("compass") }}<div class="small">
+      <strong>Why “Fog on the trail”?</strong> {{ r.needs }}
+      <ul style="margin:6px 0 0; padding-left:18px">{% for m in r.missing_detail %}
+        <li><strong>{{ m.input }}:</strong> {{ m.why }} <span class="muted">{{ m.fix }}</span></li>{% endfor %}</ul>
+    </div></div>
+    {% endif %}
+    {% if r.hits|length > 1 %}
+    <details style="margin-top:14px"><summary>{{ r.hits|length }} signals</summary>
+      <ul class="small">{% for h in r.hits %}<li class="{{ 'err' if h.level == 'red' else 'warn' }}">{{ h.message }}</li>{% endfor %}</ul>
+    </details>{% endif %}
+  </section>
+
+  <section class="card">
+    <div class="spread"><h2>{{ icon("footprints") }}Trail Log <span class="plain">last 7 days</span>{{ tip("load") }}</h2><a class="small" href="/sessions">All sessions →</a></div>
+    {% if d.last_7_days %}
+    <ul class="list">
+      {% for a in d.last_7_days %}
+      <li>
+        <a href="/sessions/{{ a.activity_id }}"><span class="sport {{ a.sport_type }}"></span><span style="overflow:hidden; text-overflow:ellipsis">{{ a.name or (a.sport_type|sport(a.sub_type)) }}</span></a>
+        <span class="meta row" style="gap:10px; flex-wrap:nowrap">{{ a.start_time|date('%a %H:%M') }} · {{ a.duration_s|duration }}{% if a.load is not none %} · {{ a.load|num }}{% endif %}{{ grade_chip(a.grade) }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">No sessions in the last 7 days.</p>{% endif %}
+  </section>
+</div>
+
+<section class="card alt">
+  {% set w = d.week %}
+  <div class="spread">
+    <h2>{{ icon("map") }}This Week's Path</h2>
+    <span class="small muted"><span style="color:var(--cream); font-weight:600">{{ w.totals.hours }} h · load {{ w.totals.load }}</span>
+      <span title="average of the previous 4 weeks"> — 4-week avg {{ w.avg_4w.hours }} h · {{ w.avg_4w.load }}</span></span>
+  </div>
+  <div class="week">
+    {% for day in w.days %}
+    <div class="day{{ ' today' if day.is_today }}">
+      <div class="dname">{{ day.date|date('%a') }}</div>
+      {% for x in day.sessions %}<div class="s" title="{{ x.name }}"><span class="sport {{ x.sport }}"></span>{{ x.minutes }}′</div>{% endfor %}
+    </div>
+    {% endfor %}
+  </div>
+  {% if s.phase and s.phase.goal %}
+  <div class="callout">{{ icon("tree") }}<div><strong>{{ s.phase.name }}:</strong> {{ s.phase.goal }}
+    {% if s.phase.phase_type == 'comeback' %} Ends <strong style="color:var(--green)">{{ s.phase.end_date }}</strong>.{% endif %}</div></div>
+  {% endif %}
+</section>
+
+{% set al = d.alerts %}
+{% set cl = al.claude or {} %}
+{% if al.anomalies or al.proposed_notes or al.season_proposals or al.plan_proposals or al.health_overdue or al.health_proposed or al.garmin_blocked or al.backup_failed or cl.token_warning or cl.problem %}
+<section class="card">
+  <h2 class="sunset">{{ icon("storm") }}Weather Warnings <span class="plain">alerts</span></h2>
+  <ul class="list">
+    {% if al.garmin_blocked == 'garmin_auth' %}<li><span class="err">Garmin login expired — run <code>uv run --extra auth hart auth</code> on the laptop.</span></li>{% endif %}
+    {% if al.garmin_blocked == 'garmin_rate_limited' %}<li><span class="warn">Garmin rate limit — scheduled syncs are backing off.</span></li>{% endif %}
+    {% if cl.problem and cl.problem.status == 'auth_failed' %}<li><span class="err">Claude couldn't authenticate — the token may have expired. Renew it (see runbook).</span></li>{% endif %}
+    {% if cl.problem and cl.problem.status == 'usage_limited' %}<li><span class="warn">Claude usage limit reached{% if cl.problem.resets_at %} — resets {{ cl.problem.resets_at }}{% endif %}.</span></li>{% endif %}
+    {% if cl.token_warning %}<li><span class="{{ 'err' if cl.token_days_left <= 7 else 'warn' }}">Claude token expires {{ cl.token_expires }} ({{ cl.token_days_left }} days) — run <code>claude setup-token</code> and update the vault.</span></li>{% endif %}
+    {% if al.backup_failed %}<li><span class="err">Last backup failed: {{ al.backup_failed.error }}</span></li>{% endif %}
+    {% if al.plan_proposals %}<li><span>Ember suggested {{ al.plan_proposals }} plan change{{ 's' if al.plan_proposals != 1 }}</span><a class="small" href="/plan#proposals">Review →</a></li>{% endif %}
+    {% if al.season_proposals %}<li><span>Ember suggested {{ al.season_proposals }} season change{{ 's' if al.season_proposals != 1 }}</span><a class="small" href="/season#proposals">Review →</a></li>{% endif %}
+    {% if al.health_overdue %}<li><span class="warn">{{ al.health_overdue }} health check{{ 's' if al.health_overdue != 1 }} due or overdue</span><a class="small" href="/health">Review →</a></li>{% endif %}
+    {% if al.health_proposed %}<li><span>Ember suggested {{ al.health_proposed }} health check{{ 's' if al.health_proposed != 1 }}</span><a class="small" href="/health#proposed">Review →</a></li>{% endif %}
+    {% if al.proposed_notes %}<li><span>{{ al.proposed_notes }} athlete note{{ 's' if al.proposed_notes != 1 }} waiting for approval</span><a class="small" href="/notes">Review →</a></li>{% endif %}
+    {% for a in al.anomalies %}
+    <li>
+      <span class="{{ 'err' if a.severity == 'critical' else 'warn' if a.severity == 'warning' else '' }}" style="white-space:normal">{{ a.description }}</span>
+      <button class="small secondary" onclick="act(this, () => api.post('/api/anomalies/{{ a.id }}/ack'))">Acknowledge</button>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  const series = {{ d.load.series|tojson }};
+  if (series.length) {
+    makeChart("spark", {
+      grid: { left: 0, right: 0, top: 8, bottom: 0 },
+      legend: { show: false },
+      xAxis: { type: "time", show: false },
+      yAxis: { type: "value", show: false, scale: true },
+      series: [
+        { name: "Fitness (CTL)", type: "line", showSymbol: false, smooth: 0.2, data: pts(series, "ctl"), color: css("--green"),
+          lineStyle: { width: 2.5, shadowColor: "rgba(110,184,134,.35)", shadowBlur: 8, shadowOffsetY: 4 },
+          areaStyle: { color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+            { offset: 0, color: "rgba(110,184,134,0.35)" }, { offset: 1, color: "rgba(110,184,134,0)" }]) } },
+        { name: "Fatigue (ATL)", type: "line", showSymbol: false, smooth: 0.2, data: pts(series, "atl"), color: css("--sunset"),
+          lineStyle: { width: 1.5, type: [4, 4], opacity: 0.65 } },
+      ],
+    });
+  }
+</script>
+{% endblock %}

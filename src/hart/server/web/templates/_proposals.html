@@ -1,0 +1,23 @@
+{% from "_icons.html" import icon %}
+{#- Changes Ember proposed (season, races, plan) — nothing changes until applied. -#}
+{% macro proposals_card(items, what) %}
+{% if items %}
+<section class="card" id="proposals" style="border-color: rgba(226,125,96,.5)">
+  <h2 class="sunset">{{ icon("compass") }}Suggested by Ember <span class="plain">{{ items|length }} {{ what }} change{{ 's' if items|length != 1 }} pending</span></h2>
+  <ul class="list">
+    {% for p in items %}
+    <li style="align-items:flex-start">
+      <span style="flex-direction:column; align-items:flex-start; white-space:normal">
+        <strong>{{ p.summary }}</strong>
+        <span class="small muted" style="margin-top:4px">{{ p.reason }}</span>
+      </span>
+      <span class="row" style="flex:none">
+        <button class="small primary" onclick="act(this, () => api.post('/api/season/proposals/{{ p.id }}/apply'))">Apply</button>
+        <button class="small secondary" onclick="act(this, () => api.post('/api/season/proposals/{{ p.id }}/dismiss'))">Dismiss</button>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+{% endmacro %}

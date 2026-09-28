@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ conversation.title if conversation and conversation.title else 'Ember' }}{% endblock %}
+{% block head %}<script src="{{ static('chat.js') }}" defer></script>{% endblock %}
+{% block content %}
+<div class="chat-layout">
+  <aside class="chat-list">
+    <div class="spread" style="margin-bottom:10px">
+      <span class="eyebrow">Conversations</span>
+      <a class="btn small primary" href="/chat">+ New</a>
+    </div>
+    {% if conversations %}
+    <ul class="conv-list">
+      {% for c in conversations %}
+      <li class="{{ 'on' if conversation and conversation.id == c.id }}">
+        <a href="/chat/{{ c.id }}">
+          <span class="title">{{ c.title or 'New conversation' }}</span>
+          <span class="meta">{{ c.updated_at|date('%d %b, %H:%M') }}{% if c.active_run %} · <span class="ok">answering…</span>{% endif %}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty">No conversations yet.</p>{% endif %}
+  </aside>
+
+  <section class="chat-panel">
+    <header class="chat-head">
+      <div class="guide-badge">{{ icon("mountain") }}<span class="live"></span></div>
+      <div style="flex:1; min-width:0">
+        <h2 style="margin:0">Ember</h2>
+        <div class="small muted">Claude on your data{% if web_access %} · web research on{% endif %}</div>
+      </div>
+      <select id="model" title="Model">
+        {% for id, label in models.items() %}<option value="{{ id }}"{{ ' selected' if id == default_model }}>{{ label }}</option>{% endfor %}
+      </select>
+      {% if conversation %}
+      <button class="small secondary" title="Archive conversation"
+        onclick="act(this, () => api.request('PATCH', '/api/chat/{{ conversation.id }}', {archived: true}), {reload: false}).then(() => location.href = '/chat')">{{ icon("archive") }}</button>
+      {% endif %}
+    </header>
+
+    {% if context %}<div class="chat-context">{{ icon("compass") }}About {{ context.label }}</div>{% endif %}
+
+    <div id="messages" class="messages">
+      {% if not conversation or not conversation.messages %}
+      <div class="msg ai">
+        <span class="who">Ember</span>
+        <div class="bubble">Ask me anything about your training, recovery, the season and your races, nutrition or kit.
+          I read your data through the dashboard's tools and tell you where each number comes from.</div>
+      </div>
+      <div class="starters">
+        {% for q in ["How is my comeback going so far?", "Explain today's readiness", "What should this week look like?", "Jak wyglądał mój ostatni trening?"] %}
+        <button class="starter" type="button" data-q="{{ q }}">{{ q }}</button>
+        {% endfor %}
+      </div>
+      {% else %}
+        {% for m in conversation.messages %}
+        {% if m.role == 'user' %}
+        <div class="msg user"><span class="who">Athlete</span><div class="bubble">{{ m.content }}</div></div>
+        {% else %}
+        <div class="msg ai" data-message-id="{{ m.id }}">
+          <span class="who">Ember</span>
+          {% if m.tool_calls %}
+          <details class="trace"><summary>{{ icon("list") }}Checked {{ m.tool_calls|length }} source{{ 's' if m.tool_calls|length != 1 }}</summary>
+            <ol>{% for t in m.tool_calls %}<li class="{{ 'err' if t.is_error }}"><code>{{ t.name }}</code>
+              {% if t.input %}<span class="args">{{ t.input|tojson }}</span>{% endif %}
+              {% if t.output_excerpt %}<details><summary>output</summary><pre>{{ t.output_excerpt }}</pre></details>{% endif %}</li>{% endfor %}</ol>
+          </details>
+          {% endif %}
+          <div class="bubble md">{{ m.content_html|safe }}</div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      {% endif %}
+    </div>
+
+    <form id="composer" class="composer">
+      <textarea id="input" rows="1" placeholder="Ask for guidance on the path ahead…" maxlength="8000"></textarea>
+      <button id="stop" type="button" class="icon-btn stop" title="Stop" hidden>■</button>
+      <button id="send" type="submit" class="icon-btn send" title="Send">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </form>
+    <p class="small faint composer-note">Every number Ember gives comes from your data — open “Checked N sources” to see which. It suggests; your coach's plan takes priority.</p>
+  </section>
+</div>
+<script>
+  window.CHAT = {{ {
+    "conversationId": conversation.id if conversation else None,
+    "activeRun": conversation.active_run if conversation else None,
+    "context": context_param,
+  }|tojson }};
+</script>
+{% endblock %}

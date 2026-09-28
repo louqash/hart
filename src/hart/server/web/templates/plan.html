@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_grade.html" import grade_chip %}
+{% from "_legend.html" import tip %}
+{% from "_suggestion.html" import suggestion_card %}
+{% from "_proposals.html" import proposals_card %}
+{% block title %}Plan{% endblock %}
+{% block head %}<script src="{{ static('plan.js') }}" defer></script>{% endblock %}
+{% block content %}
+<h1 style="margin-top:18px">The Route <span class="plain">coach plan</span></h1>
+
+{{ proposals_card(plan_proposals, 'plan') }}
+
+{{ suggestion_card(suggestion) }}
+
+<section class="card">
+  <div class="spread">
+    <h2>{{ icon("map") }}Trail Map <span class="plain">this week and the next two</span>{{ tip("coach_plan") }}</h2>
+    <div class="row">
+      <button class="small secondary" onclick="openEditor({date: '{{ today }}'})">{{ icon("leaf") }}Add session</button>
+      <button class="small primary" onclick="document.getElementById('paste').open = true; document.getElementById('paste-text').focus()">Paste coach's week</button>
+    </div>
+  </div>
+
+  <label class="row small muted" style="gap:8px; margin:10px 0 0">
+    <input type="checkbox" style="width:auto" {{ 'checked' if garmin_auto_send }}
+      onchange="act(this, () => api.put('/api/garmin/auto-send', {enabled: this.checked}), {reload: false}).then((r) => r && toast(this.checked ? 'Accepted runs and rides go to Garmin automatically' : 'Auto-send off'))">
+    Send accepted runs and rides to my Garmin calendar automatically</label>
+
+  <details id="paste" class="paste">
+    <summary>Paste {{ 'from ' ~ prefs.coach_platform if prefs.coach_platform else 'a plan' }}</summary>
+    <p class="small muted">Copy the week (or a day) out of {{ prefs.coach_platform or 'your coach\'s platform' }} and paste it here — any format, any language. Ember turns it into sessions; you check them before anything is saved. Planned TSS/IF stay in the text — they're on a different scale from our load.</p>
+    <textarea id="paste-text" rows="9" placeholder="Monday, September 28&#10;Bike · 1:15:00&#10;15'- progresja do 170W, kadencja >80&#10;..."></textarea>
+    <div class="row" style="margin-top:8px; align-items:flex-end">
+      <div><label class="small muted" for="paste-date">For date, if the text has none</label>
+        <input type="date" id="paste-date" value="{{ tomorrow.isoformat() }}"></div>
+      <button class="primary" id="parse-btn" onclick="parsePaste(this)">Read the plan</button><span class="small faint" id="parse-status"></span></div>
+    <p class="small faint" style="margin:6px 0 0">Adding or changing today's or tomorrow's coach session updates that day's suggestion automatically.</p>
+    <div id="preview" hidden>
+      <div class="table-wrap"><table class="preview">
+        <thead><tr><th></th><th>Date</th><th>Sport</th><th>Title</th><th>Min</th><th>Intensity</th><th>Coach text</th></tr></thead>
+        <tbody id="preview-rows"></tbody>
+      </table></div>
+      <ul id="preview-warnings" class="hl bad"></ul>
+      <label class="row small" id="replace-wrap" hidden><input type="checkbox" id="replace-existing" checked style="width:auto">
+        Replace earlier imports on <span id="replace-dates"></span> (sessions already linked to an activity are kept)</label>
+      <div class="row" style="margin-top:10px"><button class="primary" onclick="importPreview(this)">Save to plan</button>
+        <button class="secondary" onclick="document.getElementById('preview').hidden = true">Discard</button></div>
+    </div>
+  </details>
+
+  {% for w in weeks %}
+  <div class="plan-week">
+    <div class="eyebrow" style="margin:18px 0 8px">Week of {{ w.start|date('%d %b') }}</div>
+    {% for day in w.days %}
+    <div class="plan-day{{ ' today' if day.is_today }}{{ ' past' if day.past }}" id="day-{{ day.date }}">
+      <div class="dname"><strong>{{ day.date|date('%a') }}</strong> <span class="faint">{{ day.date|date('%d %b') }}</span></div>
+      <div class="items">
+        {% for r in day.planned %}
+        <div class="plan-item{{ ' replaced' if r.replaced_by }}{{ ' done' if r.activity_id }}">
+          <div class="spread">
+            <span class="title"><span class="sport {{ r.sport_type }}"></span><strong>{{ r.title }}</strong>
+              <span class="faint small">{% if r.duration_min %}{{ r.duration_min }}′{% endif %}{% if r.intensity %} · {{ r.intensity }}{% endif %}</span>
+              {% if r.source == 'suggestion_accepted' %}<span class="chip green small-chip">from suggestion</span>{% elif r.source == 'manual' %}<span class="chip small-chip">manual</span>{% endif %}
+              {% if r.replaced_by %}<span class="chip amber small-chip">replaced</span>{% endif %}</span>
+            <span class="row actions">
+              {% if r.activity_id %}<a class="small" href="/sessions/{{ r.activity_id }}">done ✓</a>{{ grade_chip(r.grade) }}
+              {% elif r.match_method == 'manual' and day.past %}<span class="small faint">not done</span>{% endif %}
+              {% if r.sport_type in ('run', 'bike') and not day.past %}
+                {% if r.id in garmin_pending %}<span class="small muted"><span class="grade-chip pending"><i></i></span> sending…</span>
+                {% elif r.garmin_status == 'sent' %}<span class="chip green small-chip" title="Scheduled on your Garmin calendar">on Garmin ✓</span>
+                  <button class="small secondary" onclick="act(this, () => api.post('/api/plan/{{ r.id }}/send-garmin'))" title="Replace the workout on Garmin">Re-send</button>
+                {% elif r.garmin_status == 'outdated' %}<button class="small primary" onclick="act(this, () => api.post('/api/plan/{{ r.id }}/send-garmin'))" title="Changed since it was sent">Update on Garmin</button>
+                {% else %}
+                  {% if r.garmin_status == 'failed' %}<span class="small err" title="{{ r.garmin_error }}">Garmin failed</span>{% endif %}
+                  <button class="small secondary" onclick="act(this, () => api.post('/api/plan/{{ r.id }}/send-garmin'))">{{ 'Retry' if r.garmin_status == 'failed' else 'Send to Garmin' }}</button>
+                {% endif %}
+              {% endif %}
+              {% if r.sport_type == 'bike' and (r.description or r.garmin_text) %}<button class="small secondary" onclick="garminText(this, {{ r.id }})">Garmin text</button>{% endif %}
+              {% if day.activities or r.activity_id %}
+              <select class="small-select" onchange="linkActivity(this, {{ r.id }})" title="Link to an activity">
+                <option value="">{{ 'Linked' if r.activity_id else 'Link…' }}</option>
+                {% for a in day.activities %}<option value="{{ a.activity_id }}"{{ ' selected' if a.activity_id == r.activity_id }}>{{ a.name or a.sport_type }} ({{ ((a.seconds or 0) / 60)|round|int }}′)</option>{% endfor %}
+                <option value="__none">Not done</option>
+              </select>{% endif %}
+              <button class="small secondary" onclick='openEditor({{ r|tojson }})'>Edit</button>
+            </span>
+          </div>
+          {% if r.description %}<details class="coach"><summary class="small faint">Coach text</summary><div class="coach-text">{{ r.description }}</div></details>{% endif %}
+          <pre class="garmin" id="garmin-{{ r.id }}" {{ '' if r.garmin_text else 'hidden' }}>{{ r.garmin_text or '' }}</pre>
+        </div>
+        {% endfor %}
+        {% for a in day.unplanned %}
+        <div class="plan-item unplanned"><a href="/sessions/{{ a.activity_id }}"><span class="sport {{ a.sport_type }}"></span>{{ a.name or a.sport_type }}</a>
+          <span class="small faint">{{ ((a.seconds or 0) / 60)|round|int }}′ · not in plan</span></div>
+        {% endfor %}
+        {% if not day.planned and not day.unplanned %}<span class="faint small">—</span>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+</section>
+
+<dialog id="editor" class="editor">
+  <form method="dialog" class="form-grid" id="editor-form" onsubmit="event.preventDefault(); saveEditor(this)">
+    <input type="hidden" name="id">
+    <h3 style="grid-column:1/-1; margin:0" id="editor-title">Planned session</h3>
+    <div><label>Date</label><input type="date" name="date" required></div>
+    <div><label>Sport</label><select name="sport_type">{% for s in ["bike", "run", "swim", "strength", "other", "rest"] %}<option>{{ s }}</option>{% endfor %}</select></div>
+    <div style="grid-column:1/-1"><label>Title</label><input name="title" required maxlength="120" style="width:100%"></div>
+    <div><label>Duration (min)</label><input type="number" name="duration_min" min="0" max="900"></div>
+    <div><label>Intensity</label><select name="intensity"><option value="">—</option>{% for s in ["recovery", "endurance", "tempo", "threshold", "vo2", "strength", "mixed"] %}<option>{{ s }}</option>{% endfor %}</select></div>
+    <div style="grid-column:1/-1"><label>Coach text</label><textarea name="description" rows="5" style="width:100%"></textarea></div>
+    <div class="row" style="grid-column:1/-1">
+      <button type="submit" class="primary">Save</button>
+      <button type="button" class="secondary" onclick="document.getElementById('editor').close()">Cancel</button>
+      <button type="button" class="danger" id="editor-delete" onclick="deleteRow(this)">Delete</button>
+    </div>
+  </form>
+</dialog>
+{% endblock %}

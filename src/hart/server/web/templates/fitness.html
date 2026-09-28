@@ -1,0 +1,228 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_legend.html" import load_legend, efficiency_legend, decoupling_legend, power_legend, tip %}
+{% block title %}Fitness{% endblock %}
+{% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>{% endblock %}
+{% block content %}
+<h1>Fitness</h1>
+
+{% if markers %}
+<section class="card">
+  <h2>{{ icon("flag") }}Waymarkers <span class="plain">current markers</span></h2>
+  <div class="stats">
+    {% for m in markers %}
+    <div class="stat" title="{{ m.note or '' }}">
+      <div class="label">{{ m.label }}{{ tip(m.key) }}</div>
+      <div class="value">{{ m.value|num(1 if m.unit == '' else 0) }}{% if m.unit %}<small> {{ m.unit }}</small>{% endif %}</div>
+      <div class="delta">{% if m.delta is not none %}{{ '%+.1f'|format(m.delta) }} vs 90 d ago{% else %}no earlier value{% endif %}{% if m.date %} · {{ m.date|date('%d %b') }}{% endif %}</div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if prefs.power_single_sided %}<p class="small muted" style="margin:8px 0 0">Power: single-sided meter — compare trends, not absolutes.</p>{% endif %}
+</section>
+{% endif %}
+
+<section class="card">
+  <div class="spread">
+    <h2 class="sunset">{{ icon("mountain") }}Fitness Elevation <span class="plain">fitness · fatigue · form</span></h2>
+    <div class="row">
+      <span class="segmented" id="pmc-sport">
+        <button data-v="combined" class="on">All</button><button data-v="swim">Swim</button><button data-v="bike">Bike</button>
+        <button data-v="run">Run</button><button data-v="strength">Strength</button>
+      </span>
+      <span class="segmented" id="pmc-range">
+        <button data-v="90d">90d</button><button data-v="180d" class="on">180d</button><button data-v="1y">1y</button><button data-v="all">All</button>
+      </span>
+    </div>
+  </div>
+  <div id="pmc" class="chart tall"></div>
+  <p class="small muted" style="margin:4px 0 0">Shaded: training phases and annotations (injury, watch not worn, events).</p>
+  {{ load_legend() }}
+</section>
+
+<section class="card alt">
+  <div class="spread">
+    <h2>{{ icon("layers") }}Trail Miles <span class="plain">weekly volume</span>{{ tip("weekly_volume") }}</h2>
+    <span class="segmented" id="vol-weeks"><button data-v="12" class="on">12 wk</button><button data-v="26">26 wk</button><button data-v="52">52 wk</button></span>
+  </div>
+  <div id="volume" class="chart"></div>
+</section>
+
+<section class="card">
+  <div class="spread">
+    <h2>{{ icon("heart") }}Vital Signs <span class="plain">health</span></h2>
+    <span class="segmented" id="health-range"><button data-v="90d">90d</button><button data-v="180d" class="on">180d</button><button data-v="1y">1y</button></span>
+  </div>
+  <div class="grid two">
+    <div><h3>HRV{{ tip("hrv_chart") }}</h3><div id="hrv" class="chart short"></div></div>
+    <div><h3>Resting HR{{ tip("rhr") }}</h3><div id="rhr" class="chart short"></div></div>
+    <div><h3>Sleep{{ tip("sleep_chart") }}</h3><div id="sleep" class="chart short"></div></div>
+    <div><h3>Recovery score{{ tip("recovery_score") }}</h3><div id="recovery" class="chart short"></div></div>
+  </div>
+  <h3 style="margin-top:12px">VO2max{{ tip("vo2max_run") }}</h3><div id="vo2" class="chart short"></div>
+  <p class="small muted" style="margin:4px 0 0">Gaps are days without data (e.g. the watch wasn't worn) — nothing is filled in.</p>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <div class="spread"><h2>{{ icon("leaf") }}Economy <span class="plain">efficiency</span></h2>
+      <span class="segmented" id="ef-sport"><button data-v="bike" class="on">Bike</button><button data-v="run">Run</button></span></div>
+    <div id="ef" class="chart"></div>
+    <p class="small muted" style="margin:4px 0 0">EF per session (● outdoor, ◆ indoor) and 28-day rolling median.</p>
+    {{ efficiency_legend() }}
+  </section>
+  <section class="card">
+    <h2>{{ icon("timer") }}Staying Power <span class="plain">decoupling</span></h2>
+    <div id="decoupling" class="chart"></div>
+    <p class="small muted" style="margin:4px 0 0">Steady sessions ≥ 45 min; below 5% = good aerobic durability.</p>
+    {{ decoupling_legend() }}
+  </section>
+</div>
+
+<section class="card">
+  <h2>{{ icon("zap") }}Ridge Line <span class="plain">power curve</span></h2>
+  <div id="power" class="chart"></div>
+  {{ power_legend() }}
+</section>
+
+<section class="card">
+  <h2>{{ icon("scale") }}Two Seasons <span class="plain">compare periods</span></h2>
+  <form id="compare" class="form-grid" onsubmit="event.preventDefault(); compare(this)">
+    <div><label>Period 1 from</label><input type="date" name="period1_start" required></div>
+    <div><label>Period 1 to</label><input type="date" name="period1_end" required></div>
+    <div><label>Period 2 from</label><input type="date" name="period2_start" required></div>
+    <div><label>Period 2 to</label><input type="date" name="period2_end" required></div>
+    <div><label>Sport</label><select name="sport_type"><option value="all">All</option><option>swim</option><option>bike</option><option>run</option><option>strength</option></select></div>
+    <div style="align-self:end"><button type="submit" class="primary">Compare</button></div>
+  </form>
+  <div id="compare-out" class="table-wrap" style="margin-top:10px"></div>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+const C = SPORT_COLORS();
+let pmcState = { sport: "combined", range: "180d" };
+
+async function loadPmc() {
+  const d = await api.get(`/api/fitness/pmc?range=${pmcState.range}&sport=${pmcState.sport}`);
+  const series = [
+    { name: "Daily load", type: "bar", yAxisIndex: 1, data: pts(d.series, "daily_tss"), color: css("--line"), barMaxWidth: 6 },
+    { name: "Fitness (CTL)", type: "line", showSymbol: false, data: pts(d.series, "ctl"), color: css("--green"), lineStyle: { width: 2.5 } },
+    { name: "Fatigue (ATL)", type: "line", showSymbol: false, data: pts(d.series, "atl"), color: css("--sunset") },
+    { name: "Form (TSB)", type: "line", showSymbol: false, data: pts(d.series, "tsb"), color: css("--amber"), lineStyle: { type: "dashed" } },
+  ];
+  bandChart("pmc", {
+    grid: { left: 44, right: 44, top: 50, bottom: 30 },
+    legend: legendFor(series),
+    tooltip: { trigger: "axis" },
+    xAxis: { type: "time" },
+    yAxis: [{ type: "value", name: "CTL / ATL / TSB", nameLocation: "end", nameGap: 8 },
+            { type: "value", name: "daily load", nameLocation: "end", nameGap: 8, splitLine: { show: false } }],
+    series,
+  }, d);
+}
+
+async function loadVolume(weeks = 12) {
+  const d = await api.get(`/api/fitness/volume?weeks=${weeks}`);
+  const labels = d.weeks.map((w) => w.slice(5));
+  makeChart("volume", {
+    tooltip: { trigger: "axis" },
+    xAxis: { type: "category", data: labels },
+    yAxis: [{ type: "value", name: "hours" }, { type: "value", name: "load", splitLine: { show: false } }],
+    series: [
+      ...Object.entries(d.hours).map(([sport, vals]) => ({ name: sport, type: "bar", stack: "h", data: vals, color: C[sport] || C.other })),
+      { name: "load", type: "line", yAxisIndex: 1, data: d.load, color: css("--text"), symbolSize: 4 },
+    ],
+  });
+}
+
+async function loadHealth(range = "180d") {
+  const d = await api.get(`/api/fitness/health?range=${range}`);
+  const base = { xAxis: { type: "time" }, grid: { left: 40, right: 12, top: 26, bottom: 24 } };
+  makeChart("hrv", { ...base, yAxis: { type: "value", scale: true, name: "ms" }, series: [...bandSeries(d, { labels: false }),
+    { name: "Last night", type: "scatter", symbolSize: 5, data: pts(d.hrv, "last_night"), color: css("--accent") },
+    { name: "7-day avg", type: "line", showSymbol: false, data: withGaps(pts(d.hrv, "weekly")), color: css("--muted") },
+    { name: "Baseline low", type: "line", showSymbol: false, data: withGaps(pts(d.hrv, "low")), color: css("--line"), lineStyle: { type: "dotted" } },
+    { name: "Baseline high", type: "line", showSymbol: false, data: withGaps(pts(d.hrv, "high")), color: css("--line"), lineStyle: { type: "dotted" } },
+  ]});
+  makeChart("rhr", { ...base, legend: { show: false }, yAxis: { type: "value", scale: true, name: "bpm" }, series: [...bandSeries(d, { labels: false }), 
+    { name: "Resting HR", type: "line", symbolSize: 3, data: withGaps(pts(d.rhr, "value")), color: css("--red") },
+  ]});
+  makeChart("sleep", { ...base, yAxis: [{ type: "value", name: "h" }, { type: "value", name: "score", max: 100, splitLine: { show: false } }], series: [...bandSeries(d, { labels: false }), 
+    { name: "Hours", type: "bar", data: pts(d.sleep, "hours"), color: css("--accent"), barMaxWidth: 5 },
+    { name: "Score", type: "line", yAxisIndex: 1, showSymbol: false, data: withGaps(pts(d.sleep, "score")), color: css("--muted") },
+  ]});
+  makeChart("recovery", { ...base, legend: { show: false }, yAxis: { type: "value", min: 0, max: 100 }, series: [...bandSeries(d, { labels: false }), 
+    { name: "Recovery", type: "line", symbolSize: 3, data: withGaps(pts(d.recovery, "value")), color: css("--green") },
+  ]});
+  if (!d.vo2max.length) emptyChart("vo2", "No VO2max values from Garmin yet.");
+  else makeChart("vo2", { ...base, yAxis: { type: "value", scale: true }, series: [
+    { name: "Run", type: "line", showSymbol: false, data: withGaps(pts(d.vo2max, "run"), 14), color: C.run },
+    { name: "Bike", type: "line", showSymbol: false, data: withGaps(pts(d.vo2max, "cycle"), 14), color: C.bike },
+  ]});
+}
+
+let efData = null;
+function drawEf(sport) {
+  const d = efData[sport];
+  const outdoor = d.points.filter((p) => !p.indoor).map((p) => [p.date, p.ef, p.name]);
+  const indoor = d.points.filter((p) => p.indoor).map((p) => [p.date, p.ef, p.name]);
+  const tip = { trigger: "item", formatter: (p) => `${p.value[2] || ""}<br>${p.value[0]} · EF ${p.value[1]}` };
+  makeChart("ef", {
+    tooltip: tip, xAxis: { type: "time" }, yAxis: { type: "value", scale: true, name: "EF" },
+    series: [
+      { name: "Outdoor", type: "scatter", data: outdoor, symbolSize: 6, color: C[sport] },
+      { name: "Indoor", type: "scatter", data: indoor, symbol: "diamond", symbolSize: 7, color: css("--muted") },
+      { name: "28-day median", type: "line", showSymbol: false, data: d.rolling.map((r) => [r.date, r.ef]), color: css("--text") },
+    ],
+  });
+  if (!d.decoupling.length) { emptyChart("decoupling", "No decoupling values computed yet."); return; }
+  makeChart("decoupling", {
+    tooltip: { trigger: "item", formatter: (p) => `${p.value[2]}<br>${p.value[0]} · ${p.value[1].toFixed(1)}%` },
+    xAxis: { type: "time" }, yAxis: { type: "value", name: "%" },
+    series: [{ name: sport, type: "scatter", symbolSize: 7, color: C[sport],
+      data: d.decoupling.map((r) => [r.date, r.decoupling, r.name]),
+      markLine: { silent: true, symbol: "none", data: [{ yAxis: 5 }], lineStyle: { color: css("--amber"), type: "dashed" } } }],
+  });
+}
+
+async function loadPower() {
+  const d = await api.get("/api/fitness/power-curve");
+  if (!d.durations.length) { document.getElementById("power").outerHTML = '<p class="empty">No power data.</p>'; return; }
+  makeChart("power", {
+    tooltip: { trigger: "axis", valueFormatter: (v) => (v == null ? "—" : `${Math.round(v)} W`) },
+    xAxis: { type: "category", data: d.durations.map((s) => DURATION_LABELS[s] || `${s}s`) },
+    yAxis: { type: "value", name: "W", scale: true },
+    series: [
+      { name: "Last 90 days", type: "line", data: d.last_90d, color: C.bike, lineStyle: { width: 2.5 } },
+      { name: "Previous 90 days", type: "line", data: d.previous_90d, color: css("--muted") },
+      { name: "All time", type: "line", data: d.all_time, color: css("--line"), lineStyle: { type: "dashed" } },
+    ],
+  });
+}
+
+async function compare(form) {
+  const out = document.getElementById("compare-out");
+  out.textContent = "…";
+  try {
+    const d = await api.post("/api/fitness/compare", formData(form));
+    if (d.error) { out.textContent = d.error; return; }
+    const keys = Object.keys(d.period1?.summary || d.period1 || {});
+    const p1 = d.period1?.summary || d.period1 || {}, p2 = d.period2?.summary || d.period2 || {};
+    const fmt = (v) => (v == null ? "—" : typeof v === "number" ? (+v.toFixed(2)).toString() : typeof v === "object" ? JSON.stringify(v) : v);
+    out.innerHTML = `<table><tr><th>Metric</th><th class="num">Period 1</th><th class="num">Period 2</th></tr>${
+      keys.map((k) => `<tr><td>${k}</td><td class="num">${fmt(p1[k])}</td><td class="num">${fmt(p2[k])}</td></tr>`).join("")}</table>`;
+  } catch (e) { out.textContent = e.message; }
+}
+
+segmented(document.getElementById("pmc-sport"), (v) => { pmcState.sport = v; loadPmc(); });
+segmented(document.getElementById("pmc-range"), (v) => { pmcState.range = v; loadPmc(); });
+segmented(document.getElementById("vol-weeks"), (v) => loadVolume(v));
+segmented(document.getElementById("health-range"), (v) => loadHealth(v));
+segmented(document.getElementById("ef-sport"), (v) => drawEf(v));
+
+loadPmc(); loadVolume(); loadHealth();
+api.get("/api/fitness/efficiency?range=1y").then((d) => { efData = d; drawEf("bike"); });
+loadPower();
+</script>
+{% endblock %}

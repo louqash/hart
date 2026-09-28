@@ -1,0 +1,259 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_legend.html" import tip %}
+{% block title %}{{ s.name or 'Session' }}{% endblock %}
+{% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>{% endblock %}
+{% block content %}
+<a class="small" href="/sessions">← Sessions</a>
+<div class="spread">
+  <h1><span class="sport {{ s.sport_type }}"></span>{{ s.name or (s.sport_type|sport(s.sub_type)) }}</h1>
+  <span class="muted">{{ s.start_time|date('%A %d %B %Y, %H:%M') }} · {{ s.sport_type|sport(s.sub_type) }}</span>
+</div>
+{% if s.description %}<p class="muted">{{ s.description }}</p>{% endif %}
+
+<section class="card">
+  <div class="stats">
+    <div class="stat"><div class="label">Time{{ tip("duration") }}</div><div class="value">{{ s.duration_s|duration }}</div></div>
+    {% if s.distance_meters %}<div class="stat"><div class="label">Distance</div><div class="value">{{ (s.distance_meters / 1000)|num(2) }}<small> km</small></div></div>{% endif %}
+    <div class="stat"><div class="label">Load{{ tip("load") }}</div><div class="value">{{ s.load|num }}</div></div>
+    <div class="stat"><div class="label">Avg / max HR</div><div class="value">{{ s.avg_hr|num }}<small> / {{ s.max_hr|num }}</small></div></div>
+    {% if s.sport_type == 'bike' and s.avg_power %}
+    <div class="stat"><div class="label">Avg / NP power{{ tip("np") }}</div><div class="value">{{ s.avg_power|num }}<small> / {{ s.normalized_power|num }} W</small></div></div>
+    {% endif %}
+    {% if s.sport_type == 'run' and s.avg_pace_sec_km %}<div class="stat"><div class="label">Pace</div><div class="value" style="font-size:19px">{{ s.avg_pace_sec_km|pace }}</div></div>{% endif %}
+    {% if s.avg_cadence %}<div class="stat"><div class="label">Cadence{{ tip("cadence") }}</div><div class="value">{{ s.avg_cadence|num }}</div></div>{% endif %}
+    {% if s.total_elevation_m %}<div class="stat"><div class="label">Elevation</div><div class="value">{{ s.total_elevation_m|num }}<small> m</small></div></div>{% endif %}
+    {% if s.efficiency_factor %}<div class="stat"><div class="label">Efficiency (EF){{ tip("ef") }}</div><div class="value">{{ s.efficiency_factor|num(2) }}</div></div>{% endif %}
+    {% if s.aerobic_decoupling_pct is not none %}<div class="stat"><div class="label">Decoupling{{ tip("decoupling") }}</div><div class="value">{{ s.aerobic_decoupling_pct|num(1) }}<small> %</small></div></div>{% endif %}
+    {% if s.training_effect_aerobic %}<div class="stat"><div class="label">Training effect{{ tip("training_effect") }}</div><div class="value" style="font-size:18px">{{ s.training_effect_aerobic|num(1) }} / {{ s.training_effect_anaerobic|num(1) }}</div><div class="delta">{{ (s.training_effect_label or 'aerobic / anaerobic')|replace('_', ' ')|lower }}</div></div>{% endif %}
+  </div>
+  {% if s.sport_type == 'bike' and s.avg_power and prefs.power_single_sided %}<p class="small muted" style="margin:8px 0 0">Power from a single-sided meter — compare trends, not absolute watts.</p>{% endif %}
+</section>
+
+{% set g = s.grade %}
+<section class="card hero" id="grade">
+  <div class="spread">
+    <h2 class="sunset">{{ icon("compass") }}Trail Report <span class="plain">grade</span></h2>
+    <div class="row">
+      {% if s.grade_versions|length > 1 %}
+      <select onchange="location.href='?v=' + this.value + '#grade'" title="Grade version">
+        {% for v in s.grade_versions %}<option value="{{ v }}"{{ ' selected' if g and g.version == v }}>version {{ v }}</option>{% endfor %}
+      </select>{% endif %}
+      {% if not s.grade_pending %}
+      <button class="small secondary" onclick="act(this, () => api.post('/api/sessions/{{ s.activity_id }}/grade', {}))">{{ 'Regrade' if g else 'Grade now' }}</button>
+      {% endif %}
+    </div>
+  </div>
+  {% if s.grade_pending %}
+    <p class="muted"><span class="grade-chip pending"><i></i></span>&nbsp; Ember is grading this session — the page updates when it's done.</p>
+  {% elif g and g.status == 'graded' %}
+    {% set f = g.features %}{% set j = f.justifications or {} %}
+    <div class="grade-head">
+      <div class="grade-badge l{{ g.letter }}">{{ g.letter }}</div>
+      <div style="flex:1; min-width:240px">
+        <div class="row small" style="margin-bottom:6px">
+          <span class="chip">{{ (g.session_type or '')|replace('_', ' ') }}</span>
+          <span class="chip {{ 'green' if g.confidence == 'high' else 'amber' if g.confidence == 'medium' else 'red' }}">{{ g.confidence }} confidence</span>
+          <span class="muted">{{ '%.2f'|format(g.overall_score) }} / 5</span>
+        </div>
+        <p style="margin:0; color:var(--cream); font-size:15px; line-height:1.6">{{ g.summary }}</p>
+      </div>
+    </div>
+    <div class="dims">
+      {% for key, label, weight in [("execution", "Execution", 45), ("response", "Response", 30), ("context", "Context fit", 25)] %}
+      {% set score = g['score_' ~ key] %}
+      <div class="dim{{ ' na' if score is none }}">
+        <div class="spread"><span class="eyebrow">{{ label }} · {{ weight }}%</span><span class="score">{{ score if score is not none else '—' }}<small class="faint" style="font-size:12px"> / 5</small></span></div>
+        <div class="bar"><i style="width: {{ (score or 0) * 20 }}%"></i></div>
+        <p>{{ j.get('context_fit' if key == 'context' else key) or ('Not judged — no comparable data' if score is none else '') }}</p>
+      </div>
+      {% endfor %}
+    </div>
+    {% if g.highlights or g.concerns %}
+    <div class="grid two" style="margin:8px 0 0">
+      {% if g.highlights %}<div><div class="eyebrow">Highlights</div><ul class="hl good">{% for h in g.highlights %}<li>{{ h }}</li>{% endfor %}</ul></div>{% endif %}
+      {% if g.concerns %}<div><div class="eyebrow">Watch out</div><ul class="hl bad">{% for c in g.concerns %}<li>{{ c }}</li>{% endfor %}</ul></div>{% endif %}
+    </div>
+    {% endif %}
+    {% if g.citations %}
+    {% set verified = g.citations|selectattr('verified')|list|length %}
+    <details class="legend"><summary>Numbers used — {{ verified }} of {{ g.citations|length }} verified against your data</summary>
+      <div class="table-wrap"><table class="cites">
+        {% for c in g.citations %}<tr><td class="{{ 'v' if c.verified else 'u' }}">{{ '✓' if c.verified else '⚠' }}</td><td>{{ c.label }}</td>
+          <td class="num">{{ c.value }}{% if c.unit %} {{ c.unit }}{% endif %}</td><td class="faint small">{{ c.source }}</td></tr>{% endfor %}
+      </table></div>
+      <p class="faint small">⚠ means the number wasn't found in the facts or tool results — treat that part of the grade with care.</p>
+    </details>
+    {% endif %}
+    {% if s.grade_run %}
+    <details class="legend"><summary>How Ember graded it — {{ s.grade_run.model }}, {{ s.grade_run.turns or '?' }} turns{% if s.grade_run.ms %}, {{ (s.grade_run.ms / 1000)|round|int }} s{% endif %}</summary>
+      <ol class="small muted">{% for t in s.grade_run.tool_calls %}<li><code>{{ t.name }}</code> <span class="faint">{{ t.input|tojson }}</span></li>{% else %}<li>No extra tool calls — graded from the facts below.</li>{% endfor %}</ol>
+    </details>
+    {% endif %}
+    <details class="legend"><summary>Facts the grade was based on</summary>
+      <pre style="white-space:pre-wrap; font-size:11px; max-height:360px; overflow:auto; background:var(--soft-2); padding:10px; border-radius:10px">{{ f|tojson(indent=1) }}</pre>
+    </details>
+  {% elif g and g.status == 'ungraded' %}
+    <p class="muted">Not graded: {{ g.ungraded_reason }}.</p>
+    <button class="small secondary" onclick="act(this, () => api.post('/api/sessions/{{ s.activity_id }}/grade', {force: true}))">Grade anyway</button>
+  {% elif g and g.status == 'failed' %}
+    <p class="err small">The last grading attempt failed: {{ g.ungraded_reason }}</p>
+  {% else %}
+    <p class="muted">Not graded yet.</p>
+  {% endif %}
+</section>
+
+{% set c = s.compare %}
+{% if c %}
+<section class="card" id="compare">
+  <div class="spread">
+    <h2>{{ icon("layers") }}Side by Side <span class="plain">vs a similar session</span></h2>
+    {% if c.candidates %}
+    <select onchange="location.href='?compare=' + encodeURIComponent(this.value) + '#compare'" title="Compare with">
+      {% for x in c.candidates %}<option value="{{ x.activity_id }}"{{ ' selected' if c.other and x.activity_id == c.other.id }}>{{ x.start_time|date('%d %b %Y') }} · {{ x.name or s.sport_type }} ({{ ((x.secs or 0) / 60)|round|int }}′)</option>{% endfor %}
+    </select>{% endif %}
+  </div>
+  {% if not c.other %}
+    <p class="empty">No similar earlier session ({{ 'same sport and indoor/outdoor, duration ±25%, last 365 days' }}).</p>
+  {% else %}
+  {% macro val(v, unit, digits) -%}
+    {%- if v is none %}—{% elif unit == 'pace' %}{{ v|pace }}{% else %}{{ v|num(digits) }}{% if unit %}<small class="faint"> {{ unit }}</small>{% endif %}{% endif -%}
+  {%- endmacro %}
+  <div class="table-wrap"><table class="compare">
+    <tr><th></th><th class="num">This · {{ s.start_time|date('%d %b') }}</th>
+      <th class="num"><a href="/sessions/{{ c.other.id }}">{{ c.other.start_time|date('%d %b %Y') }}</a></th><th class="num">Change</th></tr>
+    {% for r in c.rows %}
+    <tr><td>{{ r.label }}</td><td class="num">{{ val(r.this, r.unit, r.digits) }}</td><td class="num muted">{{ val(r.other, r.unit, r.digits) }}</td>
+      <td class="num {{ 'ok' if r.verdict == 'good' else 'warn' if r.verdict == 'bad' else 'faint' }}">{% if r.delta_pct is not none %}{{ '%+.1f'|format(r.delta_pct) }}%{% endif %}</td></tr>
+    {% endfor %}
+    {% if c.zones %}
+    <tr><td>HR zones</td>
+      {% for side in ('this', 'other') %}<td class="num small {{ 'muted' if side == 'other' }}">{% for z, p in c.zones[side].items() %}{{ z }} {{ p }}%{{ ' · ' if not loop.last }}{% else %}—{% endfor %}</td>{% endfor %}<td></td></tr>
+    {% endif %}
+  </table></div>
+  {% if c.exercises %}
+  <div class="eyebrow" style="margin-top:14px">Exercises · top set</div>
+  <div class="table-wrap"><table class="compare">
+    {% for e in c.exercises %}
+    {% set a, b = e.this, e.other %}
+    <tr><td>{{ e.exercise|replace('_', ' ')|title }}</td>
+      <td class="num">{% if a %}{% if a.top_reps %}{{ a.top_kg|num(1) ~ ' kg' if a.top_kg else 'bw' }} × {{ a.top_reps }}{% else %}timed{% endif %} <small class="faint">({{ a.sets }} sets)</small>{% else %}—{% endif %}</td>
+      <td class="num muted">{% if b %}{% if b.top_reps %}{{ b.top_kg|num(1) ~ ' kg' if b.top_kg else 'bw' }} × {{ b.top_reps }}{% else %}timed{% endif %} <small class="faint">({{ b.sets }} sets)</small>{% else %}—{% endif %}</td>
+      <td class="num {{ 'ok' if a and b and (a.top_kg or 0) > (b.top_kg or 0) else '' }}">{% if a and b and a.top_kg and b.top_kg and a.top_kg != b.top_kg %}{{ '%+g'|format(a.top_kg - b.top_kg) }} kg{% endif %}</td></tr>
+    {% endfor %}
+  </table></div>
+  {% endif %}
+  <p class="small faint" style="margin:8px 0 0">Similar = {{ c.similar_rule }}. Green/amber only where better is clear (efficiency up, decoupling down, faster pace).{% if prefs.power_single_sided %} Power is single-sided — compare trends.{% endif %}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+<div class="grid two">
+  <section class="card">
+    <h2>{{ icon("message") }}How it felt <span class="plain">feedback</span></h2>
+    {% set fb = s.feedback %}
+    <form class="stack" onsubmit="event.preventDefault(); act(this.querySelector('button'), () => api.post('/api/sessions/{{ s.activity_id }}/feedback', formData(this)), {reload: false}).then((r) => r && toast('Saved'))">
+      <div class="row">
+        <div><label>RPE (1–10){{ tip("rpe") }}</label><input type="number" name="rpe" min="1" max="10" value="{{ fb.rpe if fb.rpe is not none else '' }}" style="width:90px"></div>
+        <div><label>Feel (1–5){{ tip("feel") }}</label><input type="number" name="feel" min="1" max="5" value="{{ fb.feel if fb.feel is not none else '' }}" style="width:90px"></div>
+      </div>
+      <div><label>Comment</label><textarea name="comment" style="min-height:70px; font-family:inherit; font-size:14px" placeholder="legs heavy, shoulder fine…">{{ fb.comment or '' }}</textarea></div>
+      <div class="row"><button type="submit" class="primary">Save</button>
+        {% if not fb.saved and (fb.rpe is not none or fb.feel is not none) %}<span class="small muted">Prefilled from Garmin</span>{% endif %}</div>
+    </form>
+  </section>
+
+  {% if s.hr_zone_seconds %}
+  <section class="card">
+    <h2>{{ icon("heart") }}Heart Zones{{ tip("hr_zones") }}</h2>
+    <div id="zones" class="chart short"></div>
+  </section>
+  {% endif %}
+</div>
+
+{% if s.has_streams %}
+<section class="card">
+  <h2 class="sunset">{{ icon("mountain") }}Elevation Profile <span class="plain">streams</span></h2>
+  <div id="streams" class="chart tall"></div>
+</section>
+{% endif %}
+
+{% if s.strength_sets %}
+<section class="card">
+  <h2>{{ icon("list") }}Sets</h2>
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th>Exercise</th><th class="num">Reps</th><th class="num">Weight</th><th class="num">Time</th></tr>
+    {% for x in s.strength_sets %}
+    <tr><td>{{ loop.index }}</td><td>{{ (x.exercise_name or x.exercise_category or '—')|replace('_', ' ')|lower|capitalize }}</td>
+      <td class="num">{{ x.repetitions if x.repetitions is not none else '—' }}</td>
+      <td class="num">{{ x.weight_kg|num(1, 'kg') if x.weight_kg else '—' }}</td>
+      <td class="num">{{ x.duration_sec|num(0, 's') }}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+
+{% if s.laps|length > 1 %}
+<section class="card">
+  <h2>{{ icon("footprints") }}Splits <span class="plain">laps</span></h2>
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th class="num">Time</th><th class="num">Distance</th><th class="num">Avg HR</th><th class="num">Max HR</th>
+      <th class="num">{{ 'Power' if s.sport_type == 'bike' else 'Pace' }}</th><th class="num">Cadence</th></tr>
+    {% for lap in s.laps %}
+    <tr><td>{{ lap.lap_index + 1 }}</td><td class="num">{{ lap.elapsed_seconds|duration }}</td>
+      <td class="num">{{ (lap.distance_meters / 1000)|num(2, 'km') if lap.distance_meters else '—' }}</td>
+      <td class="num">{{ lap.avg_hr|num }}</td><td class="num">{{ lap.max_hr|num }}</td>
+      <td class="num">{% if s.sport_type == 'bike' %}{{ lap.avg_power|num(0, 'W') }}{% else %}{{ lap.avg_pace_sec_km|pace }}{% endif %}</td>
+      <td class="num">{{ lap.avg_cadence|num }}</td></tr>
+    {% endfor %}
+  </table></div>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+const session = {{ {"id": s.activity_id, "sport": s.sport_type, "zones": s.hr_zone_seconds}|tojson }};
+if (session.zones) {
+  const names = Object.keys(session.zones).sort();
+  const colors = [css("--faint"), css("--green"), css("--amber"), css("--sunset"), css("--red")];
+  makeChart("zones", {
+    legend: { show: false },
+    grid: { left: 36, right: 12, top: 8, bottom: 24 },
+    tooltip: { trigger: "axis", valueFormatter: (v) => fmtMinutes(v) },
+    xAxis: { type: "category", data: names },
+    yAxis: { type: "value", axisLabel: { formatter: (v) => Math.round(v / 60) + "′" } },
+    series: [{ type: "bar", data: names.map((n, i) => ({ value: session.zones[n], itemStyle: { color: colors[i] || colors[4] } })) }],
+  });
+}
+if (document.getElementById("streams")) {
+  api.get(`/api/sessions/${session.id}/streams`).then((d) => {
+    const t = d.t.map((x) => +(x / 60).toFixed(2));
+    const S = d.series;
+    const series = [], yAxis = [];
+    const add = (key, name, color, transform = (v) => v) => {
+      if (!S[key]) return;
+      yAxis.push({ type: "value", name, show: yAxis.length < 2, scale: true, splitLine: { show: yAxis.length === 0 },
+        position: yAxis.length === 0 ? "left" : "right", inverse: key === "pace" });
+      series.push({ name, type: "line", showSymbol: false, yAxisIndex: yAxis.length - 1, color, lineStyle: { width: 1.3 },
+        data: S[key].map((v, i) => [t[i], v == null ? null : transform(v)]) });
+    };
+    add("hr", "HR", css("--red"));
+    if (session.sport === "bike") add("power", "Power (W)", css("--bike"));
+    if (session.sport === "run" && S.speed) {
+      S.pace = S.speed;
+      add("pace", "Pace (min/km)", css("--run"), (v) => (v > 1 ? +(60 / v).toFixed(2) : null));
+    } else if (S.speed) add("speed", "Speed (km/h)", css("--accent"));
+    add("cadence", "Cadence", css("--muted"));
+    add("altitude", "Altitude (m)", css("--line"));
+    makeChart("streams", {
+      tooltip: { trigger: "axis" },
+      grid: { left: 44, right: 44, top: 34, bottom: 56 },
+      xAxis: { type: "value", name: "min", min: 0, max: t[t.length - 1] },
+      yAxis,
+      dataZoom: [{ type: "inside" }, { type: "slider", height: 16, bottom: 6 }],
+      series,
+    });
+  });
+}
+</script>
+{% endblock %}

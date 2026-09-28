@@ -1,0 +1,55 @@
+{#- Plain-language legend for the load metrics. Usage: {{ load_legend() }} -#}
+{% macro load_legend(open=false) -%}
+<details class="legend"{{ ' open' if open }}>
+  <summary>What do CTL, ATL and TSB mean?</summary>
+  <dl>
+    <div><dt><span class="swatch" style="background:var(--green)"></span>Fitness · CTL</dt>
+      <dd><em>Chronic Training Load.</em> Your built-up fitness: a weighted average of daily training load over ~6 weeks (42-day time constant). It rises slowly with consistent training and fades slowly when you stop — the injury layoff shows as a long decline.</dd></div>
+    <div><dt><span class="swatch" style="background:var(--sunset)"></span>Fatigue · ATL</dt>
+      <dd><em>Acute Training Load.</em> Recent fatigue: the same average over ~1 week (7-day time constant). It jumps after hard days and drops within a few rest days.</dd></div>
+    <div><dt><span class="swatch" style="background:var(--amber)"></span>Form · TSB</dt>
+      <dd><em>Training Stress Balance</em> = CTL − ATL. Above 0: fresh (tapered or resting). About 0 to −10: normal training. −10 to −30: productive overload. Below −30: heavy fatigue — injury and illness risk rises.</dd></div>
+    <div><dt>Ramp</dt>
+      <dd>How much CTL changed in the last 7 days. Steady small gains build fitness safely; big jumps are where overload injuries come from.</dd></div>
+  </dl>
+  <p class="small muted">CTL and ATL are the same calculation on the same daily load — only the window differs (~6 weeks vs ~1 week). Form is the gap between them: negative when this week is harder than what you're used to, positive when you've been resting.</p>
+  <p class="faint small">Daily load here is Garmin's training load (EPOC-based), not power/pace TSS, so the ranges above are rough guides.</p>
+</details>
+{%- endmacro %}
+
+{% macro info(title, open=false) -%}
+<details class="legend"{{ ' open' if open }}><summary>{{ title }}</summary>{{ caller() }}</details>
+{%- endmacro %}
+
+{% macro efficiency_legend() -%}
+{% call info("What is efficiency (EF)?") %}
+<dl>
+  <div><dt><span class="swatch" style="background:var(--bike)"></span>Bike EF</dt>
+    <dd>Normalized power ÷ average heart rate — watts you produce per heartbeat. Rising EF at the same kind of ride means your aerobic engine is improving.</dd></div>
+  <div><dt><span class="swatch" style="background:var(--run)"></span>Run EF</dt>
+    <dd>Speed (metres per minute) ÷ average heart rate. Hills, heat, fatigue and intervals all lower it, so compare similar easy runs.</dd></div>
+</dl>
+<p class="faint small">Indoor (◆) and outdoor (●) rides aren't directly comparable — trainer power and cooling differ. The line is the 28-day median.</p>
+{% endcall %}
+{%- endmacro %}
+
+{% macro decoupling_legend() -%}
+{% call info("What is aerobic decoupling?") %}
+<p class="small muted" style="margin:10px 0 4px">How much your efficiency drops from the first half of a steady session to the second half — heart rate drifting up while power or pace stays the same.
+<strong style="color:var(--cream)">Below 5%</strong>: your aerobic base holds for that duration. <strong style="color:var(--cream)">Above 5–10%</strong>: the session was longer or harder than your current endurance supports (or heat, dehydration, fatigue).
+Only steady sessions of 45 min or more are shown.</p>
+{% endcall %}
+{%- endmacro %}
+
+{% macro power_legend() -%}
+{% call info("What is the power curve?") %}
+<p class="small muted" style="margin:10px 0 4px">Your best average power for each duration — 5 seconds, 1 minute, 5, 20, 60 minutes and so on — across all rides in the period.
+The left side is sprint power, the middle (5–20 min) is VO2max and threshold, the right side (1 h+) is endurance, which matters most for an Ironman.
+Comparing the last 90 days with the previous 90 shows where you've gained or lost. {% if prefs and prefs.power_single_sided %}A single-sided power meter doubles one leg, so trust the trend more than the watts.{% endif %}</p>
+{% endcall %}
+{%- endmacro %}
+
+{#- ⓘ tip for a metric: tap/click (phones) or hover/focus (desktop) shows the explanation. -#}
+{% macro tip(key) -%}
+<button type="button" class="tip" aria-label="What is this?" data-tip="{{ GLOSSARY.get(key, '') }}">i</button>
+{%- endmacro %}

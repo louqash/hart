@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Notes{% endblock %}
+{% block content %}
+{% set proposed = notes|selectattr('status', 'equalto', 'proposed')|list %}
+<div class="spread">
+  <h1>Field Notes <span class="plain" style="font-family:var(--sans); font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint)">athlete notes</span></h1>
+  <button class="small primary" onclick="openEditor()">New note</button>
+</div>
+<p class="muted small">What every Claude knows about you: injuries, constraints, baselines, preferences. Only <strong>active</strong> notes are used; Claude can propose notes, which wait here for approval.</p>
+
+<details id="editor-wrap" class="card">
+  <summary id="editor-title">New note</summary>
+  <form id="editor" class="stack" style="margin-top:10px" onsubmit="event.preventDefault(); saveNote(this)">
+    <input type="hidden" name="id">
+    <div class="form-grid">
+      <div><label>Category</label><select name="category">{% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div style="grid-column: span 2"><label>Title</label><input name="title" required style="width:100%"></div>
+      <div><label>Valid from</label><input type="date" name="valid_from"></div>
+      <div><label>Valid to</label><input type="date" name="valid_to"></div>
+    </div>
+    <div><label>Body (markdown)</label><textarea name="body" required style="min-height:160px"></textarea></div>
+    <div><label>Rules (optional JSON — checked by code on suggestions)</label>
+      <textarea name="rules" data-json style="min-height:60px" placeholder='{"allowed_weekdays": {"swim": ["thu"]}, "max_sessions_per_week": {"swim": 1}}'></textarea>
+      <p class="small muted" style="margin:4px 0 0">Keys: forbid_sports, max_duration_min, max_intensity, allowed_weekdays, max_sessions_per_week.</p></div>
+    <div class="row"><button type="submit" class="primary">Save</button><button type="button" class="secondary" onclick="closeEditor()">Cancel</button></div>
+  </form>
+</details>
+
+{% if proposed %}
+<div class="spread"><h2 class="sunset" style="margin-top:18px">{{ icon("leaf") }}Waiting for approval <span class="plain">{{ proposed|length }}</span></h2>
+  <button class="small" onclick="approveAll(this)">Approve all {{ proposed|length }}</button></div>
+{% endif %}
+{% set ns = namespace(status=None) %}
+{% for n in notes %}
+  {% if n.status != ns.status and n.status != 'proposed' %}
+    {% set ns.status = n.status %}<h2 style="margin-top:24px">{{ icon("book") }}{{ 'Active' if n.status == 'active' else 'Archived' }}</h2>
+  {% endif %}
+  <article class="note {{ n.status }}" id="note-{{ n.id }}">
+    <div class="spread">
+      <h3>{{ n.title }}</h3>
+      <span class="row small">
+        <span class="chip">{{ n.category }}</span>
+        {% if n.source == 'claude_proposed' %}<span class="chip accent">from Claude</span>{% endif %}
+      </span>
+    </div>
+    <div class="body">{{ n.body|markdown }}</div>
+    {% if n.rules %}<p class="small"><span class="muted">Rules:</span> <code>{{ n.rules|tojson }}</code></p>{% endif %}
+    {% if n.valid_from or n.valid_to %}<p class="small muted">Valid {{ n.valid_from or '…' }} → {{ n.valid_to or 'open' }}</p>{% endif %}
+    <div class="row">
+      {% if n.status == 'proposed' %}<button class="small primary" onclick="act(this, () => api.post('/api/notes/{{ n.id }}/approve'))">Approve</button>{% endif %}
+      <button class="small secondary" onclick='openEditor({{ n|tojson }})'>Edit</button>
+      {% if n.status == 'archived' %}
+        <button class="small secondary" onclick="act(this, () => api.post('/api/notes/{{ n.id }}/restore'))">Restore</button>
+      {% else %}
+        <button class="small danger" onclick="act(this, () => api.post('/api/notes/{{ n.id }}/archive'))">{{ 'Dismiss' if n.status == 'proposed' else 'Archive' }}</button>
+      {% endif %}
+    </div>
+  </article>
+{% else %}<p class="empty">No notes yet.</p>{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+const editor = document.getElementById("editor");
+function openEditor(n) {
+  editor.reset();
+  if (n) {
+    for (const k of ["id", "category", "title", "body", "valid_from", "valid_to"]) editor.elements[k].value = n[k] ?? "";
+    editor.elements.rules.value = n.rules ? JSON.stringify(n.rules, null, 2) : "";
+  }
+  document.getElementById("editor-title").textContent = n ? `Edit: ${n.title}` : "New note";
+  const wrap = document.getElementById("editor-wrap");
+  wrap.open = true;
+  wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function closeEditor() { document.getElementById("editor-wrap").open = false; }
+async function saveNote(form) {
+  let body;
+  try { body = formData(form); } catch (e) { toast(e.message, 5000); return; }
+  const { id, ...note } = body;
+  await act(form.querySelector("button[type=submit]"), () => (id ? api.put(`/api/notes/${id}`, note) : api.post("/api/notes", note)));
+}
+async function approveAll(button) {
+  const ids = {{ proposed|map(attribute='id')|list|tojson }};
+  await act(button, async () => { for (const id of ids) await api.post(`/api/notes/${id}/approve`); });
+}
+</script>
+{% endblock %}

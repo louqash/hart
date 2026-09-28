@@ -1,0 +1,11 @@
+[
+  {
+    "date": "2027-01-10",
+    "markers": [
+      {"name": "Hemoglobin", "value": "15.1", "unit": "g/dl", "reference_range": "13.5 - 18"},
+      {"name": "Ferritin", "value": "85", "unit": "ng/ml", "reference_range": "30 - 400"},
+      {"name": "TSH", "value": "3.9", "unit": "µIU/ml", "reference_range": "0.27 - 4.2"},
+      {"name": "Vitamin D3 25(OH)", "value": "28", "unit": "ng/ml", "reference_range": "30 - 100", "flag": "L"}
+    ]
+  }
+]

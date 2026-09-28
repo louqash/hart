@@ -1,0 +1,131 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}System{% endblock %}
+{% block content %}
+<h1 style="margin-top:18px">System</h1>
+
+<div class="grid two">
+  <section class="card">
+    <h2>{{ icon("activity") }}Groundwork <span class="plain">sync</span></h2>
+    <div class="kv">
+      <div><span>Last successful sync</span>
+        <span>{{ s.sync.last_successful_sync.strftime('%m-%d %H:%M %Z') if s.sync.last_successful_sync else '— never' }}</span></div>
+      <div><span>Scheduled syncs</span>
+        {% if s.sync.blocked == 'garmin_auth' %}<span class="err">Paused — Garmin login expired</span>
+        {% elif s.sync.blocked == 'garmin_rate_limited' %}<span class="warn">Backing off until {{ s.sync.backoff_until[:16] }}</span>
+        {% else %}<span class="ok">Active</span>{% endif %}</div>
+      <div><span>Sleep synced today</span><span>{{ 'Yes' if today.sleep_synced_today else 'Not yet' }}</span></div>
+    </div>
+    {% if s.sync.blocked == 'garmin_auth' %}<p class="small err">Run <code>uv run --extra auth hart auth</code> on the laptop; it uploads fresh tokens.</p>{% endif %}
+    <button class="wide" style="margin-top:24px" onclick="syncNow(this)">Sync now</button>
+  </section>
+
+  <section class="card">
+    <h2>{{ icon("map") }}Terrain Maps <span class="plain">database</span></h2>
+    <div class="tiles">
+      <div><span>Size</span><span>{{ '%.1f MB'|format(s.database.size_bytes / 1048576) if s.database.size_bytes else '—' }}</span></div>
+      <div><span>Activities logged</span><span>{{ s.counts.activities }} trails</span></div>
+      <div><span>Recovery days</span><span>{{ s.counts.recovery_days }}</span></div>
+      <div><span>Open anomalies</span><span class="{{ 'sunset' if s.counts.unacknowledged_anomalies else '' }}">{{ s.counts.unacknowledged_anomalies }}</span></div>
+      <div><span>Notes to approve</span><span><a href="/notes">{{ s.counts.proposed_notes }}</a></span></div>
+      <div><span>Schema version</span><span>{{ s.database.schema_version }}</span></div>
+    </div>
+    <div class="kv" style="margin-top:10px">
+      <div><span>Last backup</span>
+        {% if s.backup %}<span class="{{ 'ok' if s.backup.status == 'ok' else 'err' }}">{{ s.backup.status }} {{ s.backup.finished_at.strftime('%m-%d %H:%M') if s.backup.finished_at else '' }}</span>
+        {% else %}<span class="faint">none yet</span>{% endif %}</div>
+    </div>
+    {% if s.backup and s.backup.error %}<p class="small err">{{ s.backup.error }}</p>{% endif %}
+    <button class="small secondary" style="margin-top:16px" onclick="act(this, () => api.post('/api/backup'))">{{ icon("archive") }}Back up now</button>
+  </section>
+</div>
+
+<section class="card alt">
+  <h2>{{ icon("mountain") }}Ember <span class="plain">claude</span></h2>
+  {% set cl = s.claude %}
+  <div class="kv">
+    <div><span>Token expires</span>
+      {% if cl.token_expires %}<span class="{{ 'err' if cl.token_days_left <= 7 else 'warn' if cl.token_warning else '' }}">{{ cl.token_expires }} ({{ cl.token_days_left }} days)</span>
+      {% else %}<span class="faint">unknown — set HART_CLAUDE_TOKEN_ISSUED_AT</span>{% endif %}</div>
+    <div><span>Grade past sessions</span>
+      <span><button class="small secondary" onclick="act(this, () => api.post('/api/grades/backfill', {days: 14}), {reload: false}).then((r) => r && toast(`${r.queued} session(s) queued for grading`))">Last 14 days</button></span></div>
+    <div><span>Last run problem</span>
+      {% if cl.problem %}<span class="err">{{ cl.problem.status }}{% if cl.problem.error %} — {{ cl.problem.error }}{% endif %}</span>
+      {% else %}<span class="ok">none</span>{% endif %}</div>
+  </div>
+  {% set u = s.claude_usage %}
+  <div class="spread" style="margin-top:18px">
+    <div class="eyebrow">Usage · last {{ u.days }} days</div>
+    <span class="small muted">{{ u.today_runs }} run{{ 's' if u.today_runs != 1 }} today · {{ u.total_runs }} in {{ u.days }} days
+      {% if u.last_limit %} · <span class="warn">last usage limit {{ u.last_limit.finished_at|date('%d %b %H:%M') }}</span>{% endif %}</span>
+  </div>
+  {% set top = (u.per_day|map(attribute='total')|max) or 1 %}
+  <div class="usage-bars" title="Claude runs per day">
+    {% for d in u.per_day %}{% set n = d.total %}
+    <div class="ub" title="{{ d.day|date('%a %d %b') }}: {{ n }} run{{ 's' if n != 1 }}"><i style="height: {{ (100 * n / top)|round|int }}%"></i><span>{{ d.day|date('%d') }}</span></div>
+    {% endfor %}
+  </div>
+  {% if u.purposes %}
+  <div class="table-wrap"><table>
+    <tr><th>What</th><th class="num">Runs</th><th class="num">Failed</th><th class="num">Time</th><th class="num">Tokens</th><th>Model</th></tr>
+    {% for p in u.purposes %}
+    <tr><td>{{ p.label }}</td><td class="num">{{ p.runs }}</td><td class="num {{ 'warn' if p.failed }}">{{ p.failed }}</td>
+      <td class="num">{{ p.minutes }} min</td>
+      <td class="num">{{ '{:,}'.format(p.tokens).replace(',', ' ') if p.tokens else '—' }}</td>
+      <td class="small faint">{{ p.models|join(', ') }}</td></tr>
+    {% endfor %}
+  </table></div>
+  <p class="small faint" style="margin:6px 0 0">Tokens include cached context and are recorded from now on; the subscription's limits are set by Anthropic and not shown here — a usage-limit hit pauses background work until it resets.</p>
+  {% else %}<p class="empty">No Claude runs in the last {{ u.days }} days.</p>{% endif %}
+</section>
+
+<section class="card">
+  <h2>{{ icon("message") }}Evening Message <span class="plain">discord, after 22:00</span></h2>
+  {% set ev = s.evening %}
+  {% if not ev.configured %}
+  <p class="small muted">Not set up. Create a webhook in your Discord channel (Edit channel → Integrations → Webhooks → Copy URL),
+    set it as <code>HART_DISCORD_WEBHOOK_URL</code> and restart hart.</p>
+  {% else %}
+  <p class="small muted">Tomorrow's suggestion and coach session, today's sessions with grades, and open alerts — sent once a day after 22:00.</p>
+  <div class="kv">
+    <div><span>Send every evening</span>
+      <span><input type="checkbox" style="width:auto" {{ 'checked' if ev.enabled }}
+        onchange="act(this, () => api.put('/api/evening/enabled', {enabled: this.checked}), {reload: false})"></span></div>
+    <div><span>Last sent</span><span>{{ ev.last_sent or '—' }}{% if ev.last_failed %} <span class="warn small">· last failure {{ ev.last_failed[:16]|replace('T', ' ') }}</span>{% endif %}</span></div>
+    <div><span>Try it</span><span><button class="small secondary" onclick="act(this, () => api.post('/api/evening/test'), {reload: false}).then((r) => r && toast('Test message queued'))">Send a test now</button></span></div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="card">
+  <h2 class="sunset">{{ icon("leaf") }}Changing Seasons <span class="plain">context</span></h2>
+  <div class="table-wrap"><table>
+    <tr><th>Kind</th><th>Label</th><th>From</th><th>To</th><th class="num">Source</th></tr>
+    {% for a in s.annotations %}
+    <tr><td><span class="kind {{ a.kind }}">{{ a.kind }}</span></td><td>{{ a.label }}</td>
+      <td class="dim">{{ a.start_date }}</td><td class="dim">{{ a.end_date or 'ongoing' }}</td><td class="source num">{{ a.source }}</td></tr>
+    {% else %}<tr><td colspan="5" class="empty">No annotations yet.</td></tr>{% endfor %}
+  </table></div>
+  {% if s.season_detection and s.season_detection.comeback_end %}
+  <div class="callout">{{ icon("tree") }}<div><strong>Healing roots:</strong> comeback phase ends
+    <strong style="color:var(--green)">{{ s.season_detection.comeback_end }}</strong> (return date + 8 weeks). Edit on the <a href="/season">Season</a> page.</div></div>
+  {% endif %}
+</section>
+
+<section class="card alt">
+  <h2>{{ icon("list") }}Trail Crew <span class="plain">recent jobs</span></h2>
+  <div class="table-wrap"><table>
+    <tr><th>#</th><th>Type</th><th>Trigger</th><th>Status</th><th>Created</th><th class="num">Duration</th><th>Details</th></tr>
+    {% for j in s.jobs %}
+    <tr>
+      <td class="dim">{{ j.id }}</td><td>{{ j.type }}</td><td class="dim">{{ j.trigger }}</td>
+      <td class="{{ {'ok':'ok','error':'err','running':'warn','queued':'faint'}.get(j.status, '') }}">
+        {{ j.status }}{% if j.result and j.result.partial %} (partial){% endif %}</td>
+      <td class="dim">{{ j.created_at.strftime('%m-%d %H:%M') if j.created_at else '' }}</td>
+      <td class="num dim">{% if j.started_at and j.finished_at %}{{ '%.0fs'|format((j.finished_at - j.started_at).total_seconds()) }}{% endif %}</td>
+      <td class="wrap small {{ 'err' if j.status == 'error' else 'dim' }}">{{ j.details }}</td>
+    </tr>
+    {% else %}<tr><td colspan="7" class="empty">No jobs yet.</td></tr>{% endfor %}
+  </table></div>
+</section>
+{% endblock %}

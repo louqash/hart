@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+{% from "_proposals.html" import proposals_card %}
+{% from "_icons.html" import icon %}
+{% from "_legend.html" import load_legend, tip %}
+{% block title %}Season{% endblock %}
+{% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>{% endblock %}
+{% block content %}
+{% set st = ctx.state %}
+<div class="spread">
+  <h1>Season</h1>
+  <div class="row">
+    {% if ctx.phase %}<span class="chip accent">{{ ctx.phase.name }} · week {{ ctx.phase.week }}/{{ ctx.phase.weeks }}</span>{% endif %}
+    <span class="chip">{{ st.label }}</span>
+  </div>
+</div>
+{% for f in ctx.flags %}<div class="flag">{{ f }}</div>{% endfor %}
+
+{{ proposals_card(s.proposals|rejectattr('kind', 'equalto', 'plan')|list, 'season') }}
+
+<section class="card">
+  <h2 class="sunset">{{ icon("mountain") }}The Long Trail <span class="plain">timeline</span></h2>
+  <div id="timeline" class="chart tall"></div>
+  <p class="small muted" style="margin:4px 0 0">Bars: weekly load. Above the chart: season phases, then annotations (injury, no watch, trips) — hover a bar for its dates.</p>
+</section>
+
+<section class="card alt">
+  <h2>{{ icon("compass") }}Current Conditions <span class="plain">observed state</span></h2>
+  <div class="stats">
+    <div class="stat"><div class="label">State{{ tip("state") }}</div><div class="value" style="font-size:18px">{{ st.label }}</div></div>
+    <div class="stat"><div class="label">Fitness (CTL){{ tip("ctl") }}</div><div class="value">{{ st.ctl|num(1) }}</div></div>
+    <div class="stat"><div class="label">Fatigue (ATL){{ tip("atl") }}</div><div class="value">{{ st.atl|num(1) }}</div></div>
+    <div class="stat"><div class="label">Ramp (7 d){{ tip("ramp") }}</div><div class="value">{{ '%+.1f'|format(st.ramp_7d) if st.ramp_7d is not none else '—' }}</div></div>
+    <div class="stat"><div class="label">Form (TSB){{ tip("tsb") }}</div><div class="value">{{ st.tsb|num(1) }}</div></div>
+    <div class="stat"><div class="label">CTL vs 28 d ago{{ tip("ctl_change_28d") }}</div><div class="value">{{ '%+.0f%%'|format(st.ctl_change_28d * 100) if st.ctl_change_28d is not none else '—' }}</div></div>
+    <div class="stat"><div class="label">Training days (14 d){{ tip("consistency_14d") }}</div><div class="value">{{ st.consistency_14d }}</div></div>
+  </div>
+  <p class="small muted" style="margin:8px 0 0">States: building (CTL rising &gt; 2/week), maintaining, absorbing (CTL easing while fresh), detraining (CTL down &gt; 20% in 4 weeks with few sessions), overreaching risk (TSB &lt; −30 or ramp &gt; 8/week). Thresholds are provisional.</p>
+  {{ load_legend() }}
+</section>
+
+<section class="card">
+  <div class="spread">
+    <h2>{{ icon("map") }}Trail Stages <span class="plain">phases</span></h2>
+    <div class="row">
+      {% if s.unconfirmed %}<button class="small" onclick="act(this, () => api.post('/api/phases/confirm'))">Confirm {{ s.unconfirmed }} proposed</button>{% endif %}
+      <button class="small secondary" onclick="act(this, () => api.post('/api/phases/generate'), {confirmText: 'Replace all auto-generated phases with a fresh proposal? Phases you edited are kept.'})">Regenerate proposal</button>
+    </div>
+  </div>
+  {% if s.detection and s.detection.layoff %}
+  <p class="small muted">Comeback detected from your data: return {{ s.detection.layoff.return_date }} after a {{ s.detection.layoff.gap_days }}-day layoff; comeback ends {{ s.detection.comeback_end }} (return + 8 weeks).</p>
+  {% endif %}
+  <div class="table-wrap"><table>
+    <tr><th>Phase</th><th>Type</th><th>From</th><th>To</th><th class="num">Length</th><th>Goal</th><th></th></tr>
+    {% for p in s.phases %}
+    <tr id="phase-{{ p.id }}">
+      <td><strong>{{ p.name }}</strong>{% if p.start_date <= s.today <= p.end_date %} <span class="chip accent">now</span>{% endif %}</td>
+      <td>{{ p.phase_type }}</td><td>{{ p.start_date }}</td><td>{{ p.end_date }}</td>
+      {% set days = (p.end_date - p.start_date).days + 1 %}
+      <td class="num">{{ (days // 7) ~ ' wk' if days % 7 == 0 else days ~ ' d' }}</td>
+      <td class="wrap small">{{ p.goal or '' }}</td>
+      <td>{% if not p.confirmed %}<span class="chip amber">proposed</span>{% elif p.source == 'manual' %}<span class="chip">edited</span>{% endif %}
+        <button class="small secondary" onclick='editPhase({{ (p)|tojson }})'>Edit</button></td>
+    </tr>
+    {% else %}<tr><td colspan="7" class="empty">No phases yet — use “Regenerate proposal”.</td></tr>{% endfor %}
+  </table></div>
+  <details style="margin-top:10px" id="phase-editor-wrap"><summary id="phase-editor-title">Add a phase</summary>
+    <form id="phase-form" class="form-grid" style="margin-top:8px" onsubmit="event.preventDefault(); savePhase(this)">
+      <input type="hidden" name="id">
+      <div><label>Name</label><input name="name" required></div>
+      <div><label>Type</label><select name="phase_type">{% for t in phase_types %}<option>{{ t }}</option>{% endfor %}</select></div>
+      <div><label>From</label><input type="date" name="start_date" required></div>
+      <div><label>To</label><input type="date" name="end_date" required></div>
+      <div style="grid-column: 1 / -1"><label>Goal</label><input name="goal" style="width:100%"></div>
+      <div class="row"><button type="submit" class="primary">Save</button>
+        <button type="button" class="danger" id="phase-delete" style="display:none" onclick="deletePhase(this)">Delete</button></div>
+    </form>
+  </details>
+</section>
+
+<div class="grid two">
+  <section class="card">
+    <h2 id="races">{{ icon("flag") }}Summits <span class="plain">races</span></h2>
+    <ul class="list">
+      {% for r in s.races %}
+      <li{{ ' class="past"' if r.race_date < s.today }}>
+        <div style="min-width:0; flex:1">
+          <div><strong style="color:var(--cream)">{{ r.name }}</strong></div>
+          <div class="small muted">{{ r.race_date|date('%d %b %Y') }} · {{ r.distance }} · {{ r.priority }}-race
+            {% if r.race_date >= s.today %}· in {{ (r.race_date - s.today).days }} days{% else %}· done{% endif %}</div>
+          {% if r.notes %}<div class="small faint">{{ r.notes }}</div>{% endif %}
+        </div>
+        <button class="small secondary" style="flex:none" onclick='editRace({{ r|tojson }})'>Edit</button>
+      </li>
+      {% else %}<li class="empty">No races.</li>{% endfor %}
+    </ul>
+    <details style="margin-top:8px" id="race-editor-wrap"><summary id="race-editor-title">Add a race</summary>
+      <form id="race-form" class="form-grid" style="margin-top:8px" onsubmit="event.preventDefault(); saveRace(this)">
+        <input type="hidden" name="id">
+        <div style="grid-column:1/-1"><label>Name</label><input name="name" required maxlength="80" style="width:100%" placeholder="e.g. Spring Half"></div>
+        <div><label>Date</label><input type="date" name="race_date" required></div>
+        <div><label>Distance</label><select name="distance">{% for d in race_distances %}<option>{{ d }}</option>{% endfor %}</select></div>
+        <div><label>Priority</label><select name="priority"><option value="A">A — main goal</option><option value="B" selected>B — important</option><option value="C">C — training race</option></select></div>
+        <div style="grid-column:1/-1"><label>Notes</label><input name="notes" style="width:100%" placeholder="optional"></div>
+        <div class="row"><button type="submit" class="primary">Save</button>
+          <button type="button" class="secondary" onclick="resetRace()">Cancel</button>
+          <button type="button" class="danger" id="race-delete" style="display:none" onclick="deleteRace(this)">Delete</button></div>
+      </form>
+      <p class="small faint" style="margin:8px 0 0">The phase plan is built backwards from the next A-race; after changing it, use “Regenerate proposal” above. Race days get no training suggestion.</p>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2 class="sunset">{{ icon("leaf") }}Changing Seasons <span class="plain">context</span></h2>
+    <div class="table-wrap"><table>
+      <tr><th>Kind</th><th>Label</th><th>Dates</th><th></th></tr>
+      {% for a in s.annotations %}
+      <tr><td><span class="kind {{ a.kind }}">{{ a.kind }}</span></td>
+        <td class="wrap">{{ a.label }}{% if a.source == 'detected' %} <span class="source small">detected</span>{% endif %}</td>
+        <td class="dim small">{{ a.start_date|date('%d %b %y') }} → {{ a.end_date|date('%d %b %y') if a.end_date else 'ongoing' }}</td>
+        <td><button class="small secondary" onclick='editAnnotation({{ a|tojson }})'>Edit</button></td></tr>
+      {% else %}<tr><td colspan="4" class="empty">No annotations.</td></tr>{% endfor %}
+    </table></div>
+    <details style="margin-top:8px" id="annotation-editor-wrap"><summary id="annotation-editor-title">Add an event or annotation</summary>
+      <form id="annotation-form" class="form-grid" style="margin-top:8px" onsubmit="event.preventDefault(); saveAnnotation(this)">
+        <input type="hidden" name="id">
+        <div><label>Label</label><input name="label" required maxlength="80" placeholder="e.g. Training camp Mallorca"></div>
+        <div><label>Kind</label><select name="kind">{% for k in annotation_kinds %}<option{{ ' selected' if k == 'event' }}>{{ k }}</option>{% endfor %}</select></div>
+        <div><label>From</label><input type="date" name="start_date" required></div>
+        <div><label>To (optional)</label><input type="date" name="end_date"></div>
+        <div class="row" style="align-self:end"><button type="submit" class="primary">Save</button>
+          <button type="button" class="secondary" onclick="resetAnnotation()">Cancel</button>
+          <button type="button" class="danger" id="annotation-delete" style="display:none" onclick="deleteAnnotation(this)">Delete</button></div>
+      </form>
+      <p class="small faint" style="margin:8px 0 0">Events (trips, camps) are graded on context only; illness and injury affect readiness.</p>
+    </details>
+  </section>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const season = {{ (s)|tojson }};
+const load = season.weekly_load.map((w) => [w.week, w.load]);
+const marks = [{ xAxis: season.today, name: "today" }, ...season.races.map((r) => ({ xAxis: r.race_date, name: r.name }))];
+bandChart("timeline", {
+  legend: { show: false },
+  grid: { left: 40, right: 16, top: 50, bottom: 30 },
+  xAxis: { type: "time", min: season.start, max: season.end },
+  yAxis: { type: "value", name: "weekly load", nameLocation: "end", nameGap: 8 },
+  series: [{
+    name: "Weekly load", type: "bar", data: load, color: css("--accent"), barMaxWidth: 10,
+    markLine: { symbol: "none", silent: true, label: { show: false },
+      lineStyle: { color: css("--text"), type: "dashed" }, data: marks },
+  }],
+}, { phases: season.phases, annotations: season.annotations }, { marks });
+
+function openEditor(prefix, title) {
+  document.getElementById(`${prefix}-editor-title`).textContent = title;
+  const wrap = document.getElementById(`${prefix}-editor-wrap`);
+  wrap.open = true;
+  wrap.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+function fill(form, record, keys) {
+  form.reset();
+  for (const k of keys) if (form.elements[k]) form.elements[k].value = record[k] ?? "";
+}
+function staleHint(out) {
+  if (out && out.phases_stale) toast("Your next A-race changed — press “Regenerate proposal” to rebuild the phases", 6000);
+}
+
+function editRace(r) {
+  fill(document.getElementById("race-form"), r, ["id", "name", "race_date", "distance", "priority", "notes"]);
+  document.getElementById("race-delete").style.display = "";
+  openEditor("race", `Edit ${r.name}`);
+}
+function resetRace() {
+  document.getElementById("race-form").reset();
+  document.getElementById("race-form").elements.id.value = "";
+  document.getElementById("race-delete").style.display = "none";
+  document.getElementById("race-editor-title").textContent = "Add a race";
+  document.getElementById("race-editor-wrap").open = false;
+}
+async function saveRace(form) {
+  const { id, ...body } = formData(form);
+  const out = await act(form.querySelector("button[type=submit]"),
+    () => (id ? api.put(`/api/races/${id}`, body) : api.post("/api/races", body)), { reload: false });
+  if (out) { staleHint(out); setTimeout(() => location.reload(), out.phases_stale ? 1800 : 0); }
+}
+async function deleteRace(button) {
+  const id = document.getElementById("race-form").elements.id.value;
+  const out = await act(button, () => api.del(`/api/races/${id}`), { reload: false, confirmText: "Delete this race?" });
+  if (out) { staleHint(out); setTimeout(() => location.reload(), out.phases_stale ? 1800 : 0); }
+}
+
+function editAnnotation(a) {
+  fill(document.getElementById("annotation-form"), a, ["id", "label", "kind", "start_date", "end_date"]);
+  document.getElementById("annotation-delete").style.display = "";
+  openEditor("annotation", `Edit ${a.label}`);
+}
+function resetAnnotation() {
+  const f = document.getElementById("annotation-form");
+  f.reset();
+  f.elements.id.value = "";
+  document.getElementById("annotation-delete").style.display = "none";
+  document.getElementById("annotation-editor-title").textContent = "Add an event or annotation";
+  document.getElementById("annotation-editor-wrap").open = false;
+}
+async function deleteAnnotation(button) {
+  const id = document.getElementById("annotation-form").elements.id.value;
+  await act(button, () => api.del(`/api/annotations/${id}`), { confirmText: "Delete this annotation?" });
+}
+async function saveAnnotation(form) {
+  const { id, ...body } = formData(form);
+  await act(form.querySelector("button[type=submit]"),
+    () => (id ? api.put(`/api/annotations/${id}`, body) : api.post("/api/annotations", body)));
+}
+
+function editPhase(p) {
+  const f = document.getElementById("phase-form");
+  for (const k of ["id", "name", "phase_type", "start_date", "end_date", "goal"]) f.elements[k].value = p[k] ?? "";
+  document.getElementById("phase-editor-title").textContent = `Edit ${p.name}`;
+  document.getElementById("phase-delete").style.display = "";
+  const wrap = document.getElementById("phase-editor-wrap");
+  wrap.open = true;
+  wrap.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+async function savePhase(form) {
+  const { id, ...body } = formData(form);
+  await act(form.querySelector("button[type=submit]"), () => (id ? api.put(`/api/phases/${id}`, body) : api.post("/api/phases", body)));
+}
+async function deletePhase(button) {
+  const id = document.getElementById("phase-form").elements.id.value;
+  await act(button, () => api.del(`/api/phases/${id}`), { confirmText: "Delete this phase?" });
+}
+</script>
+{% endblock %}

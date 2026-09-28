@@ -1,0 +1,32 @@
+# Personal data — never commit
+data/
+*.duckdb
+*.duckdb.wal
+*.fit
+.env
+.env.*
+!.env.example
+.garmin_tokens
+CLAUDE.local.md
+.claude/settings.local.json
+docker-compose.yml
+claude-home/
+
+# Python / tooling
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+*.egg-info/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+
+# Tracked here (a global gitignore may exclude it): the generic project guide
+!CLAUDE.md

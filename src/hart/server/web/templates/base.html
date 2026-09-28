@@ -1,0 +1,58 @@
+<!doctype html>
+{% from "_icons.html" import icon %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0a140f">
+<title>{% block title %}hart{% endblock %} · hart</title>
+<link rel="preload" href="{{ static('fonts/playfair-display-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{ static('fonts/inter-latin-wght-normal.woff2') }}" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="{{ static('favicon.svg') }}" type="image/svg+xml">
+<link rel="icon" href="{{ static('favicon-32.png') }}" type="image/png" sizes="32x32">
+<link rel="apple-touch-icon" href="{{ static('apple-touch-icon.png') }}">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="hart">
+<link rel="stylesheet" href="{{ static('app.css') }}">
+<script src="{{ static('app.js') }}"></script>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="grain"></div>
+{% set items = [
+  ("today", "/", "Today", "home"), ("fitness", "/fitness", "Fitness", "trending"), ("sessions", "/sessions", "Sessions", "footprints"),
+  ("plan", "/plan", "Plan", "map"), ("strength", "/strength", "Strength", "zap"), ("chat", "/chat", "Ember", "mountain"), ("season", "/season", "Season", "calendar"), ("health", "/health", "Health", "heart"), ("notes", "/notes", "Notes", "book"),
+  ("settings", "/settings", "Settings", "cog"), ("system", "/system", "System", "database"),
+] %}
+<header class="masthead">
+  <div>
+    <a class="brand" href="/">{{ icon("tree") }}hart</a>
+    <div class="sub">signed in as {{ login }}{% if header %} • {{ header.env }} • {{ header.tz }}{% endif %}</div>
+  </div>
+  {% if header %}
+  <a class="status-pill {{ header.level }}" href="/system" title="{{ header.detail }}"><span class="dot"></span>{{ header.text }}</a>
+  {% endif %}
+</header>
+<nav class="topnav">
+  {% for key, href, label, ic in items %}<a class="{{ 'on' if nav == key }}" href="{{ href }}">{{ icon(ic) }}{{ label }}</a>{% endfor %}
+</nav>
+<main>
+{% block content %}{% endblock %}
+</main>
+{% set primary = ["today", "plan", "sessions", "chat"] %}
+{% set more_on = nav not in primary %}
+<nav class="tabbar">
+  {% for key, href, label, ic in items if key in primary %}<a class="{{ 'on' if nav == key }}" href="{{ href }}">{{ icon(ic) }}{{ label }}</a>{% endfor %}
+  <button type="button" class="more-btn{{ ' on' if more_on }}" onclick="document.getElementById('more-sheet').classList.toggle('open')">{{ icon("layers") }}More</button>
+</nav>
+<div id="more-sheet" class="more-sheet" onclick="if (event.target === this) this.classList.remove('open')">
+  <div class="sheet">
+    {% for key, href, label, ic in items if key not in primary %}<a class="{{ 'on' if nav == key }}" href="{{ href }}">{{ icon(ic) }}{{ label }}</a>{% endfor %}
+  </div>
+</div>
+{% block scripts %}{% endblock %}
+</body>
+</html>

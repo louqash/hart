@@ -1,0 +1,21 @@
+# Example: run hart behind Tailscale Serve (or any reverse proxy that sets an identity header).
+#   cp deploy/docker-compose.example.yml docker-compose.yml && cp .env.example .env
+#   docker compose up -d --build
+# The container listens on 127.0.0.1:8765 only; expose it through your proxy, never directly.
+services:
+  hart:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    image: hart:local
+    container_name: hart
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      TZ: ${HART_TZ:-UTC}
+    ports:
+      - "127.0.0.1:8765:8765"
+    volumes:
+      - ./data:/app/data                 # database, Garmin tokens, seed files
+      - ./claude-home:/home/app/.claude  # Claude Code session state (chat history resume)
+      # - /mnt/backups/hart:/backups     # optional: nightly exports (set HART_BACKUP_DIR=/backups)

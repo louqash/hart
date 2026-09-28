@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<h1 style="margin-top:18px">Settings</h1>
+<p class="small muted" style="margin:-4px 0 16px">Changes save as you make them. Each value comes from its default, an environment variable
+  (shown as <span class="chip small-chip">env</span>), or this page (<span class="chip green small-chip">set here</span>) — which wins.</p>
+
+{% for group, items in groups.items() %}
+<section class="card">
+  <h2>{{ group }}</h2>
+  <div class="settings-list">
+    {% for s in items %}
+    <div class="setting" data-key="{{ s.key }}">
+      <div class="setting-label">
+        <label for="s-{{ s.key }}"><strong>{{ s.label }}</strong></label>
+        {% if s.source == 'settings' %}<span class="chip green small-chip">set here</span>
+          <a class="small" href="#" onclick="event.preventDefault(); resetSetting('{{ s.key }}')">reset</a>
+        {% elif s.source == 'env' %}<span class="chip small-chip" title="{{ s.env }}">env</span>{% endif %}
+        {% if s.help %}<div class="small faint">{{ s.help }}</div>{% endif %}
+      </div>
+      <div class="setting-input">
+        {% if s.kind == 'bool' %}
+          <input type="checkbox" id="s-{{ s.key }}" style="width:auto" {{ 'checked' if s.value }} onchange="saveSetting('{{ s.key }}', this.checked, this)">
+        {% elif s.kind == 'choice' %}
+          <select id="s-{{ s.key }}" onchange="saveSetting('{{ s.key }}', this.value, this)">
+            {% for k, label in s.choices.items() %}<option value="{{ k }}"{{ ' selected' if k == s.value }}>{{ label }}</option>{% endfor %}
+          </select>
+        {% elif s.kind == 'time' %}
+          <input type="time" id="s-{{ s.key }}" value="{{ s.value }}" onchange="saveSetting('{{ s.key }}', this.value, this)">
+        {% elif s.kind == 'int' %}
+          <input type="number" id="s-{{ s.key }}" value="{{ s.value }}" {% if s.min is not none %}min="{{ s.min|int }}"{% endif %} {% if s.max is not none %}max="{{ s.max|int }}"{% endif %}
+            onchange="saveSetting('{{ s.key }}', Number(this.value), this)">
+        {% else %}
+          <input id="s-{{ s.key }}" value="{{ s.value }}" onchange="saveSetting('{{ s.key }}', this.value, this)">
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</section>
+{% endfor %}
+
+<section class="card">
+  <details>
+    <summary><strong>Advanced thresholds</strong> <span class="small faint">— readiness, training state, phase template, health checks</span></summary>
+    {% for fam in thresholds %}
+    <div class="eyebrow" style="margin:16px 0 6px">{{ fam.title }}</div>
+    <div class="table-wrap"><table>
+      {% for t in fam['items'] %}
+      <tr><td class="small">{{ t.label }}</td>
+        <td class="num"><input type="number" step="any" value="{{ t.value }}" style="width:110px"
+          onchange="saveThreshold('{{ fam.family }}', '{{ t.key }}', this.value === '' ? null : Number(this.value), this)"></td>
+        <td class="small faint">default {{ t.default }}{% if t.overridden %} · <a href="#" onclick="event.preventDefault(); saveThreshold('{{ fam.family }}', '{{ t.key }}', null, this, true)">reset</a>{% endif %}</td></tr>
+      {% endfor %}
+    </table></div>
+    {% endfor %}
+    <p class="small faint">Load-based thresholds are provisional: the load is Garmin's EPOC-based score, not TSS.</p>
+  </details>
+</section>
+
+<section class="card alt">
+  <h2>{{ icon("cog") }}Server <span class="plain">set by environment variables</span></h2>
+  <div class="kv">
+    {% for name, value, what in server %}
+    <div><span>{{ what }} <code class="small faint">{{ name }}</code></span><span>{{ value }}</span></div>
+    {% endfor %}
+  </div>
+  <p class="small faint" style="margin:10px 0 0">See docs/configuration.md. These need a restart to change.</p>
+</section>
+{% endblock %}
+{% block scripts %}
+<script>
+  async function saveSetting(key, value, el) {
+    const out = await act(el, () => api.put(`/api/settings/${key}`, { value }), { reload: false });
+    if (out) toast("Saved");
+  }
+  async function resetSetting(key) {
+    await act(null, () => api.del(`/api/settings/${key}`));
+  }
+  async function saveThreshold(family, key, value, el, reload = false) {
+    const out = await act(el, () => api.put(`/api/thresholds/${family}/${key}`, { value }), { reload });
+    if (out && !reload) toast("Saved");
+  }
+</script>
+{% endblock %}

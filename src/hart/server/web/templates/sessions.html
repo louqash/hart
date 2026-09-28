@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_grade.html" import grade_chip %}
+{% block title %}Sessions{% endblock %}
+{% block content %}
+<div class="spread">
+  <h1>Trail Log</h1>
+  <form class="row" method="get" action="/sessions">
+    <select name="sport" onchange="this.form.submit()">
+      <option value="">All sports</option>
+      {% for sp in ['swim', 'bike', 'run', 'strength', 'other'] %}<option value="{{ sp }}"{{ ' selected' if sport == sp }}>{{ sp|sport }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+<section class="card">
+  <div class="table-wrap"><table>
+    <tr><th>Date</th><th>Session</th><th class="num">Time</th><th class="num">Distance</th><th class="num">Load</th>
+        <th class="num">Avg HR</th><th class="num">Power / pace</th><th class="num">RPE</th><th>Grade</th></tr>
+    {% for a in l['items'] %}
+    <tr class="clickable" onclick="location.href='/sessions/{{ a.activity_id }}'">
+      <td>{{ a.start_time|date('%a %d %b %Y') }}</td>
+      <td><span class="sport {{ a.sport_type }}"></span><a href="/sessions/{{ a.activity_id }}">{{ a.name or (a.sport_type|sport(a.sub_type)) }}</a>
+        {% if a.indoor %}<span class="muted small"> · indoor</span>{% endif %}</td>
+      <td class="num">{{ a.duration_s|duration }}</td>
+      <td class="num">{{ (a.distance_meters / 1000)|num(1, 'km') if a.distance_meters else '—' }}</td>
+      <td class="num">{{ a.load|num }}</td>
+      <td class="num">{{ a.avg_hr|num }}</td>
+      <td class="num">{% if a.sport_type == 'bike' and a.avg_power %}{{ a.avg_power|num(0, 'W') }}{% elif a.sport_type == 'run' %}{{ a.avg_pace_sec_km|pace }}{% else %}—{% endif %}</td>
+      <td class="num">{{ a.rpe if a.rpe is not none else ((a.garmin_rpe / 10)|round|int if a.garmin_rpe else '—') }}</td>
+      <td>{{ grade_chip(a.grade) }}</td>
+    </tr>
+    {% else %}<tr><td colspan="9" class="empty">No sessions.</td></tr>{% endfor %}
+  </table></div>
+  {% set pages = ((l.total + l.limit - 1) // l.limit) %}
+  {% if pages > 1 %}
+  <div class="spread" style="margin-top:10px">
+    <span class="small muted">{{ l.total }} sessions · page {{ page_no }} of {{ pages }}</span>
+    <span class="row">
+      {% if page_no > 1 %}<a class="btn" href="?sport={{ sport }}&page_no={{ page_no - 1 }}">← Newer</a>{% endif %}
+      {% if page_no < pages %}<a class="btn" href="?sport={{ sport }}&page_no={{ page_no + 1 }}">Older →</a>{% endif %}
+    </span>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

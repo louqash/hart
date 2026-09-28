@@ -1,0 +1,5 @@
+[
+  {"name": "Example Ironman", "race_date": "2027-07-04", "distance": "full", "priority": "A",
+   "notes": "Main goal of the season."},
+  {"name": "Spring Half", "race_date": "2027-05-16", "distance": "half", "priority": "B"}
+]

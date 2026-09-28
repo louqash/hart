@@ -1,0 +1,132 @@
+{% from "_icons.html" import icon %}
+{% from "_grade.html" import grade_chip %}
+{% from "_legend.html" import tip %}
+{#- "Next Steps" card: the suggestion for today (or tomorrow after 20:00),
+    the coach's plan verbatim next to it, and the actions. -#}
+
+{% set REC = {
+  "as_planned": ("As planned", "green"), "modify": ("Modify", "amber"), "replace": ("Replace", "sunset"),
+  "rest": ("Rest", "unknown"), "free_choice": ("Free choice", "green"),
+} %}
+
+{% macro plan_text(r) -%}
+<div class="plan-row{{ ' replaced' if r.replaced_by }}">
+  <div class="spread">
+    <span><span class="sport {{ r.sport_type }}"></span><strong>{{ r.title }}</strong>
+      <span class="faint small">{% if r.duration_min %}{{ r.duration_min }}′{% endif %}{% if r.intensity %} · {{ r.intensity }}{% endif %}</span></span>
+    {% if r.activity_id %}<a class="small" href="/sessions/{{ r.activity_id }}">done ✓ {{ grade_chip(r.grade) }}</a>{% endif %}
+  </div>
+  {% if r.description %}<div class="coach-text">{{ r.description }}</div>{% endif %}
+</div>
+{%- endmacro %}
+
+{% macro sessions_list(s) -%}
+{% for x in s.sessions or [] %}
+<div class="sugg-session">
+  <div class="spread">
+    <span><span class="sport {{ x.sport_type }}"></span><strong style="color:var(--cream)">{{ x.title }}</strong></span>
+    <span class="small muted">{{ x.duration_min }}′ · {{ x.intensity }}</span>
+  </div>
+  {% if x.structure %}<div class="structure">{{ x.structure }}</div>{% endif %}
+  <p class="small muted" style="margin:6px 0 0">{{ x.rationale }}</p>
+  {% if x.garmin_text %}
+  <details class="legend"><summary>Garmin workout text</summary>
+    <pre class="garmin">{{ x.garmin_text }}</pre>
+    <button class="small secondary" onclick="copyText(this, this.previousElementSibling.textContent)">Copy</button>
+  </details>{% endif %}
+</div>
+{% endfor %}
+{%- endmacro %}
+
+{% macro suggestion_card(c, compact=false) %}
+{% set s = c.suggestion %}
+<section class="card hero" id="suggestion">
+  <div class="spread">
+    <h2 class="sunset">{{ icon("compass") }}Next Steps <span class="plain">suggestion · {{ 'tomorrow' if c.is_tomorrow else 'today' }}, {{ c.date|date('%a %d %b') }}</span></h2>
+    {% if not c.race %}
+    <div class="row">
+      <a class="small" href="/chat?context=suggestion:{{ c.date }}">Ask Ember →</a>
+      {% if not c.pending %}<button class="small secondary" onclick="act(this, () => api.post('/api/suggestions/{{ c.date }}/regenerate'))">{{ 'Regenerate' if s else 'Suggest now' }}</button>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if c.race %}
+    <p class="serif" style="font-size:22px; color:var(--cream); margin:6px 0">Race day — {{ c.race.name }}</p>
+    <p class="muted small">No suggestion on race days. Trust the taper.</p>
+  {% else %}
+    {% if c.done %}
+    <div class="callout" style="margin-bottom:14px">{{ icon("flag") }}<div><strong>Done ✓</strong> —
+      <a href="/sessions/{{ c.done.activity_id }}">{{ c.done.name or 'today\'s session' }}</a>
+      {% if c.done.grade and c.done.grade.status == 'graded' %}graded {{ grade_chip(c.done.grade) }}{% elif c.done.grade and c.done.grade.pending %}being graded…{% endif %}
+      {% if c.tomorrow %}<div class="small muted" style="margin-top:4px">Tomorrow ({{ REC[c.tomorrow.recommendation][0]|lower }}): {{ c.tomorrow.summary }}</div>
+      {% else %}<div class="small faint" style="margin-top:4px">Tomorrow's preliminary suggestion arrives at 20:00.</div>{% endif %}
+    </div></div>
+    {% endif %}
+
+    {% if c.pending %}
+      <p class="muted"><span class="grade-chip pending"><i></i></span>&nbsp; Ember is working on a suggestion — the page updates when it's ready.</p>
+    {% endif %}
+
+    {% if c.done %}<details class="legend"><summary>Today's plan and suggestion</summary>{% endif %}
+    <div class="grid two sugg-grid">
+      <div>
+        <div class="eyebrow">Coach's plan{{ tip("coach_plan") }}</div>
+        {% for r in c.coach %}{{ plan_text(r) }}{% else %}<p class="faint small">No coach plan for this day. <a href="/plan">Add or paste the week →</a></p>{% endfor %}
+      </div>
+      <div>
+        <div class="eyebrow">Suggestion{{ tip("suggestion") }}</div>
+        {% if s and s.status == 'ok' %}
+          <div class="row small" style="margin:4px 0 8px">
+            {% set rec = REC.get(s.recommendation, (s.recommendation, '')) %}
+            <span class="chip {{ rec[1] }}">{{ rec[0] }}</span>
+            <span class="chip"><span class="readiness-dot {{ s.readiness }}" style="width:9px;height:9px"></span>readiness {{ s.readiness }}</span>
+            {% if s.kind == 'preliminary' %}<span class="chip unknown" title="Made the evening before; the morning version uses last night's sleep">preliminary</span>{% endif %}
+            {% if s.recommendation == 'free_choice' %}<span class="faint">No coach plan for this day</span>{% endif %}
+          </div>
+          <p style="margin:0 0 10px; color:var(--cream); line-height:1.6">{{ s.summary }}</p>
+          {% set ctx = s.context or {} %}
+          {% if ctx.week_review %}<p class="small muted week-review"><span class="eyebrow">Week so far</span> {{ ctx.week_review }}</p>{% endif %}
+          {% if ctx.changed_from_previous %}<p class="small faint"><span class="eyebrow">Changed from v{{ ctx.previous_suggestion.version if ctx.previous_suggestion else '?' }}</span> {{ ctx.changed_from_previous }}</p>{% endif %}
+          {{ sessions_list(s) }}
+          {% if s.cautions %}<ul class="hl bad">{% for x in s.cautions %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+          <div class="row" style="margin-top:10px">
+            {% if s.recommendation in ('free_choice', 'modify', 'replace') %}
+              {% if s.accepted %}<span class="small ok">Accepted into your plan ✓</span>
+                {% for a in s.accepted_rows if a.sport_type in ('run', 'bike') %}
+                  {% if a.garmin_pending %}<span class="small muted"><span class="grade-chip pending"><i></i></span> sending to Garmin…</span>
+                  {% elif a.garmin_status == 'sent' %}<span class="small ok">on Garmin ✓</span>
+                  {% elif a.garmin_status == 'failed' %}<span class="small err" title="{{ a.garmin_error }}">Garmin failed</span>
+                    <button class="small secondary" onclick="act(this, () => api.post('/api/plan/{{ a.id }}/send-garmin'))">Retry</button>
+                  {% endif %}
+                {% endfor %}
+              {% else %}<button class="small primary" onclick="act(this, () => api.post('/api/suggestions/{{ s.id }}/accept'))">Accept into plan</button>{% endif %}
+            {% endif %}
+            {% if s.citations %}{% set verified = s.citations|selectattr('verified')|list|length %}
+            <span class="small faint">{{ verified }} of {{ s.citations|length }} numbers verified</span>{% endif %}
+            <span class="small faint">v{{ s.version }} · {{ s.created_at|date('%a %H:%M') }}</span>
+          </div>
+          {% if s.newer_failed %}<p class="small warn">A newer attempt (v{{ s.newer_failed.version }}) failed: {{ s.newer_failed.error }}</p>{% endif %}
+          {% if not compact %}
+          <details class="legend"><summary>What it was based on</summary>
+            {% if s.citations %}<div class="table-wrap"><table class="cites">
+              {% for x in s.citations %}<tr><td class="{{ 'v' if x.verified else 'u' }}">{{ '✓' if x.verified else '⚠' }}</td><td>{{ x.label }}</td>
+                <td class="num">{{ x.value }}{% if x.unit %} {{ x.unit }}{% endif %}</td><td class="faint small">{{ x.source }}</td></tr>{% endfor %}
+            </table></div>{% endif %}
+            <pre class="facts">{{ s.context|tojson(indent=1) }}</pre>
+          </details>
+          {% endif %}
+        {% elif s and s.status == 'failed' %}
+          <p class="small err">The last suggestion was rejected: {{ s.error }}</p>
+        {% elif c.claude_paused %}
+          <p class="small warn">Claude is paused until {{ c.claude_paused[:16]|replace('T', ' ') }} (usage limit or token problem).</p>
+        {% elif not c.pending %}
+          <p class="faint small">{{ 'Tomorrow\'s suggestion is made at 20:00.' if c.is_tomorrow else 'Today\'s suggestion comes once last night\'s sleep has synced (10:30 at the latest).' }}</p>
+        {% endif %}
+      </div>
+    </div>
+    {% if c.done %}</details>{% endif %}
+    <p class="faint small" style="margin:14px 0 0">Suggestion based on your data — your coach's plan takes priority.</p>
+  {% endif %}
+</section>
+{% endmacro %}

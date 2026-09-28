@@ -1,0 +1,70 @@
+[project]
+name = "hart"
+version = "0.1.0"
+description = "Self-hosted endurance training companion: Garmin sync, analytics, session grading and an AI coach (Ember) on your Claude subscription"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.12"
+dependencies = [
+    # Core
+    "pydantic>=2.10",
+    # Database
+    "duckdb>=1.2",
+    # Data ingestion
+    "fitparse>=1.2",
+    "garminconnect>=0.2",
+    # MCP Server
+    "mcp[cli]>=1.0",
+    # CLI
+    "typer>=0.15",
+    "rich>=13.9",
+    # Data processing
+    "pandas>=2.2",
+    "numpy>=2.0",
+    # HTTP
+    "httpx>=0.28",
+    # Env
+    "python-dotenv>=1.0",
+    "fastapi>=0.115",
+    "jinja2>=3.1",
+    "uvicorn>=0.30",
+    "pytz>=2024.1",
+    "claude-agent-sdk>=0.2",
+]
+
+[project.optional-dependencies]
+# `hart auth` only (laptop): browser login to Garmin. Not installed in the server image.
+auth = [
+    "playwright>=1.40",
+]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "pytest-cov>=6.0",
+]
+
+[project.scripts]
+hart = "hart.interfaces.cli.app:app"
+hart-mcp = "hart.mcp_server:main"
+hart-init-db = "hart.scripts:init_db"
+hart-backfill-metrics = "hart.scripts:backfill_metrics"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/hart"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint.per-file-ignores]
+# pytest fixtures imported from other test modules are "redefined" by the test parameters that use them.
+"tests/*" = ["F811"]

@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% from "_legend.html" import tip %}
+{% block title %}Health{% endblock %}
+{% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>
+<script src="{{ static('health.js') }}" defer></script>{% endblock %}
+
+{% set KIND = {"lab_panel": ("Blood panel", "green"), "follow_up": ("Follow-up", "amber"), "medical_exam": ("Medical exam", "sunset"),
+               "physio": ("Physio", ""), "other": ("Other", "")} %}
+
+{% macro check_row(c, actions=true) %}
+<li class="check">
+  <div class="spread" style="align-items:flex-start">
+    <div style="min-width:0">
+      <div class="row small" style="gap:8px; margin-bottom:4px">
+        <span class="chip {{ KIND[c.kind][1] }} small-chip">{{ KIND[c.kind][0] }}</span>
+        {% if c.status == 'open' and c.days is not none %}
+          {% if c.days < 0 %}<span class="err">overdue by {{ -c.days }} day{{ 's' if c.days != -1 }}</span>
+          {% elif c.days == 0 %}<span class="warn">due today</span>
+          {% else %}<span class="muted">due {{ c.due_date|date('%d %b %Y') }} · in {{ c.days }} days</span>{% endif %}
+        {% elif c.due_date %}<span class="muted">{{ c.due_date|date('%d %b %Y') }}</span>{% endif %}
+        {% if c.status == 'snoozed' %}<span class="faint">snoozed until {{ c.snoozed_until|date('%d %b') }}</span>{% endif %}
+        {% if c.source == 'claude_proposed' %}<span class="faint">suggested by Ember</span>{% elif c.source == 'manual' %}<span class="faint">added by you{% if c.interval_days %} · every {{ c.interval_days }} days{% endif %}</span>{% endif %}
+      </div>
+      <strong style="color:var(--cream)">{{ c.title }}</strong>
+      {% if c.rationale %}<p class="small muted" style="margin:4px 0 0; line-height:1.55">{{ c.rationale }}</p>{% endif %}
+      {% if c.marker_names and c.kind != 'lab_panel' %}<div class="row small" style="gap:6px; margin-top:6px">{% for m in c.marker_names %}<span class="chip small-chip">{{ m }}</span>{% endfor %}</div>{% endif %}
+    </div>
+    {% if actions %}
+    <div class="row actions" style="flex:none">
+      {% if c.status == 'proposed' %}
+        <button class="small primary" onclick="act(this, () => api.post('/api/health/checks/{{ c.id }}/approve'))">Approve</button>
+        <button class="small secondary" onclick="act(this, () => api.post('/api/health/checks/{{ c.id }}/dismiss'))">Dismiss</button>
+      {% else %}
+        <button class="small primary" onclick="markDone(this, {{ c.id }})">Done</button>
+        <select class="small-select" onchange="snooze(this, {{ c.id }})"><option value="">Snooze…</option><option value="2">2 weeks</option><option value="4">4 weeks</option><option value="8">8 weeks</option></select>
+        <button class="small secondary" onclick="act(this, () => api.post('/api/health/checks/{{ c.id }}/dismiss'), {confirmText: 'Dismiss this check? It won\'t come back for the same results.'})">Dismiss</button>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</li>
+{% endmacro %}
+
+{% block content %}
+<div class="spread" style="margin-top:18px">
+  <h1 style="margin:0">Vital Signs <span class="plain">health checks · blood work</span></h1>
+  <button class="small secondary" onclick="act(this, () => api.post('/api/health/recheck'))">Re-check rules</button>
+</div>
+<p class="small muted" style="margin:6px 0 14px">Informational only — reminders and trends to discuss with your doctor, not a diagnosis.</p>
+
+{% if h.proposed %}
+<section class="card" id="proposed">
+  <h2 class="sunset">{{ icon("compass") }}Suggested by Ember</h2>
+  <ul class="list checks">{% for c in h.proposed %}{{ check_row(c) }}{% endfor %}</ul>
+</section>
+{% endif %}
+
+<div class="grid two" style="align-items:start">
+  <section class="card hero">
+    <h2 class="sunset">{{ icon("heart") }}Due now <span class="plain">due &amp; overdue</span>{{ tip("health_checks") }}</h2>
+    {% if h.due %}<ul class="list checks">{% for c in h.due %}{{ check_row(c) }}{% endfor %}</ul>
+    {% else %}<p class="empty">Nothing due. </p>{% endif %}
+  </section>
+  <section class="card">
+    <h2>{{ icon("calendar") }}On the horizon <span class="plain">next 90 days</span></h2>
+    {% if h.upcoming %}<ul class="list checks">{% for c in h.upcoming %}{{ check_row(c) }}{% endfor %}</ul>
+    {% else %}<p class="empty">Nothing in the next 90 days.</p>{% endif %}
+    {% if h.later %}<details class="legend"><summary>Later ({{ h.later|length }})</summary><ul class="list checks">{% for c in h.later %}{{ check_row(c) }}{% endfor %}</ul></details>{% endif %}
+    {% if h.snoozed %}<details class="legend"><summary>Snoozed ({{ h.snoozed|length }})</summary><ul class="list checks">{% for c in h.snoozed %}{{ check_row(c) }}{% endfor %}</ul></details>{% endif %}
+    <details class="legend"><summary>Add a check</summary>
+      <form class="form-grid" style="margin-top:8px" onsubmit="event.preventDefault(); addCheck(this)">
+        <div style="grid-column:1/-1"><label>Title</label><input name="title" required maxlength="120" style="width:100%" placeholder="e.g. Dentist, Ferritin re-test"></div>
+        <div><label>Kind</label><select name="kind">{% for k, v in KIND.items() %}<option value="{{ k }}"{{ ' selected' if k == 'other' }}>{{ v[0] }}</option>{% endfor %}</select></div>
+        <div><label>Due</label><input type="date" name="due_date"></div>
+        <div><label>Repeat every (days)</label><input type="number" name="interval_days" min="7" max="1100"></div>
+        <div style="grid-column:1/-1"><label>Markers (lab checks)</label>
+          <select name="markers" multiple size="4" style="width:100%">{% for m in catalogue %}<option value="{{ m.key }}">{{ m.name }}</option>{% endfor %}</select></div>
+        <div style="grid-column:1/-1"><label>Why</label><input name="rationale" style="width:100%"></div>
+        <div><button type="submit" class="primary">Add</button></div>
+      </form>
+    </details>
+  </section>
+</div>
+
+<section class="card">
+  <div class="spread">
+    <h2>{{ icon("trending") }}Currents <span class="plain">marker trends</span>{{ tip("lab_trends") }}</h2>
+    <select id="trend-marker" onchange="drawTrend(this.value)">
+      {% for key, s in trend_series.items() %}<option value="{{ key }}">{{ s.name }}</option>{% endfor %}
+    </select>
+  </div>
+  <div id="trend" class="chart short"></div>
+  {% if h.trends %}<ul class="hl bad">{% for t in h.trends %}<li>{{ t.text }}</li>{% endfor %}</ul>{% endif %}
+</section>
+
+<section class="card">
+  <div class="spread">
+    <h2>{{ icon("drops") }}The Record <span class="plain">results by test date</span></h2>
+    <button class="small primary" onclick="document.getElementById('add-results').open = true; document.getElementById('lab-text').focus()">Add results</button>
+  </div>
+  <details id="add-results" class="paste">
+    <summary>Paste a lab report</summary>
+    <p class="small muted">Paste the text of a lab report (e.g. copied from the lab's PDF or portal). Ember reads it; you check the preview before anything is saved.</p>
+    <textarea id="lab-text" rows="8" placeholder="Hemoglobina   15.9 g/dl   13.5 - 18&#10;Ferrytyna     120  ng/ml  30 - 400&#10;..."></textarea>
+    <div class="row" style="margin-top:8px"><button class="primary" onclick="parseLabs(this)">Read results</button><span class="small faint" id="lab-status"></span></div>
+    <div id="lab-preview" hidden></div>
+    <details class="legend"><summary>Or add one result by hand</summary>
+      <form class="form-grid" style="margin-top:8px" onsubmit="event.preventDefault(); addManual(this)">
+        <div><label>Test date</label><input type="date" name="test_date" required></div>
+        <div><label>Marker (as printed)</label><input name="name" required list="marker-names"></div>
+        <div><label>Value</label><input name="value" required placeholder="e.g. 42 or <8.00"></div>
+        <div><label>Unit</label><input name="unit"></div>
+        <div><label>Range</label><input name="reference_range" placeholder="e.g. 30 - 400"></div>
+        <div><label>Flag</label><select name="flag"><option value="">—</option><option>H</option><option>L</option></select></div>
+        <div><button type="submit" class="primary">Save</button></div>
+      </form>
+      <datalist id="marker-names">{% for m in catalogue %}<option value="{{ m.aliases[0]|capitalize }}">{{ m.name }}</option>{% endfor %}</datalist>
+    </details>
+  </details>
+
+  {% for p in panels %}
+  <details class="panel" {{ 'open' if loop.first }}>
+    <summary><strong>{{ p.test_date|date('%d %b %Y') }}</strong> <span class="faint small">· {{ p.markers|length }} results{% if p.flagged %} · <span class="warn">{{ p.flagged }} outside range</span>{% endif %}</span></summary>
+    <div class="table-wrap"><table class="labs">
+      <tr><th>Marker</th><th class="num">Value</th><th>Range</th><th></th></tr>
+      {% for r in p.markers %}
+      <tr class="{{ 'catalogued' if r.marker_key else 'other' }}">
+        <td class="wrap">{{ r.marker_name }}{% if r.name_en and r.name_en|lower != r.marker_name|lower %} <span class="faint small">{{ r.name_en }}</span>{% endif %}</td>
+        <td class="num {{ 'warn' if r.status }}">{{ r.value_text }} <span class="faint small">{{ r.unit or '' }}</span></td>
+        <td class="small faint">{{ r.ref_text or '' }}</td>
+        <td>{% if r.status %}<span class="chip amber small-chip">{{ r.status }}</span>{% endif %}
+          {% if r.source != 'import' %}<button class="small danger" title="Delete" onclick="act(this, () => api.del('/api/health/labs/{{ r.id }}'), {confirmText: 'Delete this result?'})">×</button>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </table></div>
+  </details>
+  {% else %}<p class="empty">No lab results yet.</p>{% endfor %}
+</section>
+
+{% if h.closed %}
+<section class="card">
+  <details><summary>Recently closed ({{ h.closed|length }})</summary>
+    <ul class="list checks">
+      {% for c in h.closed %}
+      <li class="check"><span><strong>{{ c.title }}</strong> <span class="small faint">· {{ c.status }}{% if c.done_on %} {{ c.done_on|date('%d %b %Y') }}{% endif %}{% if c.lab_date %} (results of {{ c.lab_date|date('%d %b %Y') }}){% endif %}</span></span>
+        <button class="small secondary" onclick="act(this, () => api.post('/api/health/checks/{{ c.id }}/reopen'))">Reopen</button></li>
+      {% endfor %}
+    </ul>
+  </details>
+</section>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  window.TREND_SERIES = {{ trend_series|tojson }};
+  window.HEALTH_ANNOTATIONS = {{ annotations|tojson }};
+</script>
+{% endblock %}
