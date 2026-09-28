@@ -96,12 +96,19 @@ def test_message_content_and_send(db: Database, monkeypatch) -> None:
 
     monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.append({"url": url, **kw}) or Response())
     out = evening.run(db, _config())
-    text = sent[0]["json"]["content"]
+    body = sent[0]["json"]
+    embed = body["embeds"][0]
+    fields = {f["name"]: f["value"] for f in embed["fields"]}
     assert out["sent"] and sent[0]["url"] == "https://discord.example/webhook"
-    assert "Coach:** Coach easy run (40′)" in text and "modify the coach's session" in text
-    assert "• Easy run — 30′ endurance" in text and "Calf" in text
-    assert "**Today:** Ride 1:01 h" in text and "<https://hart.example.ts.net/plan>" in text
-    assert sent[0]["json"]["allowed_mentions"] == {"parse": []}
+    assert "content" not in body  # the real message is the embed alone
+    assert embed["title"].startswith("🌲 Tomorrow · ") and embed["url"] == "https://hart.example.ts.net/plan"
+    assert embed["color"] == evening.READINESS["green"][0]
+    assert "**Adjusted**" in embed["description"] and "Keep it shorter" in embed["description"]
+    assert fields["🏃 Easy run"] == "30′ · endurance"
+    assert fields["📋 Coach's plan"] == "Coach easy run · 40′"
+    assert fields["⚠️ Watch out"] == "• Calf: stop if it tightens"
+    assert fields["Today"].startswith("🚴 Ride · 1:01 h")
+    assert body["allowed_mentions"] == {"parse": []}
     assert state.get_setting(db, evening.SENT_KEY) == today.isoformat()
 
 
@@ -116,3 +123,26 @@ def test_failed_send_is_recorded(db: Database, monkeypatch) -> None:
     with pytest.raises(evening.DiscordError):
         evening.run(db, _config())
     assert state.get_setting(db, evening.FAILED_KEY) and not state.get_setting(db, evening.SENT_KEY)
+
+
+def test_test_message_and_alerts(db: Database, monkeypatch) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class Response:
+        status_code = 204
+        text = ""
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.append(kw["json"]) or Response())
+    monkeypatch.setattr(
+        evening, "alerts", lambda db, config: {"garmin_blocked": None, "health_overdue": 1, "proposed_notes": 2}
+    )
+    evening.run(db, _config(), test=True)
+    body = sent[0]
+    assert body["content"].startswith("🧪 Test")
+    embed = body["embeds"][0]
+    assert embed["description"] == "No suggestion for tomorrow yet."
+    assert embed["footer"]["text"] == "🔔 1 health check due · 2 notes waiting for approval"
+    assert {"name": "Today", "value": "Rest day", "inline": True} in embed["fields"]
+    assert not state.get_setting(db, evening.SENT_KEY)  # a test doesn't count as tonight's message
