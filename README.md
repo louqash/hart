@@ -4,7 +4,9 @@
 
 <h1 align="center">hart</h1>
 
-**A self-hosted training companion for endurance athletes.** hart syncs your Garmin data, turns it into
+<p align="center"><strong>A self-hosted training companion for endurance athletes.</strong></p>
+
+hart syncs your Garmin data, turns it into
 training load, readiness and trends, grades every session, suggests the next day's training around your
 coach's plan — and gives you **Ember**, an AI coach-analyst that answers questions about your own data,
 running on your existing Claude subscription.
