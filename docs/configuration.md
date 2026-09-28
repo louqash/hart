@@ -10,7 +10,7 @@ hart is configured in three layers:
 3. **Your notes and seed files** — everything about *you*: goals, races, injuries, constraints, baselines. Ember
    and the suggestion rules read them; nothing personal is built into the code.
 
-Variables are named `HART_*`. The pre-rename names (`TRI_*`) are still read as a fallback.
+Variables are named `HART_*`.
 
 ## Environment variables
 
@@ -50,7 +50,7 @@ header are rejected. See [security.md](security.md).
 | Variable | Default | What it is |
 |---|---|---|
 | `HART_DATA_DIR` | `data` | Holds the database, Garmin tokens and the seed folder. Relative paths here and below are relative to the project folder. |
-| `HART_DB_PATH` | `<data>/hart.duckdb` | The DuckDB file. (An existing `<data>/triathlon.duckdb` from before the rename is picked up automatically.) |
+| `HART_DB_PATH` | `<data>/hart.duckdb` | The DuckDB file. |
 | `HART_SEED_DIR` | `<data>/seed` | Seed files, see below. |
 | `GARMIN_TOKEN_PATH` | `<data>/.garmin_tokens` | Garmin OAuth tokens. |
 | `HART_BACKUP_DIR` | empty | Directory for nightly exports (e.g. a NAS mount). Create an empty `.hart-backups` file in it once, so hart knows the share is really mounted. Keeps 14 daily and 8 weekly exports. |

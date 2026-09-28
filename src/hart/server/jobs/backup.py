@@ -6,8 +6,7 @@ run never leaves something that looks like a good backup.
 
 The backup directory is an NFS share.  If it isn't mounted, Docker's bind
 mount would silently point at an empty local directory, so the job requires
-a marker file (``.hart-backups`` — or ``.tri-backups`` from before the rename)
-and fails loudly without it.
+a marker file (``.hart-backups``) and fails loudly without it.
 """
 
 from __future__ import annotations
@@ -21,7 +20,6 @@ from hart.server.jobs.runner import JobFailed
 from hart.storage.database import Database
 
 MARKER = ".hart-backups"
-MARKERS = (MARKER, ".tri-backups")  # the old name keeps working
 KEEP_DAILY = 14
 KEEP_WEEKLY = 8  # Sunday backups beyond the daily window
 
@@ -61,7 +59,7 @@ def run_backup(
 ) -> dict[str, Any]:
     if backup_dir is None:
         raise JobFailed("HART_BACKUP_DIR is not configured")
-    if not any((backup_dir / m).is_file() for m in MARKERS):
+    if not (backup_dir / MARKER).is_file():
         raise JobFailed(
             f"Backup target not available: {backup_dir / MARKER} missing (is the share mounted? "
             "create the empty marker file once to confirm the directory)"

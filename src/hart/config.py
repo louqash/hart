@@ -93,12 +93,9 @@ class Settings:
 
 
 def _env(name: str, default: str = "") -> str:
-    """HART_<name>, falling back to the pre-rename TRI_<name> (older deployments)."""
-    for key in (f"HART_{name}", f"TRI_{name}"):
-        value = os.environ.get(key)
-        if value not in (None, ""):
-            return value
-    return default
+    """The HART_<name> environment variable, or *default* when unset or empty."""
+    value = os.environ.get(f"HART_{name}")
+    return default if value in (None, "") else value
 
 
 def _path(value: str, base: Path) -> Path:
@@ -111,11 +108,8 @@ def _load() -> Settings:
 
     data_dir = _path(_env("DATA_DIR", "data"), _PROJECT_ROOT)
     # Explicit paths are relative to the project folder; defaults live in the data folder.
-    explicit_db = _env("DB_PATH") or os.environ.get("DATABASE_PATH", "")
+    explicit_db = _env("DB_PATH")
     db_path = _path(explicit_db, _PROJECT_ROOT) if explicit_db else data_dir / "hart.duckdb"
-    legacy_db = data_dir / "triathlon.duckdb"  # name before the rename to hart
-    if not db_path.exists() and not explicit_db and legacy_db.exists():
-        db_path = legacy_db
     explicit_tokens = os.environ.get("GARMIN_TOKEN_PATH", "")
     token_path = _path(explicit_tokens, _PROJECT_ROOT) if explicit_tokens else data_dir / ".garmin_tokens"
     backup = _env("BACKUP_DIR")
@@ -156,7 +150,8 @@ def _load() -> Settings:
             model_parse=_env("MODEL_PARSE", "claude-haiku-4-5"),
             max_concurrency=int(_env("CLAUDE_MAX_CONCURRENCY", "2")),
             token_issued_at=_env("CLAUDE_TOKEN_ISSUED_AT") or os.environ.get("CLAUDE_TOKEN_ISSUED_AT", ""),
-            workspace=_path(_env("CLAUDE_WORKSPACE"), _PROJECT_ROOT) if _env("CLAUDE_WORKSPACE")
+            workspace=_path(_env("CLAUDE_WORKSPACE"), _PROJECT_ROOT)
+            if _env("CLAUDE_WORKSPACE")
             else _PROJECT_ROOT / "deploy" / "claude-workspace",
             mcp_url=_env("CLAUDE_MCP_URL"),
         ),
