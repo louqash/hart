@@ -54,8 +54,11 @@ you). Your data stays in one DuckDB file on your machine.
 readiness day, the limits in your notes ("swim only on Thursday", weekly strength sessions), comeback
 duration caps and your coach's plan. A suggestion that breaks one is repaired or not shown.
 
-**The AI runs on your Claude subscription.** hart drives [Claude Code](https://docs.claude.com/en/docs/claude-code/overview)
-through the Claude Agent SDK with a token from `claude setup-token` — no API key and no per-token bill. Claude only
+**The AI runs on your Claude subscription — no API account needed.** hart drives
+[Claude Code](https://docs.claude.com/en/docs/claude-code/overview) through the Claude Agent SDK with a token from
+`claude setup-token`, so Ember, grading and suggestions count against your Claude Pro or Max plan's usage like
+Claude Code itself does: no API key, no API billing, no per-token bill. When the plan's usage limit is hit,
+background work pauses until it resets. Claude only
 sees your data through hart's read tools, can't touch files or run commands, and web search (optional,
 per chat) is filtered so your data never leaves in a query. See [docs/security.md](docs/security.md).
 
@@ -73,8 +76,9 @@ HART_ENV=dev HART_DB_PATH=data/demo.duckdb uv run hart serve   # http://127.0.0.
 
 ## Quick start
 
-You need Python 3.12+, [uv](https://docs.astral.sh/uv/), a Garmin Connect account and (for Ember) a Claude
-subscription with [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) installed on your laptop.
+You need Python 3.12+, [uv](https://docs.astral.sh/uv/), a Garmin Connect account and (for Ember) a Claude Pro
+or Max subscription with [Claude Code](https://docs.claude.com/en/docs/claude-code/setup) installed on your laptop
+— an Anthropic API account isn't needed.
 
 ```bash
 git clone https://github.com/louqash/hart.git && cd hart
