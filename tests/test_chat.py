@@ -310,19 +310,26 @@ def test_usage_is_recorded_and_summarised(tmp_path) -> None:
 
     db = Database(tmp_path / "u.duckdb").connect()
     now = _dt.datetime.now(tz=_dt.UTC)
-    for purpose, status, usage in (
-        ("chat", "ok", {"input_tokens": 100, "output_tokens": 50}),
-        ("grade", "usage_limited", None),
-        ("chat", "ok", {"output_tokens": 10}),
+    yesterday = now - _dt.timedelta(days=1)
+    for purpose, status, cost, at in (
+        ("chat", "ok", 0.40, now),
+        ("grade", "usage_limited", None, now),
+        ("chat", "ok", 0.10, yesterday),
+        ("suggest", "ok", 0.25, now),
     ):
         db.execute(
             "INSERT INTO claude_runs (purpose, model, prompt_version, status, duration_ms, transcript, started_at, "
             "finished_at) VALUES (?, 'claude-opus-5-5', 'x', ?, 60000, ?, ?, ?)",
-            [purpose, status, json.dumps({"usage": usage, "resets_at": 123}), now, now],
+            [purpose, status, json.dumps({"cost_usd": cost, "resets_at": 123}), at, at],
         )
     u = claude_usage(db, _dt.date.today())
     chat = next(p for p in u["purposes"] if p["purpose"] == "chat")
-    assert (chat["runs"], chat["tokens"], chat["minutes"]) == (2, 160, 2.0)
+    assert (chat["runs"], chat["runs_today"], chat["minutes"]) == (2, 1, 2.0)
+    assert (round(chat["cost"], 2), round(chat["cost_today"], 2)) == (0.5, 0.4)
+    assert [p["purpose"] for p in u["purposes"]] == ["chat", "suggest", "grade"]  # biggest cost first
     assert next(p for p in u["purposes"] if p["purpose"] == "grade")["failed"] == 1
-    assert u["per_day"][-1]["total"] == 3 and u["last_limit"] is not None
+    assert u["has_cost"] and round(u["cost_today"], 2) == 0.65 and round(u["cost_total"], 2) == 0.75
+    today = u["per_day"][-1]
+    assert round(today["cost"], 2) == 0.65 and [p["label"] for p in today["parts"]] == ["Chat", "Suggestions"]
+    assert round(u["top_day"], 2) == 0.65 and u["last_limit"] is not None
     db.close()

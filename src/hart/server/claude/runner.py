@@ -66,6 +66,7 @@ class RunOutcome:
     structured: Any = None  # parsed structured output when output_schema was set
     tool_outputs: list[str] = field(default_factory=list)  # full texts, for citation checks
     usage: dict[str, Any] | None = None  # token counts reported by the CLI
+    cost_usd: float | None = None  # what the run would cost on the API: a proxy for plan usage
 
 
 def _tool_output_text(content: Any) -> str:
@@ -299,6 +300,7 @@ class ClaudeRunner:
                 outcome.duration_ms = msg.duration_ms
                 outcome.structured = msg.structured_output
                 outcome.usage = msg.usage
+                outcome.cost_usd = msg.total_cost_usd
                 if (msg.terminal_reason or "").startswith("aborted"):
                     outcome.status = "cancelled"
                 elif error_kind == "authentication_failed":
@@ -348,6 +350,7 @@ class ClaudeRunner:
             "resumed": spec.resume,
             "resets_at": outcome.resets_at,
             "usage": outcome.usage,
+            "cost_usd": outcome.cost_usd,
         }
         with contextlib.closing(self._db.cursor()) as cur:
             cur.execute(

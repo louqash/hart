@@ -345,45 +345,71 @@ PURPOSE_LABELS = {
 }
 
 
+PURPOSE_COLORS = {  # the app's palette, one per kind of run (usage bars and table)
+    "chat": "#e27d60",
+    "suggest": "#6eb886",
+    "grade": "#e2a45f",
+    "parse_plan": "#6fa8c9",
+    "parse_labs": "#c49bd6",
+}
+
+
 def claude_usage(db: Database, today: D, days: int = 14) -> dict[str, Any]:
-    """Claude runs per day and purpose, with durations and tokens (from each run's transcript)."""
+    """Claude usage per day and purpose. The measure is the API-equivalent cost each run reports: runs vary
+    a lot in size, and cached tokens are cheap, so neither run counts nor raw tokens track how much of the
+    plan's limit is used. Runs from before the cost was recorded count as runs only."""
     since = today - datetime.timedelta(days=days - 1)
     runs = rows(
         db,
         "SELECT CAST(started_at AS DATE) AS day, purpose, model, status, duration_ms, "
-        "CAST(transcript->'usage'->>'input_tokens' AS BIGINT) AS input_tokens, "
-        "CAST(transcript->'usage'->>'output_tokens' AS BIGINT) AS output_tokens, "
-        "CAST(transcript->'usage'->>'cache_read_input_tokens' AS BIGINT) AS cache_read, "
-        "CAST(transcript->'usage'->>'cache_creation_input_tokens' AS BIGINT) AS cache_write "
+        "TRY_CAST(transcript->>'cost_usd' AS DOUBLE) AS cost "
         "FROM claude_runs WHERE started_at >= ?",
         [since],
     )
     purposes: dict[str, dict[str, Any]] = {}
-    by_day = {since + datetime.timedelta(days=i): {} for i in range(days)}
+    by_day: dict[D, dict[str, float]] = {since + datetime.timedelta(days=i): {} for i in range(days)}
     for r in runs:
         p = purposes.setdefault(
             r["purpose"],
             {
                 "purpose": r["purpose"],
                 "label": PURPOSE_LABELS.get(r["purpose"], r["purpose"]),
+                "color": PURPOSE_COLORS.get(r["purpose"], "#8ba393"),
                 "runs": 0,
+                "runs_today": 0,
                 "failed": 0,
                 "minutes": 0.0,
-                "tokens": 0,
+                "cost": 0.0,
+                "cost_today": 0.0,
                 "models": set(),
             },
         )
-        tokens = sum(r[k] or 0 for k in ("input_tokens", "output_tokens", "cache_read", "cache_write"))
+        cost = r["cost"] or 0.0
         p["runs"] += 1
+        p["runs_today"] += r["day"] == today
         p["failed"] += r["status"] not in ("ok", "running")
         p["minutes"] += (r["duration_ms"] or 0) / 60000
-        p["tokens"] += tokens
+        p["cost"] += cost
+        p["cost_today"] += cost if r["day"] == today else 0.0
         p["models"].add(r["model"])
         if r["day"] in by_day:
-            by_day[r["day"]][r["purpose"]] = by_day[r["day"]].get(r["purpose"], 0) + 1
+            by_day[r["day"]][r["purpose"]] = by_day[r["day"]].get(r["purpose"], 0.0) + cost
     for p in purposes.values():
         p["minutes"] = round(p["minutes"], 1)
         p["models"] = sorted(p["models"])
+    ordered = sorted(purposes.values(), key=lambda p: (-p["cost"], -p["runs"]))
+    per_day = [
+        {
+            "day": d,
+            "cost": sum(costs.values()),
+            "parts": [
+                {"label": p["label"], "color": p["color"], "cost": costs[p["purpose"]]}
+                for p in ordered
+                if costs.get(p["purpose"])
+            ],
+        }
+        for d, costs in by_day.items()
+    ]
     limit = one(
         db,
         "SELECT finished_at, transcript->>'resets_at' AS resets_at FROM claude_runs WHERE status = 'usage_limited' "
@@ -391,8 +417,12 @@ def claude_usage(db: Database, today: D, days: int = 14) -> dict[str, Any]:
     )
     return {
         "days": days,
-        "purposes": sorted(purposes.values(), key=lambda p: -p["runs"]),
-        "per_day": [{"day": d, "total": sum(counts.values()), "by_purpose": counts} for d, counts in by_day.items()],
+        "purposes": ordered,
+        "per_day": per_day,
+        "top_day": max((d["cost"] for d in per_day), default=0.0),
+        "cost_total": sum(p["cost"] for p in ordered),
+        "cost_today": sum(p["cost_today"] for p in ordered),
+        "has_cost": any(r["cost"] is not None for r in runs),
         "total_runs": len(runs),
         "today_runs": sum(1 for r in runs if r["day"] == today),
         "last_limit": limit,

@@ -485,8 +485,14 @@ input.small-date { padding: 4px 6px; font-size: 12px; }
 
 /* System: Claude runs per day */
 .usage-bars { display: flex; align-items: flex-end; gap: 4px; height: 64px; margin: 10px 0 12px; }
-.usage-bars .ub { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 3px; }
-.usage-bars .ub i { display: block; width: 100%; min-height: 2px; background: var(--green); opacity: .75; border-radius: 3px 3px 0 0; }
+.usage-bars .ub { flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; align-items: stretch; gap: 3px; }
+/* The bar gets its own box, so the day label below never squeezes it: heights compare correctly. */
+.usage-bars .ub-bar { flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: flex-end;
+  border-bottom: 2px solid var(--line-soft); }
+.usage-bars .ub i { display: block; width: 100%; flex: none; opacity: .85; }
+.usage-bars .ub i:first-child { border-radius: 3px 3px 0 0; }
+.usage-bars .ub span { text-align: center; }
+.legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
 .usage-bars .ub span { font-size: 9px; color: var(--faint); }
 table.compare td, table.compare th { padding: 6px 10px; }
 table.compare th a { color: var(--muted); }
