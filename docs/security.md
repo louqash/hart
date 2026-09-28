@@ -47,12 +47,14 @@ inventing numbers.
   and IDs the hart tools returned in that run and blocks queries or URLs containing them (and long query
   parameters); it learns numbers of three or more digits (years excepted). The prompt forbids putting personal
   data in searches. It's a tripwire, not a guarantee.
-- **Discord**, if you configure the evening message.
+- **Discord**, if you configure the evening message or the Discord chat: the messages and Ember's answers are
+  stored by Discord. The bot answers only allowed users (the bot application's owner by default) and ignores
+  other members, bots and webhooks.
 - Nothing else — no analytics, telemetry or CDN requests (fonts, charts and icons are served locally).
 
 ## Secrets
 
-`.env` (Garmin password, Claude token, Discord webhook) and the Garmin OAuth tokens in the data folder are the
+`.env` (Garmin password, Claude token, Discord webhook and bot token) and the Garmin OAuth tokens in the data folder are the
 secrets. Keep `.env` out of version control (it's in `.gitignore`), readable only by the service user. The
 Settings page shows whether a secret is set, never its value.
 

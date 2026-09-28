@@ -61,7 +61,8 @@ header are rejected. See [security.md](security.md).
 |---|---|
 | `HART_DISCORD_WEBHOOK_URL` | Discord channel webhook for the evening message (Edit channel → Integrations → Webhooks). |
 | `HART_DISCORD_USERNAME`, `HART_DISCORD_AVATAR_URL` | Name and avatar the webhook posts as (default `Ember` and Ember's mountain badge from the GitHub repository). The avatar must be a public URL — Discord fetches it, and can't reach a server on your tailnet. |
-| `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `DISCORD_ALERT_CHANNEL_ID` | Alternative to the webhook: a bot. Also used by the `send_discord_message` tool of the Claude Code agents. |
+| `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID` | A Discord bot: chat with Ember in that channel (see [deployment](deployment.md#discord-optional)). Without a webhook it also posts the evening message; the `send_discord_message` tool of the Claude Code agents uses it too (`DISCORD_ALERT_CHANNEL_ID` for its alert channel). |
+| `HART_DISCORD_ALLOWED_USERS` | Discord user IDs Ember answers, comma-separated. Default: the owner of the bot application. |
 | `HART_SERVER_URL` | On another machine: send `hart sync`, `hart status` and `hart auth` token uploads to a running server instead of opening the database. |
 
 ## Settings

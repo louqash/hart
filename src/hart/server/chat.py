@@ -201,6 +201,11 @@ class ChatService:
         ctx = conversation.get("context_ref")
         if ctx and not prior:
             parts.append(f"(Context the athlete opened this chat from: {ctx.get('label') or json.dumps(ctx)})")
+        if ctx and ctx.get("source") == "discord":
+            parts.append(
+                "(Written in Discord: answer briefly — a few short paragraphs or a short list. Discord shows "
+                "tables only as plain text, so avoid them.)"
+            )
         if prior and not resume:
             recent = prior[-HISTORY_FOR_SUMMARY:]
             history = "\n".join(f"{m['role']}: {m['content'][:800]}" for m in recent)

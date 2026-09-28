@@ -201,7 +201,7 @@ def _last_job(db: Database, job_type: str) -> dict[str, Any] | None:
     )
 
 
-def build_system(db: Database, config: HartSettings, runner: JobRunner) -> dict[str, Any]:
+def build_system(db: Database, config: HartSettings, runner: JobRunner, discord_bot: Any = None) -> dict[str, Any]:
     now = datetime.datetime.now(tz=datetime.UTC)
 
     def count(sql: str) -> int:
@@ -243,6 +243,7 @@ def build_system(db: Database, config: HartSettings, runner: JobRunner) -> dict[
             "last_sent": state.get_setting(db, evening.SENT_KEY),
             "last_failed": state.get_setting(db, evening.FAILED_KEY),
         },
+        "discord_chat": discord_bot.status if discord_bot is not None else None,
     }
 
 
@@ -313,10 +314,20 @@ def create_app(
         scheduler = Scheduler(db, runner, config.server.tz, config)
         if run_scheduler:
             await scheduler.start()
+        from hart.server import discord_chat
+
+        app.state.discord = None
+        with contextlib.closing(db.cursor()) as cur:
+            demo = state.is_demo(cur)
+        if run_scheduler and discord_chat.configured(config) and not demo:
+            app.state.discord = discord_chat.DiscordBot(db, app.state.chat, config)
+            await app.state.discord.start()
         try:
             async with mcp_server.mcp.session_manager.run():
                 yield
         finally:
+            if app.state.discord is not None:
+                await app.state.discord.stop()
             await scheduler.stop()
             await runner.stop()
             mcp_server.configure_server(None, None, None)  # type: ignore[arg-type]
@@ -357,7 +368,7 @@ def create_app(
             request,
             "system.html",
             {
-                "s": build_system(db, config, _runner(request)),
+                "s": build_system(db, config, _runner(request), request.app.state.discord),
                 "today": build_today(db, config),
                 "nav": "system",
             },
@@ -371,7 +382,7 @@ def create_app(
 
     @app.get("/api/system")
     def api_system(request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
-        return build_system(db, config, _runner(request))
+        return build_system(db, config, _runner(request), request.app.state.discord)
 
     @app.post("/api/sync")
     def api_sync(body: SyncRequest, request: Request) -> dict[str, Any]:

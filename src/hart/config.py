@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import re
 import threading
 from pathlib import Path
 
@@ -43,6 +44,8 @@ class DiscordSettings:
     # be a public URL — the default is the icon in the GitHub repository.
     username: str = "Ember"
     avatar_url: str = DEFAULT_DISCORD_AVATAR
+    # Chat with Ember from Discord (bot + channel): who may talk to it. Empty = the bot application's owner.
+    allowed_user_ids: tuple[int, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True)
@@ -140,6 +143,7 @@ def _load() -> Settings:
             webhook_url=_env("DISCORD_WEBHOOK_URL"),
             username=_env("DISCORD_USERNAME", "Ember"),
             avatar_url=_env("DISCORD_AVATAR_URL", DEFAULT_DISCORD_AVATAR),
+            allowed_user_ids=tuple(int(x) for x in re.findall(r"\d+", _env("DISCORD_ALLOWED_USERS"))),
         ),
         server=ServerSettings(
             env=_env("ENV", "production"),

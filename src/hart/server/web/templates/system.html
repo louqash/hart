@@ -80,13 +80,13 @@
 </section>
 
 <section class="card">
-  <h2>{{ icon("message") }}Evening Message <span class="plain">discord, after 22:00</span></h2>
+  <h2>{{ icon("message") }}Discord <span class="plain">evening message and chat</span></h2>
   {% set ev = s.evening %}
   {% if not ev.configured %}
   <p class="small muted">Not set up. Create a webhook in your Discord channel (Edit channel → Integrations → Webhooks → Copy URL),
     set it as <code>HART_DISCORD_WEBHOOK_URL</code> and restart hart.</p>
   {% else %}
-  <p class="small muted">Tomorrow's suggestion and coach session, today's sessions with grades, and open alerts — sent once a day after 22:00.</p>
+  <p class="small muted">Tomorrow's suggestion and coach session, today's sessions with grades, and open alerts — sent once a day after {{ ev.time }}.</p>
   <div class="kv">
     <div><span>Send every evening</span>
       <span><input type="checkbox" style="width:auto" {{ 'checked' if ev.enabled }}
@@ -95,6 +95,15 @@
     <div><span>Try it</span><span><button class="small secondary" onclick="act(this, () => api.post('/api/evening/test'), {reload: false}).then((r) => r && toast('Test message queued'))">Send a test now</button></span></div>
   </div>
   {% endif %}
+  {% set dc = s.discord_chat %}
+  <div class="kv" style="margin-top:8px">
+    <div><span>Chat with Ember</span><span>
+      {% if dc is none %}<span class="faint">not set up — needs a bot (<code>DISCORD_BOT_TOKEN</code>, <code>DISCORD_CHANNEL_ID</code>), see the docs</span>
+      {% elif dc.state == 'connected' %}<span class="ok">connected</span> <span class="dim small">as {{ dc.detail }} · write in the channel or reply to the evening message</span>
+      {% elif dc.state == 'error' %}<span class="err">stopped</span> <span class="small">{{ dc.detail }}</span>
+      {% else %}<span class="warn">connecting…</span>{% endif %}
+    </span></div>
+  </div>
 </section>
 
 <section class="card alt">
