@@ -221,10 +221,15 @@ def run_sync_pipeline(
         "effort_edited_ids": [],
     }
 
-    def step(name: str, fn: Callable[[], Any]) -> Any:
+    def step(name: str, fn: Callable[[], Any], *, atomic: bool = False) -> Any:
+        """Run one step; *atomic* steps rebuild tables the UI reads, so they commit all at once."""
         started = time.monotonic()
         try:
-            out = fn()
+            if atomic:
+                with db.transaction():
+                    out = fn()
+            else:
+                out = fn()
             result["steps"][name] = {"ok": True, "ms": int((time.monotonic() - started) * 1000), "out": out}
             return out
         except Exception as exc:  # noqa: BLE001 — every step reports, none aborts the rest
@@ -310,6 +315,7 @@ def run_sync_pipeline(
                 ctl_tc=config.analytics.ctl_time_constant,
                 atl_tc=config.analytics.atl_time_constant,
             ),
+            atomic=True,
         )
 
     weights = {
@@ -323,12 +329,12 @@ def run_sync_pipeline(
     empty = db.fetchone("SELECT count(*) FROM daily_recovery")[0] == 0
     if empty and not light:
         # First run after the scores started being persisted: fill history.
-        step("recovery_backfill", lambda: {"written": persist_recovery_scores(db, None, weights)})
+        step("recovery_backfill", lambda: {"written": persist_recovery_scores(db, None, weights)}, atomic=True)
     else:
-        step("recovery", lambda: {"written": persist_recovery_scores(db, touched, weights)})
+        step("recovery", lambda: {"written": persist_recovery_scores(db, touched, weights)}, atomic=True)
 
     if not light:
-        step("views", lambda: refresh_all_views(db))
+        step("views", lambda: refresh_all_views(db), atomic=True)
         step("anomalies", lambda: insert_new_anomalies(db, lookback_days=14))
 
     result["sleep_today"] = has_sleep_for(db, today)

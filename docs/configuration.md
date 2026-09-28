@@ -30,7 +30,7 @@ header are rejected. See [security.md](security.md).
 | Variable | Default | What it does |
 |---|---|---|
 | `HART_AUTH_HEADER` | `Tailscale-User-Login` | Header carrying the signed-in identity (e.g. `X-Forwarded-Email` for oauth2-proxy, `Remote-User` for Authelia). |
-| `HART_ALLOWED_USERS` | empty | Comma-separated identities allowed in. Empty = anyone your proxy lets through. |
+| `HART_ALLOWED_USERS` | empty | Comma-separated identities allowed in (recommended). Empty = anyone your proxy lets through. With Tailscale, the login as the admin console's Users page shows it (`you@example.com`, `you@github`…). |
 | `HART_PUBLIC_HOST` | empty | The host name you open hart at (e.g. `hart.example.ts.net`). Needed behind a proxy that rewrites `Host`, and for links in messages. |
 | `HART_ENV` | `production` | `dev` skips the identity check — allowed only when listening on 127.0.0.1. |
 | `HART_PORT` | `8765` | Port `hart serve` listens on. |

@@ -11,7 +11,9 @@ application level.
 
 from __future__ import annotations
 
+import contextlib
 import logging
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 
@@ -122,6 +124,19 @@ class Database:
             conn.execute(sql, params)
         else:
             conn.execute(sql)
+
+    @contextlib.contextmanager
+    def transaction(self) -> Iterator[Database]:
+        """Run a block as one transaction. Other cursors (web requests, charts) keep reading the last
+        committed data until it commits — a table rebuilt by DELETE + INSERT is never seen half-empty."""
+        conn = self.connection
+        conn.begin()
+        try:
+            yield self
+        except BaseException:
+            conn.rollback()
+            raise
+        conn.commit()
 
     def executemany(self, sql: str, params_seq: list[list[Any] | tuple[Any, ...]]) -> None:
         """Execute a parameterised statement for every row in *params_seq*.

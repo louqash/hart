@@ -601,3 +601,27 @@ def test_health_upsert_keeps_values_when_garmin_returns_nothing(db: Database) ->
     upsert_sleep_record(db, SleepRecord(date=day, total_sleep_sec=27000, sleep_score=80))
     upsert_sleep_record(db, SleepRecord(date=day, total_sleep_sec=None, sleep_score=82))
     assert db.fetchone("SELECT total_sleep_sec, sleep_score FROM sleep_records WHERE date = ?", [day]) == (27000, 82)
+
+
+def test_rebuilds_are_invisible_to_readers_until_committed(tmp_path: Path) -> None:
+    """A chart reading daily_training_load mid-sync sees the old rows, never a half-empty table."""
+    db = Database(tmp_path / "t.duckdb").connect()
+    db.execute(
+        "INSERT INTO daily_training_load (date, sport_type, daily_tss, ctl, atl, tsb) VALUES ('2026-09-01', 'all', 50, 40, 45, -5)"
+    )
+    writer, reader = db.cursor(), db.cursor()
+    with writer.transaction():
+        writer.execute("DELETE FROM daily_training_load")
+        assert reader.fetchone("SELECT count(*) FROM daily_training_load")[0] == 1  # old data while rebuilding
+        writer.execute(
+            "INSERT INTO daily_training_load (date, sport_type, daily_tss, ctl, atl, tsb) VALUES ('2026-09-01', 'all', 60, 41, 47, -6)"
+        )
+    assert reader.fetchone("SELECT daily_tss FROM daily_training_load")[0] == 60
+    try:
+        with writer.transaction():
+            writer.execute("DELETE FROM daily_training_load")
+            raise RuntimeError("step failed")
+    except RuntimeError:
+        pass
+    assert reader.fetchone("SELECT count(*) FROM daily_training_load")[0] == 1  # a failed step changes nothing
+    db.close()

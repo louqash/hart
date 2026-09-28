@@ -2,6 +2,8 @@
 #   cp deploy/docker-compose.example.yml docker-compose.yml && cp .env.example .env
 #   docker compose up -d --build
 # The container listens on 127.0.0.1:8765 only; expose it through your proxy, never directly.
+# hart trusts the proxy's identity header, so keep it in its own compose project: other services added here
+# would share its network and could reach port 8765 directly (docs/security.md).
 services:
   hart:
     build:

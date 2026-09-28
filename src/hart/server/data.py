@@ -368,6 +368,8 @@ def claude_usage(db: Database, today: D, days: int = 14) -> dict[str, Any]:
     )
     purposes: dict[str, dict[str, Any]] = {}
     by_day: dict[D, dict[str, float]] = {since + datetime.timedelta(days=i): {} for i in range(days)}
+    runs_by_day: dict[D, dict[str, int]] = {d: {} for d in by_day}
+    uncosted_by_day: dict[D, int] = dict.fromkeys(by_day, 0)
     for r in runs:
         p = purposes.setdefault(
             r["purpose"],
@@ -394,22 +396,38 @@ def claude_usage(db: Database, today: D, days: int = 14) -> dict[str, Any]:
         p["models"].add(r["model"])
         if r["day"] in by_day:
             by_day[r["day"]][r["purpose"]] = by_day[r["day"]].get(r["purpose"], 0.0) + cost
+            runs_by_day[r["day"]][r["purpose"]] = runs_by_day[r["day"]].get(r["purpose"], 0) + 1
+            uncosted_by_day[r["day"]] += r["cost"] is None
     for p in purposes.values():
         p["minutes"] = round(p["minutes"], 1)
         p["models"] = sorted(p["models"])
     ordered = sorted(purposes.values(), key=lambda p: (-p["cost"], -p["runs"]))
-    per_day = [
-        {
-            "day": d,
-            "cost": sum(costs.values()),
-            "parts": [
-                {"label": p["label"], "color": p["color"], "cost": costs[p["purpose"]]}
-                for p in ordered
-                if costs.get(p["purpose"])
-            ],
-        }
-        for d, costs in by_day.items()
-    ]
+    has_cost = any(r["cost"] is not None for r in runs)
+    # Bars show cost once runs record it; before that (and for older days) they show run counts.
+    per_day = []
+    for d, costs in by_day.items():
+        counts = runs_by_day[d]
+        value = costs if has_cost else counts
+        per_day.append(
+            {
+                "day": d,
+                "cost": sum(costs.values()),
+                "runs": sum(counts.values()),
+                "uncosted": uncosted_by_day[d],
+                "value": sum(value.values()),
+                "parts": [
+                    {
+                        "label": p["label"],
+                        "color": p["color"],
+                        "cost": costs.get(p["purpose"], 0.0),
+                        "runs": counts.get(p["purpose"], 0),
+                        "value": value.get(p["purpose"], 0),
+                    }
+                    for p in ordered
+                    if value.get(p["purpose"])
+                ],
+            }
+        )
     limit = one(
         db,
         "SELECT finished_at, transcript->>'resets_at' AS resets_at FROM claude_runs WHERE status = 'usage_limited' "
@@ -419,10 +437,10 @@ def claude_usage(db: Database, today: D, days: int = 14) -> dict[str, Any]:
         "days": days,
         "purposes": ordered,
         "per_day": per_day,
-        "top_day": max((d["cost"] for d in per_day), default=0.0),
+        "top_day": max((d["value"] for d in per_day), default=0),
         "cost_total": sum(p["cost"] for p in ordered),
         "cost_today": sum(p["cost_today"] for p in ordered),
-        "has_cost": any(r["cost"] is not None for r in runs),
+        "has_cost": has_cost,
         "total_runs": len(runs),
         "today_runs": sum(1 for r in runs if r["day"] == today),
         "last_limit": limit,

@@ -491,6 +491,7 @@ input.small-date { padding: 4px 6px; font-size: 12px; }
   border-bottom: 2px solid var(--line-soft); }
 .usage-bars .ub i { display: block; width: 100%; flex: none; opacity: .85; }
 .usage-bars .ub i:first-child { border-radius: 3px 3px 0 0; }
+.usage-bars .ub i.uncosted { height: 6px; background: repeating-linear-gradient(45deg, var(--faint) 0 2px, transparent 2px 4px); opacity: .6; }
 .usage-bars .ub span { text-align: center; }
 .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; }
 .usage-bars .ub span { font-size: 9px; color: var(--faint); }

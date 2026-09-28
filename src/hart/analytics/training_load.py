@@ -357,11 +357,10 @@ def update_training_load(
 
     # 5. Upsert into daily_training_load.
     #    DuckDB supports INSERT OR REPLACE via DELETE + INSERT pattern.
-    for d, sport, tss, ctl, atl, tsb, monotony, strain in all_results:
-        db.execute(
-            "DELETE FROM daily_training_load WHERE date = ? AND sport_type = ?",
-            [d, sport],
-        )
+    db.executemany(
+        "DELETE FROM daily_training_load WHERE date = ? AND sport_type = ?",
+        [[d, sport] for d, sport, *_ in all_results],
+    )
 
     db.executemany(
         "INSERT INTO daily_training_load "

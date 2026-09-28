@@ -57,20 +57,21 @@
   {% macro usd(x) %}{{ '$%.2f'|format(x) if x >= 0.005 or x == 0 else '<$0.01' }}{% endmacro %}
   <div class="spread" style="margin-top:18px">
     <div class="eyebrow">Usage · last {{ u.days }} days</div>
-    <span class="small muted">{% if u.has_cost %}today {{ usd(u.cost_today) }} · {{ u.days }} days {{ usd(u.cost_total) }}{% else %}{{ u.today_runs }} run{{ 's' if u.today_runs != 1 }} today · {{ u.total_runs }} in {{ u.days }} days{% endif %}
+    <span class="small muted">{% if u.has_cost %}today {{ usd(u.cost_today) }} · {{ u.days }} days {{ usd(u.cost_total) }}{% set unc = u.per_day|sum(attribute='uncosted') %}{% if unc %} <span class="faint">(+ {{ unc }} earlier run{{ 's' if unc != 1 }} without a recorded cost)</span>{% endif %}{% else %}{{ u.today_runs }} run{{ 's' if u.today_runs != 1 }} today · {{ u.total_runs }} in {{ u.days }} days{% endif %}
       {% if u.last_limit %} · <span class="warn">last usage limit {{ u.last_limit.finished_at|date('%d %b %H:%M') }}</span>{% endif %}</span>
   </div>
   {% if u.purposes %}
-  {% if u.has_cost %}
   <div class="usage-bars">
     {% for d in u.per_day %}
-    <div class="ub" title="{{ d.day|date('%a %d %b') }}: {{ usd(d.cost) }}{% for part in d.parts %} · {{ part.label }} {{ usd(part.cost) }}{% endfor %}">
-      <div class="ub-bar">{% for part in d.parts|reverse %}<i style="height: {{ (100 * part.cost / u.top_day)|round(1) if u.top_day else 0 }}%; background: {{ part.color }}"></i>{% endfor %}</div>
+    <div class="ub" title="{{ d.day|date('%a %d %b') }}: {% if u.has_cost %}{{ usd(d.cost) }}{% if d.uncosted %} + {{ d.uncosted }} run{{ 's' if d.uncosted != 1 }} with no recorded cost{% endif %}{% else %}{{ d.runs }} run{{ 's' if d.runs != 1 }}{% endif %}{% for part in d.parts %} · {{ part.label }} {{ usd(part.cost) if u.has_cost else part.runs }}{% endfor %}">
+      <div class="ub-bar">
+        {% for part in d.parts|reverse %}<i style="height: {{ (100 * part.value / u.top_day)|round(1) if u.top_day else 0 }}%; background: {{ part.color }}"></i>{% endfor %}
+        {% if u.has_cost and d.uncosted and not d.parts %}<i class="uncosted"></i>{% endif %}
+      </div>
       <span>{{ d.day|date('%d') }}</span>
     </div>
     {% endfor %}
   </div>
-  {% endif %}
   <div class="table-wrap"><table>
     <tr><th>What</th>{% if u.has_cost %}<th class="num">Today</th><th class="num">{{ u.days }} days</th>{% endif %}<th class="num">Runs ({{ u.days }} d)</th><th class="num">Failed</th><th class="num">Time</th><th>Model</th></tr>
     {% for p in u.purposes %}

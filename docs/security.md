@@ -9,9 +9,15 @@ in sees everything.
 - hart has **no passwords or accounts of its own**. It trusts a reverse proxy that has already authenticated
   you and passes your identity in a header (`HART_AUTH_HEADER`, by default Tailscale Serve's
   `Tailscale-User-Login`). Requests without it are rejected (`403`).
-- `HART_ALLOWED_USERS` limits which identities get in.
-- **Never expose the port directly** — the container binds to 127.0.0.1. With a non-Tailscale proxy, make sure
-  it strips the identity header from incoming requests.
+- `HART_ALLOWED_USERS` limits which identities get in. Set it: without it, anyone your proxy lets through is in.
+- **Anything that can reach hart's port directly can claim any identity**, so only the proxy may reach it:
+  - never expose the port — the container publishes it on 127.0.0.1 only;
+  - keep hart off networks shared with other containers. The example compose file gives it its own network (keep
+    it in its own compose project); if you run it another way, create a network just for hart — a container on
+    another Docker network can't reach it, one on the same network can;
+  - processes on the server itself (and host-networked containers) can still reach 127.0.0.1 — fine for a
+    personal box, worth knowing on a shared one;
+  - with a non-Tailscale proxy, make sure it strips the identity header from incoming requests.
 - `HART_ENV=dev` turns the check off and is refused unless hart listens on 127.0.0.1.
 - `/healthz` is open (no data). `/mcp` also accepts an internal bearer token, generated per start, used only by
   the server's own Claude runs.

@@ -77,8 +77,9 @@ sudo tailscale serve --bg --https=443 http://127.0.0.1:8765
 
 hart is now at `https://<machine>.<tailnet>.ts.net` for devices in your tailnet. Tailscale adds the
 `Tailscale-User-Login` header to every request from a user's device, which hart requires. Set
-`HART_PUBLIC_HOST` to that host name and restart. To limit access to certain people, use your tailnet's access
-controls, or set `HART_ALLOWED_USERS=you@example.com`.
+`HART_PUBLIC_HOST` to that host name and restart. Also set `HART_ALLOWED_USERS` to your Tailscale login (as the
+admin console's Users page shows it — `you@example.com`, or `you@github` for a GitHub sign-in), so sharing the
+node or inviting someone to the tailnet doesn't let them in.
 
 If you'd rather give hart its own name (`https://hart.<tailnet>.ts.net`), define a
 [Tailscale Service](https://tailscale.com/kb/1552/tailscale-services) `svc:hart` and serve it from this machine.

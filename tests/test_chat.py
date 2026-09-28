@@ -332,4 +332,10 @@ def test_usage_is_recorded_and_summarised(tmp_path) -> None:
     today = u["per_day"][-1]
     assert round(today["cost"], 2) == 0.65 and [p["label"] for p in today["parts"]] == ["Chat", "Suggestions"]
     assert round(u["top_day"], 2) == 0.65 and u["last_limit"] is not None
+
+    # Before costs were recorded, the bars count runs instead.
+    db.execute("UPDATE claude_runs SET transcript = json_object('resets_at', 123)")
+    u = claude_usage(db, _dt.date.today())
+    assert not u["has_cost"] and u["top_day"] == 3 and u["per_day"][-1]["value"] == 3
+    assert u["per_day"][-1]["uncosted"] == 3 and sum(p["value"] for p in u["per_day"][-1]["parts"]) == 3
     db.close()
