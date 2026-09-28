@@ -1,5 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1f4a31"/><stop offset="1" stop-color="#0a140f"/></linearGradient></defs>
-  <rect width="64" height="64" fill="url(#g)"/>
-  <g fill="#6eb886" transform="translate(32 33) scale(0.92) translate(-32 -31.5)"><path d="M32 9 42 24H22Z"/><path d="M32 17 46 34H18Z"/><path d="M32 26 50 45H14Z"/><rect x="29.5" y="45" width="5" height="9" rx="1"/></g>
+  <!-- Ember's badge from the chat header: the "mountain" icon in sunset on moss, glow included. -->
+  <defs>
+    <radialGradient id="glow" cx="0.5" cy="0.55" r="0.6"><stop offset="0" stop-color="#e27d60" stop-opacity=".22"/><stop offset="1" stop-color="#e27d60" stop-opacity="0"/></radialGradient>
+  </defs>
+  <rect width="64" height="64" fill="#14241a"/>
+  <rect width="64" height="64" fill="url(#glow)"/>
+  <g transform="translate(14 13) scale(1.5)" fill="none" stroke="#e27d60" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m8 3 4 8 5-5 5 15H2L8 3z"/>
+  </g>
 </svg>
