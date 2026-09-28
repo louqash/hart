@@ -425,7 +425,7 @@ def create_app(
     @app.post("/api/evening/test")
     def api_evening_test(request: Request) -> dict[str, Any]:
         if not evening.configured(config):
-            raise HTTPException(400, detail="Discord isn't configured — set HART_DISCORD_WEBHOOK_URL")
+            raise HTTPException(400, detail="Discord isn't configured — set up the bot or HART_DISCORD_WEBHOOK_URL")
         return _runner(request).enqueue(
             "evening_message", {"test": True}, trigger="manual", dedupe_key="evening_message_test"
         )

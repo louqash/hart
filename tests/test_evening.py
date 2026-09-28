@@ -147,3 +147,21 @@ def test_test_message_and_alerts(db: Database, monkeypatch) -> None:
     assert embed["footer"]["text"] == "🔔 1 health check due · 2 notes waiting for approval"
     assert {"name": "Today", "value": "Rest day", "inline": True} in embed["fields"]
     assert not state.get_setting(db, evening.SENT_KEY)  # a test doesn't count as tonight's message
+
+
+def test_bot_is_preferred_over_the_webhook(db: Database, monkeypatch) -> None:
+    sent: list[dict[str, Any]] = []
+
+    class Response:
+        status_code = 200
+        text = ""
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.append({"url": url, **kw}) or Response())
+    base = _config()
+    config = dataclasses.replace(base, discord=dataclasses.replace(base.discord, bot_token="tok", channel_id=123))
+    evening.run(db, config)
+    assert sent[0]["url"] == "https://discord.com/api/v10/channels/123/messages"
+    assert sent[0]["headers"] == {"Authorization": "Bot tok"}
+    assert "username" not in sent[0]["json"]  # the bot posts with its own name and avatar

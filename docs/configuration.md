@@ -59,9 +59,9 @@ header are rejected. See [security.md](security.md).
 
 | Variable | What it is |
 |---|---|
-| `HART_DISCORD_WEBHOOK_URL` | Discord channel webhook for the evening message (Edit channel → Integrations → Webhooks). |
-| `HART_DISCORD_USERNAME`, `HART_DISCORD_AVATAR_URL` | Name and avatar the webhook posts as (default `Ember` and Ember's mountain badge from the GitHub repository). The avatar must be a public URL — Discord fetches it, and can't reach a server on your tailnet. |
-| `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID` | A Discord bot: chat with Ember in that channel (see [deployment](deployment.md#discord-optional)). Without a webhook it also posts the evening message; the `send_discord_message` tool of the Claude Code agents uses it too (`DISCORD_ALERT_CHANNEL_ID` for its alert channel). |
+| `HART_DISCORD_WEBHOOK_URL` | Discord channel webhook for the evening message (Edit channel → Integrations → Webhooks) — only needed without a bot. |
+| `HART_DISCORD_USERNAME`, `HART_DISCORD_AVATAR_URL` | Name and avatar the webhook posts as (a bot posts with its own profile) (default `Ember` and Ember's mountain badge from the GitHub repository). The avatar must be a public URL — Discord fetches it, and can't reach a server on your tailnet. |
+| `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID` | A Discord bot: chat with Ember in that channel (see [deployment](deployment.md#discord-optional)). It also posts the evening message (instead of the webhook); the `send_discord_message` tool of the Claude Code agents uses it too (`DISCORD_ALERT_CHANNEL_ID` for its alert channel). |
 | `HART_DISCORD_ALLOWED_USERS` | Discord user IDs Ember answers, comma-separated. Default: the owner of the bot application. |
 | `HART_SERVER_URL` | On another machine: send `hart sync`, `hart status` and `hart auth` token uploads to a running server instead of opening the database. |
 
@@ -101,7 +101,7 @@ Everything below can be changed on the **Settings** page. The environment variab
 
 | Setting | Environment variable | Default | Notes |
 |---|---|---|---|
-| Evening Discord message | `HART_EVENING_MESSAGE` | `on` | Needs HART_DISCORD_WEBHOOK_URL. |
+| Evening Discord message | `HART_EVENING_MESSAGE` | `on` | Needs the Discord bot or HART_DISCORD_WEBHOOK_URL. |
 | Evening message at | `HART_EVENING_MESSAGE_AT` | `22:00` |  |
 | Send accepted suggestions to Garmin | `HART_GARMIN_AUTO_SEND` | `on` | Runs and rides are scheduled on your Garmin calendar. |
 

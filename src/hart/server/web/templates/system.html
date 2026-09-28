@@ -83,8 +83,8 @@
   <h2>{{ icon("message") }}Discord <span class="plain">evening message and chat</span></h2>
   {% set ev = s.evening %}
   {% if not ev.configured %}
-  <p class="small muted">Not set up. Create a webhook in your Discord channel (Edit channel → Integrations → Webhooks → Copy URL),
-    set it as <code>HART_DISCORD_WEBHOOK_URL</code> and restart hart.</p>
+  <p class="small muted">Not set up. Add a Discord bot (<code>DISCORD_BOT_TOKEN</code>, <code>DISCORD_CHANNEL_ID</code>) — it sends the
+    message and lets you chat with Ember — or just a channel webhook (<code>HART_DISCORD_WEBHOOK_URL</code>), then restart hart.</p>
   {% else %}
   <p class="small muted">Tomorrow's suggestion and coach session, today's sessions with grades, and open alerts — sent once a day after {{ ev.time }}.</p>
   <div class="kv">

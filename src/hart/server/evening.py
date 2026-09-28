@@ -46,25 +46,28 @@ def configured(config: HartSettings) -> bool:
 
 
 def send(config: HartSettings, message: dict[str, Any]) -> None:
-    """Post a message (``content`` and/or ``embeds``) to the webhook or the bot's channel."""
+    """Post a message (``content`` and/or ``embeds``) as the bot when there is one — the same Ember that
+    answers replies in Discord — otherwise through the webhook."""
     import httpx
 
     body = {**message, "allowed_mentions": {"parse": []}}
     if "content" in body:
         body["content"] = body["content"][:2000]
     d = config.discord
-    if d.webhook_url:
-        identity = {"username": d.username, "avatar_url": d.avatar_url}
-        response = httpx.post(d.webhook_url, json={**body, **{k: v for k, v in identity.items() if v}}, timeout=10.0)
-    elif d.bot_token and d.channel_id:
+    if d.bot_token and d.channel_id:
         response = httpx.post(
             f"https://discord.com/api/v10/channels/{d.channel_id}/messages",
             headers={"Authorization": f"Bot {d.bot_token}"},
             json=body,
             timeout=10.0,
         )
+    elif d.webhook_url:
+        identity = {"username": d.username, "avatar_url": d.avatar_url}
+        response = httpx.post(d.webhook_url, json={**body, **{k: v for k, v in identity.items() if v}}, timeout=10.0)
     else:
-        raise DiscordError("Discord isn't configured (set HART_DISCORD_WEBHOOK_URL)")
+        raise DiscordError(
+            "Discord isn't configured (set DISCORD_BOT_TOKEN + DISCORD_CHANNEL_ID, or HART_DISCORD_WEBHOOK_URL)"
+        )
     if response.status_code not in (200, 201, 204):
         raise DiscordError(f"Discord answered {response.status_code}: {response.text[:200]}")
 

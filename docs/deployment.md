@@ -99,10 +99,11 @@ On your phone, open hart in the browser and **Add to Home Screen** — it instal
 
 ## Discord (optional)
 
-**Evening message:** create a webhook in the channel (Edit channel → Integrations → Webhooks → Copy URL) and set
-`HART_DISCORD_WEBHOOK_URL`. It posts as Ember with Ember's avatar.
+A **bot** does everything: it posts the evening message and lets you chat with Ember in the channel. If you only
+want the evening message, a channel **webhook** is enough — Edit channel → Integrations → Webhooks → Copy URL, set
+`HART_DISCORD_WEBHOOK_URL` — and it posts as Ember with Ember's avatar. With both set, the bot is used.
 
-**Chat with Ember from Discord** needs a bot, because a webhook can only post:
+Setting up the bot:
 
 1. In the [Discord developer portal](https://discord.com/developers/applications) create an application, name
    it Ember and give it an avatar (`src/hart/server/web/static/discord-avatar.png`).
@@ -110,8 +111,8 @@ On your phone, open hart in the browser and **Add to Home Screen** — it instal
 3. **OAuth2 → URL Generator**: scope `bot`; permissions *View Channels*, *Send Messages*, *Create Public
    Threads*, *Send Messages in Threads*, *Read Message History*. Open the URL and add the bot to your server.
 4. Set `DISCORD_BOT_TOKEN` and `DISCORD_CHANNEL_ID` (Discord settings → Advanced → Developer Mode, then
-   right-click the channel → Copy Channel ID) — the same channel as the webhook, so you can reply to the
-   evening message — and restart.
+   right-click the channel → Copy Channel ID) and restart. The evening message now comes from the bot, so you
+   can reply to it; `HART_DISCORD_WEBHOOK_URL` can be removed.
 
 Write in the channel, or reply to the evening message: Ember opens a thread and answers there; keep writing in
 the thread to continue. The conversations also appear on the Ember page. Only you are answered — the owner of

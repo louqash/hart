@@ -156,7 +156,7 @@ REGISTRY: tuple[Setting, ...] = (
         True,
         "bool",
         env="HART_EVENING_MESSAGE",
-        help="Needs HART_DISCORD_WEBHOOK_URL.",
+        help="Needs the Discord bot or HART_DISCORD_WEBHOOK_URL.",
     ),
     Setting(
         "evening_message_time", "notifications", "Evening message at", "22:00", "time", env="HART_EVENING_MESSAGE_AT"
