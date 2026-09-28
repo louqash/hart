@@ -30,3 +30,6 @@ dist/
 
 # Tracked here (a global gitignore may exclude it): the generic project guide
 !CLAUDE.md
+
+# Claude Code worktrees (separate checkouts)
+.claude/worktrees/

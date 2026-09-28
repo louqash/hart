@@ -61,15 +61,16 @@
     try { note = JSON.parse(output); } catch { return; }
     if (!note || !note.id || note.status !== "proposed") return;
     const card = el("div", "note-card");
-    card.append(el("div", "eyebrow", "Proposed athlete note"),
-      el("p", "", "Ember wants to remember something. Approve it to add it to your notes."));
+    const change = note.action === "update" || note.action === "archive";
+    card.append(el("div", "eyebrow", change ? "Proposed note change" : "Proposed athlete note"),
+      el("p", "", change ? `${note.summary}. Approve it to apply the change.` : "Ember wants to remember something. Approve it to add it to your notes."));
     const row = el("div", "row");
     const ok = el("button", "small primary", "Approve");
     const no = el("button", "small secondary", "Dismiss");
     const view = el("a", "small", "Open notes →");
     view.href = `/notes#note-${note.id}`;
     ok.onclick = () => act(ok, () => api.post(`/api/notes/${note.id}/approve`), { reload: false })
-      .then((r) => { if (r) { card.replaceChildren(el("p", "ok", "Note approved.")); } });
+      .then((r) => { if (r) { card.replaceChildren(el("p", "ok", change ? "Change applied." : "Note approved.")); } });
     no.onclick = () => act(no, () => api.post(`/api/notes/${note.id}/archive`), { reload: false })
       .then((r) => { if (r) { card.replaceChildren(el("p", "faint", "Note dismissed.")); } });
     row.append(ok, no, view);
@@ -145,7 +146,7 @@
         t.done = true;
         if (ev.is_error) t.li.classList.add("err");
         toolSummary(ui);
-        if (t.name === "propose_athlete_note" && !ev.is_error) noteCard(ui, ev.output_excerpt);
+        if ((t.name === "propose_athlete_note" || t.name === "propose_note_change") && !ev.is_error) noteCard(ui, ev.output_excerpt);
         if (t.name === "propose_season_change" && !ev.is_error) seasonCard(ui, ev.output_excerpt);
         if ((t.name === "propose_plan_change" || t.name === "import_coach_plan") && !ev.is_error) seasonCard(ui, ev.output_excerpt, "plan");
         if (t.name === "propose_health_check" && !ev.is_error) healthCard(ui, ev.output_excerpt);

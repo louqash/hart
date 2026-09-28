@@ -7,7 +7,7 @@
   <h1>Field Notes <span class="plain" style="font-family:var(--sans); font-size:13px; letter-spacing:.1em; text-transform:uppercase; color:var(--faint)">athlete notes</span></h1>
   <button class="small primary" onclick="openEditor()">New note</button>
 </div>
-<p class="muted small">What every Claude knows about you: injuries, constraints, baselines, preferences. Only <strong>active</strong> notes are used; Claude can propose notes, which wait here for approval.</p>
+<p class="muted small">What every Claude knows about you: injuries, constraints, baselines, preferences. Only <strong>active</strong> notes are used. Ember can propose new notes and changes to existing ones (edits, archiving); they wait here for your approval.</p>
 
 <details id="editor-wrap" class="card">
   <summary id="editor-title">New note</summary>
@@ -37,6 +37,17 @@
     {% set ns.status = n.status %}<h2 style="margin-top:24px">{{ icon("book") }}{{ 'Active' if n.status == 'active' else 'Archived' }}</h2>
   {% endif %}
   <article class="note {{ n.status }}" id="note-{{ n.id }}">
+    {% set change = n.proposed_action in ('update', 'archive') %}
+    {% if change %}
+    <p class="eyebrow sunset" style="margin:0 0 6px">{{ 'Archive this note' if n.proposed_action == 'archive' else 'Change this note' }}{% if not n.target %} (the note is gone){% endif %}</p>
+    {% if n.proposal_reason %}<p class="small muted" style="margin:0 0 8px">{{ n.proposal_reason }}</p>{% endif %}
+    {% endif %}
+    {% if change and n.proposed_action == 'update' and n.target %}
+    <details class="small" style="margin-bottom:8px"><summary>Current version: {{ n.target.title }}</summary>
+      <div class="body faint">{{ n.target.body|markdown }}</div>
+      {% if n.target.valid_from or n.target.valid_to %}<p class="faint">Valid {{ n.target.valid_from or '…' }} → {{ n.target.valid_to or 'open' }}</p>{% endif %}
+    </details>
+    {% endif %}
     <div class="spread">
       <h3>{{ n.title }}</h3>
       <span class="row small">
@@ -48,8 +59,8 @@
     {% if n.rules %}<p class="small"><span class="muted">Rules:</span> <code>{{ n.rules|tojson }}</code></p>{% endif %}
     {% if n.valid_from or n.valid_to %}<p class="small muted">Valid {{ n.valid_from or '…' }} → {{ n.valid_to or 'open' }}</p>{% endif %}
     <div class="row">
-      {% if n.status == 'proposed' %}<button class="small primary" onclick="act(this, () => api.post('/api/notes/{{ n.id }}/approve'))">Approve</button>{% endif %}
-      <button class="small secondary" onclick='openEditor({{ n|tojson }})'>Edit</button>
+      {% if n.status == 'proposed' %}<button class="small primary" onclick="act(this, () => api.post('/api/notes/{{ n.id }}/approve'))">{{ 'Archive note' if n.proposed_action == 'archive' else ('Apply change' if n.proposed_action == 'update' else 'Approve') }}</button>{% endif %}
+      {% if not change %}<button class="small secondary" onclick='openEditor({{ n|tojson }})'>Edit</button>{% endif %}
       {% if n.status == 'archived' %}
         <button class="small secondary" onclick="act(this, () => api.post('/api/notes/{{ n.id }}/restore'))">Restore</button>
       {% else %}

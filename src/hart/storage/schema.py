@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 11
+CURRENT_SCHEMA_VERSION: int = 12
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -631,6 +631,12 @@ def _run_migrations(db: Database) -> None:
             ("garmin_sent_at", "TIMESTAMPTZ"),
         ):
             _add_column_if_missing(db, "planned_sessions", column, col_type)
+
+    if 12 not in applied:
+        # v12: Ember can propose changing or archiving an existing note (a 'proposed' row that targets it).
+        _add_column_if_missing(db, "athlete_notes", "target_id", "INTEGER")
+        _add_column_if_missing(db, "athlete_notes", "proposed_action", "VARCHAR")  # NULL/create, update, archive
+        _add_column_if_missing(db, "athlete_notes", "proposal_reason", "VARCHAR")
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;

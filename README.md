@@ -111,7 +111,7 @@ add your races on the Season page, and set your name, power meter and whether yo
 
 ## Using hart from Claude Code
 
-hart is also an MCP server (43 tools: activities, streams, load, sleep, HRV, readiness, plan, grades, labs,
+hart is also an MCP server (44 tools: activities, streams, load, sleep, HRV, readiness, plan, grades, labs,
 SQL…). The repository's `.mcp.json` starts it locally over stdio; when the web service runs, point Claude Code
 at its `/mcp` endpoint instead (the database can only be opened by one process):
 

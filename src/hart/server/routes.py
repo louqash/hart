@@ -718,14 +718,20 @@ def list_notes(db: Database, status: str | None = None) -> list[dict[str, Any]]:
     where = "WHERE status = ?" if status else ""
     notes = data.rows(
         db,
-        "SELECT id, category, title, body, valid_from, valid_to, rules, status, source, created_at, updated_at "
-        f"FROM athlete_notes {where} "
+        "SELECT id, category, title, body, valid_from, valid_to, rules, status, source, created_at, updated_at, "
+        f"target_id, proposed_action, proposal_reason FROM athlete_notes {where} "
         "ORDER BY CASE status WHEN 'proposed' THEN 0 WHEN 'active' THEN 1 ELSE 2 END, category, id",
         [status] if status else [],
     )
     for n in notes:
         if isinstance(n["rules"], str):
             n["rules"] = json.loads(n["rules"])
+    by_id = {n["id"]: n for n in notes}
+    for n in notes:  # a proposed change shows the note it would change
+        target = by_id.get(n["target_id"]) if n.get("target_id") else None
+        n["target"] = (
+            {k: target[k] for k in ("id", "title", "category", "body", "valid_from", "valid_to")} if target else None
+        )
     return notes
 
 
@@ -789,13 +795,48 @@ def _set_note_status(db: Database, note_id: int, status: str) -> dict[str, Any]:
     return {"id": note_id, "status": status}
 
 
+def _change_proposal(db: Database, note_id: int) -> tuple[int, str] | None:
+    row = db.fetchone(
+        "SELECT target_id, proposed_action FROM athlete_notes WHERE id = ? AND status = 'proposed' "
+        "AND proposed_action IN ('update', 'archive')",
+        [note_id],
+    )
+    return (row[0], row[1]) if row else None
+
+
 @router.post("/api/notes/{note_id}/approve")
 def api_approve_note(note_id: int, db: Database = Depends(get_db)) -> dict[str, Any]:
-    return _set_note_status(db, note_id, "active")
+    """Approve a proposal: a new note becomes active; a proposed change is applied to its note."""
+    change = _change_proposal(db, note_id)
+    if change is None:
+        return _set_note_status(db, note_id, "active")
+    target_id, action = change
+    if db.fetchone("SELECT 1 FROM athlete_notes WHERE id = ?", [target_id]) is None:
+        db.execute("DELETE FROM athlete_notes WHERE id = ?", [note_id])
+        raise HTTPException(404, detail="the note this change was for no longer exists")
+    if action == "archive":
+        db.execute(
+            "UPDATE athlete_notes SET status = 'archived', updated_at = current_timestamp WHERE id = ?", [target_id]
+        )
+    else:
+        # The change lands on the original note (it keeps its id and history); edited notes become manual,
+        # so seed-file refreshes never overwrite them.
+        db.execute(
+            "UPDATE athlete_notes AS t SET category = p.category, title = p.title, body = p.body, "
+            "valid_from = p.valid_from, valid_to = p.valid_to, source = 'manual', updated_at = current_timestamp "
+            "FROM athlete_notes AS p WHERE p.id = ? AND t.id = ?",
+            [note_id, target_id],
+        )
+    db.execute("DELETE FROM athlete_notes WHERE id = ?", [note_id])
+    _resync_health(db)
+    return {"id": target_id, "status": "archived" if action == "archive" else "active", "applied": action}
 
 
 @router.post("/api/notes/{note_id}/archive")
 def api_archive_note(note_id: int, db: Database = Depends(get_db)) -> dict[str, Any]:
+    if _change_proposal(db, note_id) is not None:  # dismissing a proposed change just drops it
+        db.execute("DELETE FROM athlete_notes WHERE id = ?", [note_id])
+        return {"id": note_id, "status": "dismissed"}
     return _set_note_status(db, note_id, "archived")
 
 

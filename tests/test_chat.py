@@ -339,3 +339,40 @@ def test_usage_is_recorded_and_summarised(tmp_path) -> None:
     assert not u["has_cost"] and u["top_day"] == 3 and u["per_day"][-1]["value"] == 3
     assert u["per_day"][-1]["uncosted"] == 3 and sum(p["value"] for p in u["per_day"][-1]["parts"]) == 3
     db.close()
+
+
+def test_ember_proposes_note_changes_the_athlete_approves(client) -> None:
+    from hart import mcp_server
+
+    note = client.post(
+        "/api/notes",
+        headers=W,
+        json={"category": "injury", "title": "Achilles", "body": "Sore after hills.", "valid_from": "2026-09-01"},
+    ).json()["id"]
+    bad = json.loads(mcp_server.propose_note_change(note, "update", "no-op"))
+    assert "nothing would change" in bad["error"]
+    out = json.loads(
+        mcp_server.propose_note_change(
+            note, "update", "Healed", body="Healed; no pain since 20 Sep.", valid_to="2026-09-20"
+        )
+    )
+    assert out["status"] == "proposed" and out["action"] == "update" and out["target_id"] == note
+
+    page = client.get("/notes", headers=H).text
+    assert "Change this note" in page and "Healed" in page and "Apply change" in page
+    ctx = json.loads(mcp_server.get_athlete_context())
+    assert ctx["awaiting_approval"] == [f"update note #{note}: Achilles"]
+    assert ctx["notes"]["injury"][0]["body"] == "Sore after hills."  # nothing changed yet
+
+    client.post(f"/api/notes/{out['id']}/approve", headers=W, json={})
+    notes = client.get("/api/notes", headers=H).json()
+    assert [(n["id"], n["body"], str(n["valid_to"])[:10], n["status"]) for n in notes] == [
+        (note, "Healed; no pain since 20 Sep.", "2026-09-20", "active")
+    ]  # applied to the original note; the proposal row is gone
+
+    archive = json.loads(mcp_server.propose_note_change(note, "archive", "Healed a month ago"))
+    client.post(f"/api/notes/{archive['id']}/archive", headers=W, json={})  # dismissed: nothing happens
+    assert [n["status"] for n in client.get("/api/notes", headers=H).json()] == ["active"]
+    archive = json.loads(mcp_server.propose_note_change(note, "archive", "Healed a month ago"))
+    client.post(f"/api/notes/{archive['id']}/approve", headers=W, json={})
+    assert [(n["id"], n["status"]) for n in client.get("/api/notes", headers=H).json()] == [(note, "archived")]

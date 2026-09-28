@@ -23,7 +23,7 @@ the database, so the server owns it: the CLI and your laptop's Claude Code talk 
 | `hart.storage` | Schema and migrations, writers, read queries, the read-only SQL guard. |
 | `hart.analytics` | Pure computation: training load (CTL/ATL/TSB), recovery, efficiency and decoupling, power curve, anomalies, phases and observed state, readiness, grading features, guardrails, health-check rules, strength progression. |
 | `hart.server` | The web service: routes and templates, jobs and scheduler, Claude runner, chat, grading, suggestions, plan, health, settings. |
-| `hart.mcp_server` | 43 MCP tools over the same database (stdio on its own, or mounted at `/mcp` in the server). |
+| `hart.mcp_server` | 44 MCP tools over the same database (stdio on its own, or mounted at `/mcp` in the server). |
 | `hart.interfaces.cli` | `hart` command line. |
 
 Code computes facts; Claude interprets. Anything that must be right — zones, comparisons, readiness,

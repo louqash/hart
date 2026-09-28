@@ -1166,8 +1166,8 @@ def get_athlete_context() -> str:
         today = datetime.date.today()
         notes = rows(
             db,
-            "SELECT id, category, title, body, valid_from, valid_to, rules, status FROM athlete_notes "
-            "WHERE status IN ('active', 'proposed') ORDER BY category, id",
+            "SELECT id, category, title, body, valid_from, valid_to, rules, status, target_id, proposed_action "
+            "FROM athlete_notes WHERE status IN ('active', 'proposed') ORDER BY category, id",
         )
         grouped: dict[str, list[dict[str, Any]]] = {}
         for n in notes:
@@ -1175,13 +1175,25 @@ def get_athlete_context() -> str:
                 n["rules"] = json.loads(n["rules"])
             if n["status"] == "active":
                 grouped.setdefault(n["category"], []).append(
-                    {k: v for k, v in n.items() if k not in ("status", "category") and v is not None}
+                    {
+                        k: v
+                        for k, v in n.items()
+                        if k not in ("status", "category", "target_id", "proposed_action") and v is not None
+                    }
                 )
         return _json(
             {
                 "today": today,
                 "notes": grouped,
-                "awaiting_approval": [n["title"] for n in notes if n["status"] == "proposed"],
+                "awaiting_approval": [
+                    (
+                        f"{n['proposed_action']} note #{n['target_id']}: {n['title']}"
+                        if n.get("proposed_action") in ("update", "archive")
+                        else n["title"]
+                    )
+                    for n in notes
+                    if n["status"] == "proposed"
+                ],
                 "races": rows(db, "SELECT name, race_date, distance, priority, notes FROM races ORDER BY race_date"),
                 "current_phase": phase_on(db, today),
                 "annotations": rows(
@@ -1234,6 +1246,100 @@ def propose_athlete_note(
                 "id": new_id,
                 "status": "proposed",
                 "message": "Saved as a proposal; the athlete approves it on the Notes page.",
+            }
+        )
+    except Exception as exc:
+        return _json({"error": str(exc), "traceback": traceback.format_exc()})
+
+
+@_tool()
+def propose_note_change(
+    note_id: int,
+    action: str,
+    reason: str,
+    category: str = "",
+    title: str = "",
+    body: str = "",
+    valid_from: str = "",
+    valid_to: str = "",
+) -> str:
+    """Propose editing or archiving an existing athlete note; nothing changes until the athlete approves.
+
+    Use it when a note is outdated, wrong or duplicated — e.g. an injury has healed (archive it, or update it
+    to say it healed), a baseline has a newer value, two notes say the same thing. Take the note ids from
+    `get_athlete_context`. For a new fact use `propose_athlete_note` instead.
+
+    Parameters:
+        note_id: Id of the active note to change.
+        action: "update" (only the fields you pass change; pass the full new body when changing the text)
+            or "archive" (retire the note; the athlete can restore it later).
+        reason: Why — shown to the athlete. Required.
+        category, title, body, valid_from, valid_to: New values for "update" (ISO dates; "none" clears a date).
+    """
+    categories = {"injury", "constraint", "baseline", "preference", "goal", "health", "equipment", "other"}
+    if action not in ("update", "archive"):
+        return _json({"error": "action must be 'update' or 'archive'"})
+    if not reason.strip():
+        return _json({"error": "a reason is required"})
+    try:
+        db = _get_db()
+        row = db.fetchone(
+            "SELECT category, title, body, valid_from, valid_to, rules FROM athlete_notes "
+            "WHERE id = ? AND status = 'active'",
+            [note_id],
+        )
+        if row is None:
+            return _json({"error": f"No active note with id {note_id}"})
+        current = dict(zip(("category", "title", "body", "valid_from", "valid_to", "rules"), row))
+        new = dict(current)
+        if action == "update":
+            if category:
+                if category not in categories:
+                    return _json({"error": f"category must be one of {sorted(categories)}"})
+                new["category"] = category
+            if title.strip():
+                if len(title) > 120:
+                    return _json({"error": "title is limited to 120 characters"})
+                new["title"] = title.strip()
+            if body.strip():
+                new["body"] = body.strip()
+            for key, value in (("valid_from", valid_from), ("valid_to", valid_to)):
+                if value.strip().lower() == "none":
+                    new[key] = None
+                elif value.strip():
+                    new[key] = _parse_date(value)
+            if all(new[k] == current[k] for k in ("category", "title", "body", "valid_from", "valid_to")):
+                return _json({"error": "nothing would change — pass the new values"})
+        db.execute(
+            "DELETE FROM athlete_notes WHERE status = 'proposed' AND target_id = ?", [note_id]
+        )  # one pending change per note: the newest wins
+        new_id = db.fetchone(
+            "INSERT INTO athlete_notes (category, title, body, valid_from, valid_to, rules, status, source, "
+            "target_id, proposed_action, proposal_reason) "
+            "VALUES (?, ?, ?, ?, ?, ?, 'proposed', 'claude_proposed', ?, ?, ?) RETURNING id",
+            [
+                new["category"],
+                new["title"],
+                new["body"],
+                new["valid_from"],
+                new["valid_to"],
+                current["rules"]
+                if isinstance(current["rules"], str) or current["rules"] is None
+                else json.dumps(current["rules"]),
+                note_id,
+                action,
+                reason.strip(),
+            ],
+        )[0]
+        verb = "Archive" if action == "archive" else "Change"
+        return _json(
+            {
+                "id": new_id,
+                "status": "proposed",
+                "action": action,
+                "target_id": note_id,
+                "summary": f"{verb} note “{current['title']}”",
+                "message": "Proposed — the athlete approves it on the Notes page (or in the chat card).",
             }
         )
     except Exception as exc:
