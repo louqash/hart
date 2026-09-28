@@ -38,6 +38,9 @@
     </div>
     {% endfor %}
   </div>
+  {% if group == notifications_group and not discord_ready %}
+  <p class="small faint" style="margin:10px 0 0">Evening Discord message: set <code>HART_DISCORD_WEBHOOK_URL</code> (Edit channel → Integrations → Webhooks → Copy URL) and restart — its on/off switch and time appear here then.</p>
+  {% endif %}
 </section>
 {% endfor %}
 

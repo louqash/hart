@@ -124,3 +124,26 @@ def test_paths(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.delenv("HART_DATA_DIR")
     monkeypatch.delenv("HART_DB_PATH")
     cfg.get_config(reload=True)
+
+
+@pytest.mark.parametrize("webhook", ["", "https://discord.example/webhook"])
+def test_evening_settings_need_discord(tmp_path: Path, webhook: str) -> None:
+    from fastapi.testclient import TestClient
+
+    from hart.server.app import create_app
+
+    base = get_config()
+    config = dataclasses.replace(
+        base,
+        db_path=tmp_path / "a.duckdb",
+        server=ServerSettings(env="production", seed_dir=tmp_path / "seed"),
+        discord=dataclasses.replace(base.discord, webhook_url=webhook, bot_token=""),
+    )
+    with TestClient(
+        create_app(config, run_scheduler=False, claude_client_factory=FakeClient),
+        base_url="https://hart.example.ts.net",
+    ) as client:
+        page = client.get("/settings", headers=H).text
+    assert ("Evening message at" in page) == bool(webhook)
+    assert ("its on/off switch and time appear here then" in page) == (not webhook)
+    assert "Send accepted suggestions to Garmin" in page  # the rest of the group stays

@@ -95,9 +95,14 @@ def _has_claude_token() -> bool:
 
 @router.get("/settings", response_class=HTMLResponse, include_in_schema=False)
 def settings_page(request: Request, db: Database = Depends(get_db), config=Depends(get_config)) -> HTMLResponse:
+    from hart.server import evening
+
+    discord_ready = evening.configured(config)
     items = settings.describe(db)
     groups: dict[str, list[dict[str, Any]]] = {}
     for item in items:
+        if item["key"].startswith("evening_message_") and not discord_ready:
+            continue  # can't be sent without Discord; the note below says how to set it up
         groups.setdefault(item["group_label"], []).append(item)
     return page(
         request,
@@ -107,6 +112,8 @@ def settings_page(request: Request, db: Database = Depends(get_db), config=Depen
             "groups": groups,
             "thresholds": thresholds(db),
             "server": server_facts(config),
+            "discord_ready": discord_ready,
+            "notifications_group": settings.GROUPS["notifications"],
         },
     )
 
