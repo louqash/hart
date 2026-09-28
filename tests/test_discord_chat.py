@@ -19,6 +19,7 @@ from tests.test_chat import FakeClient, _reset_fake  # noqa: F401 — autouse fi
 
 CHANNEL = 111
 ME = 42
+BOT = 7
 
 
 # ---------------------------------------------------------------------------
@@ -64,8 +65,11 @@ class Reference:
 
 
 class Message:
-    def __init__(self, channel: Channel, text: str, author: int = ME, *, bot=False, webhook_id=None, reference=None):
+    def __init__(
+        self, channel: Channel, text: str, author: int = ME, *, bot=False, webhook_id=None, reference=None, tagged=True
+    ):
         self.channel = channel
+        self.mentions = [Author(BOT, bot=True)] if tagged else []
         self.content = text
         self.author = Author(author, bot)
         self.webhook_id = webhook_id
@@ -95,7 +99,9 @@ def setup(tmp_path: Path):
         db, mcp_url="http://127.0.0.1:1/mcp", internal_token="x", workspace=tmp_path, client_factory=FakeClient
     )
     chat = ChatService(db, runner, config)
-    yield discord_chat.DiscordChat(db, chat, config), chat
+    handler = discord_chat.DiscordChat(db, chat, config)
+    handler.bot_user_id = BOT
+    yield handler, chat
     db.close()
 
 
@@ -112,7 +118,7 @@ def test_channel_message_opens_a_thread_and_answers(setup) -> None:
     assert "Written in Discord" in FakeClient.instances[0].prompt
 
     # A follow-up in the thread continues the same conversation.
-    asyncio.run(bot.handle(Message(thread, "And last month?")))
+    asyncio.run(bot.handle(Message(thread, "And last month?", tagged=False)))  # no tag needed in its thread
     assert len(chat.list()) == 1 and len(chat.get(conv["id"])["messages"]) == 4
     assert thread.sent[-1] == "Your CTL is **20.1**."
 
@@ -120,7 +126,7 @@ def test_channel_message_opens_a_thread_and_answers(setup) -> None:
 def test_reply_to_evening_message_carries_its_content(setup) -> None:
     bot, _chat = setup
     channel = Channel(CHANNEL)
-    evening = Message(channel, "", author=7, webhook_id=5)
+    evening = Message(channel, "", author=BOT, bot=True, tagged=False)
     evening.embeds = [Embed("🌲 Tomorrow · Tuesday 29 Sep", "🧭 **Free choice** — easy run")]
     channel.history[1] = evening
     asyncio.run(bot.handle(Message(channel, "Can I swim instead?", reference=Reference(1))))
@@ -132,6 +138,7 @@ def test_ignores_strangers_bots_webhooks_and_other_channels(setup) -> None:
     bot, chat = setup
     channel = Channel(CHANNEL)
     for message in (
+        Message(channel, "hi", tagged=False),  # not asked
         Message(channel, "hi", author=99),  # not allowed
         Message(channel, "hi", bot=True),
         Message(channel, "hi", webhook_id=5),
@@ -160,7 +167,7 @@ def test_formatting_tables_and_splitting() -> None:
 
 def test_mentions_are_removed_from_the_question_and_thread_name(setup) -> None:
     bot, _chat = setup
-    message = Message(Channel(CHANNEL), "<@1554215619988160732> what should I do tomorrow?\nMy legs are sore.")
+    message = Message(Channel(CHANNEL), "<@7> what should I do tomorrow?\nMy legs are sore.", tagged=False)
     asyncio.run(bot.handle(message))
     assert message.thread.name == "What should I do tomorrow?"
     prompt = FakeClient.instances[0].prompt

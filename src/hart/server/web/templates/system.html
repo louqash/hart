@@ -99,7 +99,7 @@
   <div class="kv" style="margin-top:8px">
     <div><span>Chat with Ember</span><span>
       {% if dc is none %}<span class="faint">not set up — needs a bot (<code>DISCORD_BOT_TOKEN</code>, <code>DISCORD_CHANNEL_ID</code>), see the docs</span>
-      {% elif dc.state == 'connected' %}<span class="ok">connected</span> <span class="dim small">as {{ dc.detail }} · write in the channel or reply to the evening message</span>
+      {% elif dc.state == 'connected' %}<span class="ok">connected</span> <span class="dim small">as {{ dc.detail }} · tag @Ember in the channel or reply to the evening message</span>
       {% elif dc.state == 'error' %}<span class="err">stopped</span> <span class="small">{{ dc.detail }}</span>
       {% else %}<span class="warn">connecting…</span>{% endif %}
     </span></div>

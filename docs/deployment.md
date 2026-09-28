@@ -114,8 +114,9 @@ Setting up the bot:
    right-click the channel → Copy Channel ID) and restart. The evening message now comes from the bot, so you
    can reply to it; `HART_DISCORD_WEBHOOK_URL` can be removed.
 
-Write in the channel, or reply to the evening message: Ember opens a thread and answers there; keep writing in
-the thread to continue. The conversations also appear on the Ember page. Paste your coach's training there
+Tag **@Ember** in the channel, or reply to the evening message (with the reply's mention left on): Ember opens
+a thread and answers there; keep writing in the thread to continue — no tag needed there. Untagged messages in
+the channel are left alone. The conversations also appear on the Ember page. Paste your coach's training there
 ("today's session from my coach: …") and Ember runs it through the Plan page's plan reader; the sessions wait
 on the Plan page until you apply them, exactly like a paste in the paste box. Only you are answered — the owner of
 the bot application, or the user IDs in `HART_DISCORD_ALLOWED_USERS` — so other members of the server can't

@@ -1,9 +1,10 @@
 """Chat with Ember from Discord.
 
 A Discord bot (``DISCORD_BOT_TOKEN`` + ``DISCORD_CHANNEL_ID``) keeps a gateway
-connection open and listens in that channel. A message there — or a reply to
-the evening message — opens a thread and a new Ember conversation; every
-message in the thread continues it. The conversation is an ordinary chat
+connection open and listens in that channel. A message there that tags
+@Ember (a reply to the evening message included) opens a thread and a new
+Ember conversation; every message in the thread continues it, no tag needed.
+Untagged messages in the channel are left alone. The conversation is an ordinary chat
 (same tools, same limits) and also appears on the Ember page.
 
 Only allowed Discord users are answered: ``HART_DISCORD_ALLOWED_USERS``, or by
@@ -122,6 +123,15 @@ class DiscordChat:
         self._chat = chat
         self._channel_id = config.discord.channel_id
         self.allowed_users: set[int] = set(config.discord.allowed_user_ids)
+        self.bot_user_id: int | None = None  # set once connected
+
+    def _asked(self, message: Any) -> bool:
+        """Tagged: @Ember in the text, or a reply to Ember with the mention left on (Discord's default)."""
+        if self.bot_user_id is None:
+            return False
+        mentioned = {getattr(u, "id", None) for u in getattr(message, "mentions", None) or []}
+        content = message.content or ""
+        return self.bot_user_id in mentioned or any(f"<@{p}{self.bot_user_id}>" in content for p in ("", "!"))
 
     def _threads(self) -> dict[str, str]:
         with contextlib.closing(self._db.cursor()) as cur:
@@ -141,6 +151,8 @@ class DiscordChat:
         in_thread = getattr(channel, "parent_id", None) == self._channel_id
         if not in_thread and getattr(channel, "id", None) != self._channel_id:
             return
+        if not in_thread and not self._asked(message):
+            return  # only answer in the channel when tagged; threads Ember started need no tag
         if author.id not in self.allowed_users:
             logger.info("Discord: ignoring a message from user %s (not allowed)", author.id)
             return
@@ -213,6 +225,7 @@ class DiscordBot:
                 info = await client.application_info()
                 owners = [m.id for m in info.team.members] if info.team else [info.owner.id]
                 self.handler.allowed_users = set(owners)
+            self.handler.bot_user_id = client.user.id
             self.status = {"state": "connected", "detail": str(client.user)}
             logger.info("Discord: connected as %s", client.user)
 
