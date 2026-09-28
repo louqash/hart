@@ -32,7 +32,7 @@ async function page(request) {
     const response = await fetch(request);
     if (response.ok && (response.headers.get("Content-Type") || "").includes("text/html")) {
       const copy = new Response(await response.clone().blob(), {
-        headers: { "Content-Type": "text/html; charset=utf-8", "X-Tri-Saved-At": String(Date.now()) },
+        headers: { "Content-Type": "text/html; charset=utf-8", "X-Hart-Saved-At": String(Date.now()) },
       });
       cache.put(request.url, copy);
       return response;
@@ -41,7 +41,7 @@ async function page(request) {
     throw new Error(`server answered ${response.status}`);
   } catch (err) {
     const saved = await cache.match(request.url);
-    if (saved) return offlineCopy(saved, Number(saved.headers.get("X-Tri-Saved-At")) || Date.now());
+    if (saved) return offlineCopy(saved, Number(saved.headers.get("X-Hart-Saved-At")) || Date.now());
     return new Response(
       "<!doctype html><meta name=viewport content='width=device-width'><body style='background:#0a140f;color:#f2e8d5;"
       + "font:16px system-ui;padding:24px'><h2>hart is offline</h2><p>This page hasn't been opened on this device yet, "
