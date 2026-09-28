@@ -60,7 +60,7 @@ header are rejected. See [security.md](security.md).
 | Variable | What it is |
 |---|---|
 | `HART_DISCORD_WEBHOOK_URL` | Discord channel webhook for the evening message (Edit channel → Integrations → Webhooks). |
-| `HART_DISCORD_USERNAME`, `HART_DISCORD_AVATAR_URL` | Name and avatar the webhook posts as (default `hart` and the pine-tree icon from the GitHub repository). The avatar must be a public URL — Discord fetches it, and can't reach a server on your tailnet. |
+| `HART_DISCORD_USERNAME`, `HART_DISCORD_AVATAR_URL` | Name and avatar the webhook posts as (default `Ember` and the pine-tree icon from the GitHub repository). The avatar must be a public URL — Discord fetches it, and can't reach a server on your tailnet. |
 | `DISCORD_BOT_TOKEN`, `DISCORD_CHANNEL_ID`, `DISCORD_ALERT_CHANNEL_ID` | Alternative to the webhook: a bot. Also used by the `send_discord_message` tool of the Claude Code agents. |
 | `HART_SERVER_URL` | On another machine: send `hart sync`, `hart status` and `hart auth` token uploads to a running server instead of opening the database. |
 

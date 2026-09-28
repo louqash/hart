@@ -109,7 +109,7 @@ def test_message_content_and_send(db: Database, monkeypatch) -> None:
     assert fields["⚠️ Watch out"] == "• Calf: stop if it tightens"
     assert fields["Today"].startswith("🚴 Ride · 1:01 h")
     assert body["allowed_mentions"] == {"parse": []}
-    assert body["username"] == "hart" and body["avatar_url"].endswith("/discord-avatar.png")
+    assert body["username"] == "Ember" and body["avatar_url"].endswith("/discord-avatar.png")
     assert state.get_setting(db, evening.SENT_KEY) == today.isoformat()
 
 
