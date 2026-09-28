@@ -54,7 +54,8 @@ def send(config: HartSettings, message: dict[str, Any]) -> None:
         body["content"] = body["content"][:2000]
     d = config.discord
     if d.webhook_url:
-        response = httpx.post(d.webhook_url, json=body, timeout=10.0)
+        identity = {"username": d.username, "avatar_url": d.avatar_url}
+        response = httpx.post(d.webhook_url, json={**body, **{k: v for k, v in identity.items() if v}}, timeout=10.0)
     elif d.bot_token and d.channel_id:
         response = httpx.post(
             f"https://discord.com/api/v10/channels/{d.channel_id}/messages",

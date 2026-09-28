@@ -29,12 +29,21 @@ class AthleteSettings:
     max_hr: int
 
 
+DEFAULT_DISCORD_AVATAR = (
+    "https://raw.githubusercontent.com/louqash/hart/main/src/hart/server/web/static/discord-avatar.png"
+)
+
+
 @dataclasses.dataclass(frozen=True)
 class DiscordSettings:
     bot_token: str
     channel_id: int
     alert_channel_id: int
     webhook_url: str = ""  # simplest setup: a channel webhook (HART_DISCORD_WEBHOOK_URL)
+    # Webhook messages only (a bot posts with its own profile). Discord fetches the avatar itself, so it must
+    # be a public URL — the default is the icon in the GitHub repository.
+    username: str = "hart"
+    avatar_url: str = DEFAULT_DISCORD_AVATAR
 
 
 @dataclasses.dataclass(frozen=True)
@@ -131,6 +140,8 @@ def _load() -> Settings:
             channel_id=int(os.environ.get("DISCORD_CHANNEL_ID", "0") or 0),
             alert_channel_id=int(os.environ.get("DISCORD_ALERT_CHANNEL_ID", "0") or 0),
             webhook_url=_env("DISCORD_WEBHOOK_URL"),
+            username=_env("DISCORD_USERNAME", "hart"),
+            avatar_url=_env("DISCORD_AVATAR_URL", DEFAULT_DISCORD_AVATAR),
         ),
         server=ServerSettings(
             env=_env("ENV", "production"),
