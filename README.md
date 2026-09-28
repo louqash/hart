@@ -115,8 +115,10 @@ at its `/mcp` endpoint instead (the database can only be opened by one process):
 claude mcp add --transport http hart https://hart.<your-tailnet>.ts.net/mcp
 ```
 
-Ready-made subagents for recovery, load, performance, race prediction and weekly reports are in
-`.claude/agents`.
+Ready-made subagents are in `.claude/agents`: recovery, training load, performance, anomalies, nutrition,
+race prediction and race strategy, plus morning, post-session and weekly briefings that post to Discord. They
+inherit all hart tools and run only when you ask for them (the server's own scheduled message is the evening
+summary).
 
 ## Status
 
