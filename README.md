@@ -29,7 +29,7 @@ you). Your data stays in one DuckDB file on your machine.
 | **Today** | Readiness from sleep, HRV and resting HR against your own baselines — and an explanation when it can't tell; fitness (CTL), fatigue (ATL) and form; the week so far; the day's suggestion; alerts. |
 | **Fitness** | Performance-management chart with season phases, weekly volume, efficiency and decoupling, power curve, health trends, period comparison. |
 | **Season** | Phases (comeback → base → build → peak → taper), generated backwards from your A-race and editable; races and events; the observed training state vs the plan. |
-| **Plan** | Your coach's sessions (paste them from TrainingPeaks or anywhere — any language), matched to what you did; accepted suggestions; one click sends a run or ride to your Garmin calendar as a structured workout. |
+| **Plan** | Your coach's sessions (paste them from a coaching app, an email or a message — any format, any language), matched to what you did; accepted suggestions; one click sends a run or ride to your Garmin calendar as a structured workout. |
 | **Sessions** | Every session graded A–E by Ember from facts computed in code, with every number checked against your data; side-by-side with a similar earlier session. |
 | **Strength** | Progression per lift (top sets, estimated 1-rep max, 8-week change), sessions per week against your target. |
 | **Health** | Lab results with trends, and reminders computed from them: follow-ups on flagged results, regular panels timed to your season, a pre-race medical, physio check-ins. |

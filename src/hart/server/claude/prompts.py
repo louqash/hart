@@ -13,7 +13,7 @@ from typing import Any
 
 from hart.storage.database import Database
 
-CHAT_PROMPT_VERSION = "chat@8"
+CHAT_PROMPT_VERSION = "chat@9"
 ASSISTANT_NAME = "Ember"
 
 
@@ -23,7 +23,7 @@ def athlete_profile(db: Database) -> dict[str, Any]:
     return {
         "name": settings.get(db, "athlete_name"),
         "power_single_sided": settings.get(db, "power_single_sided"),
-        "coach_platform": settings.get(db, "coach_platform"),
+        "has_coach": settings.get(db, "has_coach"),
     }
 
 
@@ -37,13 +37,12 @@ def data_notes(profile: dict[str, Any]) -> str:
 
 
 def coach_notes(profile: dict[str, Any]) -> str:
-    platform = profile["coach_platform"]
-    if not platform:
+    if not profile["has_coach"]:
         return ("There may be no coach: planned sessions in `get_planned_sessions` are the athlete's own plan. "
                 "Suggesting training is fine.")
-    return (f"{profile['name']} has a coach who plans in {platform}. Suggesting training adjustments is fine; when "
-            "the coach's plan covers a day, present suggestions as adjustments to it — the coach's plan takes "
-            f"priority. The coach's plan (pasted from {platform}) is in `get_planned_sessions`.")
+    return (f"{profile['name']} has a coach. Suggesting training adjustments is fine; when the coach's plan covers a "
+            "day, present suggestions as adjustments to it — the coach's plan takes priority. The coach's plan "
+            "(pasted in by the athlete) is in `get_planned_sessions`.")
 
 
 _CHAT = """\
@@ -107,7 +106,7 @@ lists, small tables) when it helps. No filler.
 
 
 def chat_system_prompt(today: datetime.date, tz: str, profile: dict[str, Any] | None = None) -> str:
-    profile = profile or {"name": "the athlete", "power_single_sided": False, "coach_platform": ""}
+    profile = profile or {"name": "the athlete", "power_single_sided": False, "has_coach": False}
     return _CHAT.format(
         assistant=ASSISTANT_NAME, name=profile["name"], today=today.isoformat(), weekday=today.strftime("%A"),
         tz=tz, data_notes=data_notes(profile), coach_notes=coach_notes(profile),

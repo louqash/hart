@@ -74,7 +74,7 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Your name | `HART_ATHLETE_NAME` | `Athlete` | How Ember addresses you. Everything else about you lives in your notes. |
 | Max heart rate | `HART_ATHLETE_MAX_HR` | `190` | Part of the profile Ember reads; heart-rate zones come from Garmin. |
 | Single-sided power meter | `HART_POWER_SINGLE_SIDED` | `off` | Left-only pedals or cranks double one leg: Ember compares power trends, not absolute watts. |
-| Coach's platform | `HART_COACH_PLATFORM` | `—` | Where your coach plans, e.g. TrainingPeaks. Leave empty if you don't have a coach — suggestions then plan every day freely. |
+| I have a coach | `HART_HAS_COACH` | `off` | Paste your coach's sessions on the Plan page, from wherever they arrive (an app, email, messages). On: Ember treats them as the plan and suggests adjustments. Off: the plan is your own and suggestions plan every day freely. |
 
 **Ember (Claude)**
 
@@ -154,6 +154,6 @@ still given to Ember as text.
 ## Coach's plan
 
 hart doesn't connect to coaching platforms (their APIs are paid or closed). Copy a day or a week from
-TrainingPeaks — or anywhere — and paste it on the Plan page; Ember turns it into sessions and you confirm
-them. Set **Coach's platform** in Settings so Ember treats those sessions as your coach's plan. Leave it empty
-if you plan your own training.
+wherever your coach sends it — an app, an email, a message — and paste it on the Plan page; Ember turns it
+into sessions and you confirm them. Turn on **I have a coach** in Settings so Ember treats those sessions as
+your coach's plan. Leave it off if you plan your own training.

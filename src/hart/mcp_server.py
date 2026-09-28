@@ -224,7 +224,7 @@ def athlete_profile_resource() -> str:
             "name": settings.get(db, "athlete_name"),
             "max_hr": settings.get(db, "athlete_max_hr"),
             "power_single_sided": settings.get(db, "power_single_sided"),
-            "coach_platform": settings.get(db, "coach_platform") or None,
+            "has_coach": settings.get(db, "has_coach"),
         },
         "analytics": {
             "ctl_time_constant": config.analytics.ctl_time_constant,

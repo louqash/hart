@@ -56,9 +56,10 @@ REGISTRY: tuple[Setting, ...] = (
             help="Part of the profile Ember reads; heart-rate zones come from Garmin."),
     Setting("power_single_sided", "athlete", "Single-sided power meter", False, "bool", env="HART_POWER_SINGLE_SIDED",
             help="Left-only pedals or cranks double one leg: Ember compares power trends, not absolute watts."),
-    Setting("coach_platform", "athlete", "Coach's platform", "", env="HART_COACH_PLATFORM",
-            help="Where your coach plans, e.g. TrainingPeaks. Leave empty if you don't have a coach — "
-                 "suggestions then plan every day freely."),
+    Setting("has_coach", "athlete", "I have a coach", False, "bool", env="HART_HAS_COACH",
+            help="Paste your coach's sessions on the Plan page, from wherever they arrive (an app, email, "
+                 "messages). On: Ember treats them as the plan and suggests adjustments. Off: the plan is your "
+                 "own and suggestions plan every day freely."),
     # --- ember -------------------------------------------------------------
     Setting("model_chat", "ember", "Model for chat (default)", "claude-opus-5-5", "choice", env="HART_MODEL_CHAT",
             choices=MODELS, help="Can be switched per conversation."),

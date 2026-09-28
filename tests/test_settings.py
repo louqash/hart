@@ -58,10 +58,10 @@ def test_legacy_keys_are_respected(db: Database) -> None:
 
 def test_profile_reaches_prompts() -> None:
     prompt = chat_system_prompt(datetime.date(2027, 1, 1), "UTC",
-                                {"name": "Ada", "power_single_sided": True, "coach_platform": "TrainingPeaks"})
-    assert "You are Ember" in prompt and "Ada" in prompt and "single-sided" in prompt and "TrainingPeaks" in prompt
+                                {"name": "Ada", "power_single_sided": True, "has_coach": True})
+    assert "You are Ember" in prompt and "Ada" in prompt and "single-sided" in prompt and "has a coach" in prompt
     solo = chat_system_prompt(datetime.date(2027, 1, 1), "UTC",
-                              {"name": "Ada", "power_single_sided": False, "coach_platform": ""})
+                              {"name": "Ada", "power_single_sided": False, "has_coach": False})
     assert "single-sided" not in solo and "no coach" in solo
 
 

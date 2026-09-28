@@ -1,8 +1,8 @@
-"""Training plan: planned sessions, paste import from a coach's platform, activity matching
+"""Training plan: planned sessions, paste import of a coach's plan, activity matching
 and Garmin workout text.
 
-There is deliberately no platform integration (TrainingPeaks and similar need
-paid API access): the athlete copies the week and pastes it; Claude turns the text into rows,
+There is deliberately no platform integration (coaching platforms need paid API
+access, and plans often arrive by email or message anyway): the athlete copies the week and pastes it; Claude turns the text into rows,
 the athlete checks a preview, and only then are rows saved.
 """
 
@@ -24,7 +24,7 @@ from hart.storage.database import Database
 PLAN_SPORTS = ("swim", "bike", "run", "strength", "other", "rest")
 INTENSITIES = ("recovery", "endurance", "tempo", "threshold", "vo2", "strength", "mixed")
 SOURCES = ("manual", "coach_import", "suggestion_accepted")
-PARSE_PROMPT_VERSION = "parse_plan@1"
+PARSE_PROMPT_VERSION = "parse_plan@2"
 GARMIN_PROMPT_VERSION = "garmin_text@1"
 MAX_PASTE_CHARS = 20000
 SKILL_PATH = Path(__file__).resolve().parents[3] / ".claude" / "skills" / "garmin-workout-formatter" / "SKILL.md"
@@ -246,7 +246,7 @@ class ParsedPlan(BaseModel):
 
 
 _PARSE_SYSTEM = """\
-You convert a training plan pasted from a coaching platform (e.g. TrainingPeaks) or typed by hand \
+You convert a training plan pasted from a coaching app, an email or a message, or typed by hand \
 into structured rows. Copied text contains artefacts: day headers \
 ("Monday, September 28", "Pon 28.09"), sport labels (Bike, Run, Swim, Strength, Day Off/Rest), \
 planned duration lines ("1:20:00", "Planned: 45m"), TSS / IF / distance lines, and workout-builder \

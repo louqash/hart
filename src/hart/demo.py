@@ -293,7 +293,7 @@ def build(path: Path, today: D | None = None) -> dict[str, Any]:
         from hart.server import state
 
         state.set_setting(db, state.DEMO_MODE, True)
-        for key, value in (("athlete_name", "Alex"), ("coach_platform", "TrainingPeaks"),
+        for key, value in (("athlete_name", "Alex"), ("has_coach", True),
                            ("power_single_sided", True)):
             settings.set_value(db, key, value)
         _plan_and_ember(db, today, ids)

@@ -28,8 +28,8 @@
     Send accepted runs and rides to my Garmin calendar automatically</label>
 
   <details id="paste" class="paste">
-    <summary>Paste {{ 'from ' ~ prefs.coach_platform if prefs.coach_platform else 'a plan' }}</summary>
-    <p class="small muted">Copy the week (or a day) out of {{ prefs.coach_platform or 'your coach\'s platform' }} and paste it here — any format, any language. Ember turns it into sessions; you check them before anything is saved. Planned TSS/IF stay in the text — they're on a different scale from our load.</p>
+    <summary>Paste {{ 'your coach\'s plan' if prefs.has_coach else 'a plan' }}</summary>
+    <p class="small muted">Copy the week (or a day) from wherever it arrives — a coaching app, an email, a message — and paste it here — any format, any language. Ember turns it into sessions; you check them before anything is saved. Planned TSS/IF stay in the text — they're on a different scale from our load.</p>
     <textarea id="paste-text" rows="9" placeholder="Monday, September 28&#10;Bike · 1:15:00&#10;15'- progresja do 170W, kadencja >80&#10;..."></textarea>
     <div class="row" style="margin-top:8px; align-items:flex-end">
       <div><label class="small muted" for="paste-date">For date, if the text has none</label>
