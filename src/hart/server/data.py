@@ -444,10 +444,10 @@ def alerts(db: Database, config: HartSettings | None = None) -> dict[str, Any]:
         ),
         "proposed_notes": db.fetchone("SELECT count(*) FROM athlete_notes WHERE status = 'proposed'")[0],
         "season_proposals": db.fetchone(
-            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind <> 'plan'"
+            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind NOT IN ('plan', 'plan_import')"
         )[0],
         "plan_proposals": db.fetchone(
-            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind = 'plan'"
+            "SELECT count(*) FROM season_proposals WHERE status = 'pending' AND kind IN ('plan', 'plan_import')"
         )[0],
         "health_overdue": db.fetchone(
             "SELECT count(*) FROM health_checks WHERE status = 'open' AND due_date <= ?",

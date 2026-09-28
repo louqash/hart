@@ -10,6 +10,13 @@
       <span style="flex-direction:column; align-items:flex-start; white-space:normal">
         <strong>{{ p.summary }}</strong>
         <span class="small muted" style="margin-top:4px">{{ p.reason }}</span>
+        {% if p.kind == 'plan_import' %}{% set imp = p.payload %}
+        <details class="small" style="margin-top:6px"><summary>Sessions as they will be saved</summary>
+          {% for x in imp.sessions %}<div style="margin-top:6px"><strong>{{ x.date }} · {{ x.title }}</strong>
+            <span class="muted">{{ x.sport_type }}{% if x.duration_min %} · {{ x.duration_min }}′{% endif %}{% if x.intensity %} · {{ x.intensity }}{% endif %}</span>
+            {% if x.description %}<div class="faint" style="white-space:pre-line">{{ x.description }}</div>{% endif %}</div>{% endfor %}
+          {% for w in imp.warnings %}<div class="warn" style="margin-top:6px">{{ w }}</div>{% endfor %}
+        </details>{% endif %}
       </span>
       <span class="row" style="flex:none">
         <button class="small primary" onclick="act(this, () => api.post('/api/season/proposals/{{ p.id }}/apply'))">Apply</button>

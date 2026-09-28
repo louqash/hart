@@ -499,15 +499,18 @@ def api_apply_proposal(proposal_id: int, request: Request, db: Database = Depend
         out = season_ops.apply_proposal(db, proposal_id)
     except season_ops.SeasonError as exc:
         raise _season_error(exc) from exc
-    if out.get("kind") == "plan":
+    if out.get("kind") in ("plan", season_ops.PLAN_IMPORT):
         from hart.server.plan_routes import refresh_suggestions
 
+        removed = out.pop("garmin_workouts_removed", None) or []
         if out.get("garmin_workout_removed"):
+            removed.append(out["garmin_workout_removed"])
+        for workout_id in removed:
             request.app.state.runner.enqueue(
                 "garmin_workout",
-                {"delete_workout_id": out["garmin_workout_removed"]},
+                {"delete_workout_id": workout_id},
                 trigger="manual",
-                dedupe_key=f"garmin_delete:{out['garmin_workout_removed']}",
+                dedupe_key=f"garmin_delete:{workout_id}",
             )
         dates = [datetime.date.fromisoformat(str(d)[:10]) for d in out.pop("plan_dates", [])]
         out["suggestions_refreshed"] = refresh_suggestions(request, db, dates)

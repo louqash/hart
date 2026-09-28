@@ -25,6 +25,7 @@ WRITE_TOOLS = frozenset(
         "propose_season_change",
         "propose_health_check",
         "propose_plan_change",
+        "import_coach_plan",
         "acknowledge_anomaly",
         "send_discord_message",
     }
@@ -39,6 +40,7 @@ CHAT_WRITE_TOOLS = frozenset(
         "propose_season_change",
         "propose_health_check",
         "propose_plan_change",
+        "import_coach_plan",
     }
 )
 

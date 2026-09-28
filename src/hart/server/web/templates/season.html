@@ -15,7 +15,7 @@
 </div>
 {% for f in ctx.flags %}<div class="flag">{{ f }}</div>{% endfor %}
 
-{{ proposals_card(s.proposals|rejectattr('kind', 'equalto', 'plan')|list, 'season') }}
+{{ proposals_card(s.proposals|rejectattr('kind', 'in', ['plan', 'plan_import'])|list, 'season') }}
 
 <section class="card">
   <h2 class="sunset">{{ icon("mountain") }}The Long Trail <span class="plain">timeline</span></h2>

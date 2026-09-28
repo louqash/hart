@@ -111,7 +111,7 @@ and set your name, coach platform and power meter on the Settings page.
 
 ## Using hart from Claude Code
 
-hart is also an MCP server (42 tools: activities, streams, load, sleep, HRV, readiness, plan, grades, labs,
+hart is also an MCP server (43 tools: activities, streams, load, sleep, HRV, readiness, plan, grades, labs,
 SQL…). The repository's `.mcp.json` starts it locally over stdio; when the web service runs, point Claude Code
 at its `/mcp` endpoint instead (the database can only be opened by one process):
 

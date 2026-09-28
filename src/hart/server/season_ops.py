@@ -284,6 +284,42 @@ def create_proposal(
     return {"id": new_id, "status": "pending", "summary": summary}
 
 
+PLAN_IMPORT = "plan_import"  # a pasted coach plan, parsed like the Plan page's paste box
+
+
+def create_plan_import(
+    db: Database, sessions: list[dict[str, Any]], reason: str, warnings: list[str] | None = None
+) -> dict[str, Any]:
+    """Propose saving parsed coach sessions exactly as the Plan page's paste box would (replacing earlier
+    coach imports on those dates); the athlete applies it on the Plan page."""
+    if not sessions:
+        raise SeasonError("The text has no sessions in it")
+    rows = [_plan_row(s) for s in sessions]
+    dates = sorted({r.date for r in rows})
+    replaced = [
+        str(r[0])
+        for r in db.fetchall(
+            "SELECT DISTINCT date FROM planned_sessions WHERE source = 'coach_import' AND activity_id IS NULL "
+            f"AND date IN ({', '.join('?' for _ in dates)}) ORDER BY date",
+            dates,
+        )
+    ]
+    parts = [
+        f"{r.date:%a} {r.date.day} {r.date:%b}: {r.title}" + (f" ({r.duration_min}′)" if r.duration_min else "")
+        for r in rows
+    ]
+    summary = "Coach's plan — " + "; ".join(parts)
+    if replaced:
+        summary += " · replaces the coach sessions already on " + ", ".join(replaced)
+    payload = {"sessions": [r.model_dump(mode="json") for r in rows], "warnings": list(warnings or [])}
+    new_id = db.fetchone(
+        "INSERT INTO season_proposals (kind, action, target_id, payload, reason, summary, status, source) "
+        "VALUES (?, 'create', NULL, ?, ?, ?, 'pending', 'claude') RETURNING id",
+        [PLAN_IMPORT, json.dumps(payload), reason.strip() or "Pasted coach plan", summary],
+    )[0]
+    return {"id": new_id, "status": "pending", "summary": summary, **payload}
+
+
 def apply_proposal(db: Database, proposal_id: int) -> dict[str, Any]:
     row = db.fetchone(
         "SELECT kind, action, target_id, payload, status FROM season_proposals WHERE id = ?", [proposal_id]
@@ -294,6 +330,24 @@ def apply_proposal(db: Database, proposal_id: int) -> dict[str, Any]:
     if status != "pending":
         raise SeasonError(f"Proposal is already {status}")
     payload = json.loads(payload) if isinstance(payload, str) else (payload or {})
+    if kind == PLAN_IMPORT:
+        from hart.server import plan
+
+        rows = [_plan_row(s) for s in payload.get("sessions") or []]
+        out = plan.import_rows(db, rows, replace_existing=True)
+        db.execute(
+            "UPDATE season_proposals SET status = 'applied', decided_at = current_timestamp WHERE id = ?",
+            [proposal_id],
+        )
+        return {
+            "id": proposal_id,
+            "status": "applied",
+            "kind": kind,
+            "created": out["created"],
+            "replaced": out["replaced"],
+            "plan_dates": sorted({r.date for r in rows}),
+            "garmin_workouts_removed": out["garmin_workouts_removed"],
+        }
     table = PROPOSAL_KINDS[kind][0]
     phases_stale = False
     extra: dict[str, Any] = {}

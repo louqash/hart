@@ -27,12 +27,17 @@ Handler = Callable[[Database, dict[str, Any]], dict[str, Any] | None]
 
 # Jobs run in lanes, one worker each, so a long Claude grading run never
 # delays a Garmin sync (and vice versa).
-LANES: dict[str, str] = {"grade": "claude", "suggest": "claude", "garmin_workout": "claude"}  # everything else: "io"
+LANES: dict[str, str] = {
+    "grade": "claude",
+    "suggest": "claude",
+    "garmin_workout": "claude",
+    "plan_import": "claude",
+}  # everything else: "io"
 
 
 # Jobs that reach Garmin, Claude or Discord: refused on a `hart demo` database.
 DEMO_BLOCKED = frozenset(
-    {"sync", "sync_light", "grade", "suggest", "garmin_workout", "evening_message", "vo2max_backfill"}
+    {"sync", "sync_light", "grade", "suggest", "garmin_workout", "evening_message", "vo2max_backfill", "plan_import"}
 )
 
 
@@ -43,6 +48,7 @@ def lane_of(job_type: str) -> str:
 PRIORITY: dict[str, int] = {
     "sync": 0,
     "sync_light": 0,
+    "plan_import": 0,  # Ember is waiting for it in a chat
     "suggest": 1,
     "garmin_workout": 1,
     "grade": 2,

@@ -156,3 +156,12 @@ def test_formatting_tables_and_splitting() -> None:
     parts = discord_chat.split_message(code)
     assert all(len(p) <= 2000 and p.count("```") % 2 == 0 for p in parts)  # every part's code block is closed
     assert discord_chat.split_message("x" * 4500)[0] == "x" * 1992
+
+
+def test_mentions_are_removed_from_the_question_and_thread_name(setup) -> None:
+    bot, _chat = setup
+    message = Message(Channel(CHANNEL), "<@1554215619988160732> what should I do tomorrow?\nMy legs are sore.")
+    asyncio.run(bot.handle(message))
+    assert message.thread.name == "What should I do tomorrow?"
+    prompt = FakeClient.instances[0].prompt
+    assert "<@" not in prompt and "what should I do tomorrow?\nMy legs are sore." in prompt

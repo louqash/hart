@@ -162,6 +162,31 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         except GradingPaused as exc:
             raise JobFailed(f"{exc} — the hourly sweep retries later") from exc
 
+    def plan_import(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
+        """Pasted coach text → the Plan page's parser → a proposal the athlete applies on the Plan page."""
+        import asyncio
+
+        from hart.server import plan, season_ops, settings
+        from hart.server.data import local_today
+
+        claude = runner_ref.get("claude")
+        if claude is None:
+            raise JobFailed("Claude runner not available")
+        default = datetime.date.fromisoformat(payload["default_date"]) if payload.get("default_date") else None
+        coro = plan.parse_paste(
+            claude, settings.get(db, "model_parse"), payload["text"], local_today(config), default_date=default
+        )
+        try:
+            parsed = asyncio.run_coroutine_threadsafe(coro, runner_ref["runner"].loop).result(timeout=200)
+            return season_ops.create_plan_import(
+                db,
+                parsed["sessions"],
+                payload.get("reason") or "Your coach's plan, pasted in a chat",
+                parsed["warnings"],
+            )
+        except (plan.PlanError, season_ops.SeasonError) as exc:
+            raise JobFailed(str(exc)) from exc
+
     def evening_message(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
         from hart.server import evening
 
@@ -228,4 +253,5 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         "suggest": suggest,
         "garmin_workout": garmin_workout,
         "evening_message": evening_message,
+        "plan_import": plan_import,
     }

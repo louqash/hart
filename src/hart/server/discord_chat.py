@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 THREADS_KEY = "discord_threads"  # thread id → conversation id
 MESSAGE_LIMIT = 2000
-THREAD_NAME_LEN = 90
+THREAD_NAME_LEN = 60
 
 
 def configured(config: HartSettings) -> bool:
@@ -86,8 +86,19 @@ def split_message(text: str, limit: int = MESSAGE_LIMIT) -> list[str]:
     return chunks
 
 
+MENTION = re.compile(r"<(?:@[!&]?|#)\d+>")
+
+
+def clean_text(text: str) -> str:
+    """The message without Discord's mention codes (``<@123…>`` for @Ember and other tags)."""
+    return re.sub(r"[ \t]{2,}", " ", MENTION.sub("", text or "")).strip()
+
+
 def _thread_name(text: str) -> str:
-    name = " ".join(text.split()) or "Ember"
+    """The first line of the question, capitalised and shortened: what the thread list shows."""
+    first = next((line.strip() for line in text.splitlines() if line.strip()), "")
+    name = " ".join(first.split()) or "Ember"
+    name = name[0].upper() + name[1:]
     return name if len(name) <= THREAD_NAME_LEN else name[: THREAD_NAME_LEN - 1].rstrip() + "…"
 
 
@@ -133,7 +144,7 @@ class DiscordChat:
         if author.id not in self.allowed_users:
             logger.info("Discord: ignoring a message from user %s (not allowed)", author.id)
             return
-        text = (message.content or "").strip()
+        text = clean_text(message.content)
         if not text:
             return
 

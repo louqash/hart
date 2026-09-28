@@ -13,7 +13,7 @@ from typing import Any
 
 from hart.storage.database import Database
 
-CHAT_PROMPT_VERSION = "chat@9"
+CHAT_PROMPT_VERSION = "chat@10"
 ASSISTANT_NAME = "Ember"
 
 
@@ -91,6 +91,9 @@ context (injury, illness, travel, events), call `propose_season_change` with a c
 `propose_plan_change` with a clear reason after reading `get_planned_sessions`; {name} applies or \
 dismisses it. Coach sessions are the coach's call — propose changes to them only when asked or \
 when a constraint or readiness clearly requires it.
+- When {name} gives you the coach's training (pasted text, a day or a week), call `import_coach_plan` \
+with the coach's text verbatim — it goes through the same reader as the Plan page's paste box and \
+{name} approves the result on the Plan page. Then say what it found.
 - `sync_all` starts a Garmin sync in the background and returns a job id; check it with \
 `get_job_status` before relying on fresh data.
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -89,11 +90,14 @@ def plan_page(request: Request, db: Database = Depends(get_db), config=Depends(g
             "weeks": plan.calendar(db, today),
             "suggestion": suggestions.dashboard_card(db, config),
             "garmin_auto_send": garmin_workouts.auto_send(db),
-            "plan_proposals": data.rows(
-                db,
-                "SELECT id, kind, action, summary, reason, created_at FROM season_proposals "
-                "WHERE status = 'pending' AND kind = 'plan' ORDER BY id",
-            ),
+            "plan_proposals": [
+                {**p, "payload": json.loads(p["payload"]) if isinstance(p["payload"], str) else p["payload"]}
+                for p in data.rows(
+                    db,
+                    "SELECT id, kind, action, summary, reason, payload, created_at FROM season_proposals "
+                    "WHERE status = 'pending' AND kind IN ('plan', 'plan_import') ORDER BY id",
+                )
+            ],
             "garmin_pending": {
                 int(r[0].split(":")[1])
                 for r in db.fetchall(

@@ -495,3 +495,49 @@ def test_ember_proposes_plan_changes(client) -> None:
         mcp_server.propose_plan_change(action="create", reason="x", date=str(day), sport_type="yoga", title="Flow")
     )
     assert "Invalid planned session" in bad["error"]
+
+
+def test_coach_plan_from_chat_goes_through_the_paste_reader(client) -> None:
+    """Ember's import_coach_plan: same parser as the paste box, saved only after Apply on the Plan page."""
+    day = "2026-09-28"
+    client.post(
+        "/api/plan/import",
+        headers=W,
+        json={"sessions": [{"date": day, "sport_type": "run", "title": "Old coach run", "duration_min": 30}]},
+    )
+    FakeClient.scripts.append(
+        [
+            _result(
+                structured_output={
+                    "sessions": [
+                        {
+                            "date": day,
+                            "sport_type": "bike",
+                            "title": "Progression + 3x5'",
+                            "duration_min": 60,
+                            "intensity": "tempo",
+                            "description": "15'- progresja do 170W",
+                        }
+                    ],
+                    "warnings": [],
+                }
+            )
+        ]
+    )
+    from hart import mcp_server
+
+    tool_out = json.loads(mcp_server.import_coach_plan(PASTE, day, "From Discord"))  # waits for the reader
+    assert tool_out["status"] == "pending" and tool_out["sessions"][0]["title"] == "Progression + 3x5'"
+    done = {"result": tool_out}
+    assert "Reference date" in FakeClient.instances[0].prompt and PASTE.strip() in FakeClient.instances[0].prompt
+    assert "replaces the coach sessions already on 2026-09-28" in done["result"]["summary"]
+
+    page = client.get("/plan", headers=H).text
+    assert "Sessions as they will be saved" in page and "From Discord" in page
+    items = client.get(f"/api/plan?start={day}&end={day}", headers=H).json()["items"]
+    assert [i["title"] for i in items] == ["Old coach run"]  # nothing saved yet
+
+    applied = client.post(f"/api/season/proposals/{done['result']['id']}/apply", headers=W, json={}).json()
+    assert applied["created"] == 1 and applied["replaced"] == 1
+    items = client.get(f"/api/plan?start={day}&end={day}", headers=H).json()["items"]
+    assert [(i["title"], i["source"]) for i in items] == [("Progression + 3x5'", "coach_import")]

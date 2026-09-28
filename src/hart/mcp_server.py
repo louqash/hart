@@ -1401,6 +1401,52 @@ def propose_plan_change(
 
 
 @_tool()
+def import_coach_plan(text: str, date: str = "", reason: str = "") -> str:
+    """Hand the coach's plan the athlete pasted to you (a day or a week, any format or language) to the
+    Plan page's plan reader — exactly as if they had pasted it in the Plan page's paste box.
+
+    Use this — not propose_plan_change — whenever the athlete gives you their coach's training. Pass the
+    coach's text unchanged. It waits for the reader (up to a few minutes) and returns the sessions it found.
+    Nothing is saved: the athlete applies the import on the Plan page, where it replaces earlier coach
+    sessions on the same dates (as a re-pasted week does). Tell them that.
+
+    Parameters:
+        text: The coach's text, verbatim (without your own words or the athlete's greeting).
+        date: ISO date for workouts the text doesn't date (e.g. "today's training" → today). Optional.
+        reason: One line shown with the proposal. Optional.
+    """
+    import hashlib
+    import time
+
+    if _enqueue_job is None or _lookup_job is None:
+        return _json({"error": "Only available when connected to hart server — paste it on the Plan page."})
+    try:
+        if not text.strip():
+            return _json({"error": "text is empty"})
+        if date:
+            datetime.date.fromisoformat(date)
+        key = hashlib.sha1(f"{date}|{text}".encode()).hexdigest()[:16]
+        job = _enqueue_job(
+            "plan_import",
+            {"text": text, "default_date": date or None, "reason": reason},
+            trigger="chat",
+            dedupe_key=f"plan_import:{key}",
+        )
+        deadline = time.monotonic() + 240
+        while time.monotonic() < deadline:
+            current = _lookup_job(int(job["job_id"])) or {}
+            if current.get("status") == "ok":
+                result = current.get("result") or {}
+                return _json({**result, "message": "Proposed — the athlete applies it on the Plan page."})
+            if current.get("status") == "error":
+                return _json({"error": current.get("error") or "the plan reader failed"})
+            time.sleep(1)
+        return _json({"job_id": job["job_id"], "message": "Still reading — the import will appear on the Plan page."})
+    except Exception as exc:
+        return _json({"error": str(exc), "traceback": traceback.format_exc()})
+
+
+@_tool()
 def propose_season_change(
     kind: str,
     action: str,

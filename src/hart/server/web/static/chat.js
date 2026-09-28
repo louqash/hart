@@ -147,7 +147,7 @@
         toolSummary(ui);
         if (t.name === "propose_athlete_note" && !ev.is_error) noteCard(ui, ev.output_excerpt);
         if (t.name === "propose_season_change" && !ev.is_error) seasonCard(ui, ev.output_excerpt);
-        if (t.name === "propose_plan_change" && !ev.is_error) seasonCard(ui, ev.output_excerpt, "plan");
+        if ((t.name === "propose_plan_change" || t.name === "import_coach_plan") && !ev.is_error) seasonCard(ui, ev.output_excerpt, "plan");
         if (t.name === "propose_health_check" && !ev.is_error) healthCard(ui, ev.output_excerpt);
         break;
       }
