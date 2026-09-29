@@ -59,7 +59,10 @@
     <div><h3>Sleep{{ tip("sleep_chart") }}</h3><div id="sleep" class="chart short"></div></div>
     <div><h3>Recovery score{{ tip("recovery_score") }}</h3><div id="recovery" class="chart short"></div></div>
   </div>
-  <h3 style="margin-top:12px">VO2max{{ tip("vo2max_run") }}</h3><div id="vo2" class="chart short"></div>
+  <div class="grid two" style="margin-top:12px">
+    <div><h3>VO2max{{ tip("vo2max_run") }}</h3><div id="vo2" class="chart short"></div></div>
+    <div><h3>Steps{{ tip("steps") }}</h3><div id="steps" class="chart short"></div></div>
+  </div>
   <p class="small muted" style="margin:4px 0 0">Gaps are days without data (e.g. the watch wasn't worn) — nothing is filled in.</p>
 </section>
 
@@ -154,6 +157,11 @@ async function loadHealth(range = "180d") {
   ]});
   makeChart("recovery", { ...base, legend: { show: false }, yAxis: { type: "value", min: 0, max: 100 }, series: [...bandSeries(d, { labels: false }), 
     { name: "Recovery", type: "line", symbolSize: 3, data: withGaps(pts(d.recovery, "value")), color: css("--green") },
+  ]});
+  if (!d.steps.length) emptyChart("steps", "No step counts from Garmin in this range.");
+  else makeChart("steps", { ...base, yAxis: { type: "value", name: "steps" }, series: [...bandSeries(d, { labels: false }),
+    { name: "Steps", type: "bar", data: pts(d.steps, "value"), color: css("--accent"), barMaxWidth: 5 },
+    { name: "7-day avg", type: "line", showSymbol: false, data: withGaps(pts(d.steps, "avg7")), color: css("--muted") },
   ]});
   if (!d.vo2max.length) emptyChart("vo2", "No VO2max values from Garmin yet.");
   else makeChart("vo2", { ...base, yAxis: { type: "value", scale: true }, series: [

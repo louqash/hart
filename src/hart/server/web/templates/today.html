@@ -123,6 +123,9 @@
       <div class="stat"><div class="label">Form{{ tip("form_yesterday") }}</div>
         <div class="value">{{ i.tsb_yesterday|num(1) }}</div><div class="delta">TSB yesterday</div></div>
     </div>
+    {% if r.steps and r.steps.flag %}
+    <p class="small {{ 'warn' if r.steps.flag == 'high' else 'muted' }}" style="margin:12px 0 0">{{ icon("footprints") }} Yesterday: {{ r.steps.note }}{{ tip("steps") }}</p>
+    {% endif %}
     {% if r.level == 'unknown' and r.missing_detail %}
     <div class="callout" style="margin-top:14px">{{ icon("compass") }}<div class="small">
       <strong>Why “Fog on the trail”?</strong> {{ r.needs }}

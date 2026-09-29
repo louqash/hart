@@ -22,6 +22,7 @@ GLOSSARY: dict[str, str] = {
     "training_readiness": "Garmin's 0–100 Training Readiness (sleep, recovery time, HRV, acute load). Below 40 = amber.",
     "recovery_score": "hart's 0–100 recovery score: 30% HRV, 25% sleep, 20% Body Battery, 15% Training Readiness, 5% stress, 5% form. Missing parts count as neutral (50), so read it with care when the watch wasn't worn.",
     # Markers and performance
+    "steps": "Daily steps from Garmin, with the 7-day average. A big walking or hiking day adds fatigue a training plan doesn't see; a very low day often means travel or illness.",
     "vo2max_run": "Garmin's running VO2max estimate (ml/kg/min), from heart rate and pace on outdoor runs.",
     "vo2max_cycle": "Garmin's cycling VO2max estimate (ml/kg/min), from heart rate and power.",
     "resting_hr": "Latest resting heart rate from Garmin, with the change vs ~90 days earlier. A falling resting HR usually means improving fitness.",

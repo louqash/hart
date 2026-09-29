@@ -41,7 +41,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-SUGGEST_PROMPT_VERSION = "suggest@4"
+SUGGEST_PROMPT_VERSION = "suggest@5"
 HISTORY_DAYS = 14
 WEEKLY_TOTALS_WEEKS = 4
 FINAL_CUTOFF_HOUR = 14
@@ -91,7 +91,9 @@ constraints and weekly structure are in the athlete notes in the bundle (and `ge
 {coach_notes} Your job is to adjust the plan to how {name} is today, or to propose something \
 sensible on open days.
 
-You get a JSON bundle computed from their data: readiness (with the inputs and rules that fired), \
+You get a JSON bundle computed from their data: readiness (with the inputs and rules that fired, \
+and `steps`: yesterday on foot vs their usual — a `high` flag is a long walk or hike whose fatigue the \
+training load doesn't count, `low` often means travel or illness), \
 the coach's plan for the day (verbatim, if any), season phase and observed state, `training_history` \
 (every session of the last 14 days: sport, duration, load, heart-rate zones, grade, their RPE/comments, \
 and the exercises of strength sessions), `weekly_totals` for the last 4 weeks, this week's plan, \
@@ -450,7 +452,7 @@ def build_context(
         "weekday": for_date.strftime("%A"),
         "kind": kind,
         "generated_for": basis,
-        "readiness": {k: readiness.get(k) for k in ("level", "reason", "inputs", "hits")} | {"basis": basis},
+        "readiness": {k: readiness.get(k) for k in ("level", "reason", "inputs", "hits", "steps")} | {"basis": basis},
         "coach_plan": coach_plan_view(db, for_date),
         "season": {
             "phase": season["phase"],

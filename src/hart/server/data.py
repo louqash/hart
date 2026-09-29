@@ -194,7 +194,24 @@ def readiness_on(db: Database, d: D, t: dict[str, float]) -> dict[str, Any]:
         ),
         t,
     )
-    return {"date": d, **result}
+    return {"date": d, **result, "steps": steps_context(db, d)}
+
+
+def steps_context(db: Database, d: D) -> dict[str, Any] | None:
+    """The day before *d* on foot vs the usual (context only; doesn't change the readiness level)."""
+    from hart.analytics.steps import step_context
+
+    yesterday = d - datetime.timedelta(days=1)
+    row = one(db, "SELECT steps FROM daily_health WHERE date = ?", [yesterday]) or {}
+    history = [
+        r[0]
+        for r in db.fetchall(
+            "SELECT steps FROM daily_health WHERE date >= ? AND date < ? AND steps IS NOT NULL",
+            [yesterday - datetime.timedelta(days=28), yesterday],
+        )
+    ]
+    out = step_context(row.get("steps"), history)
+    return {"date": yesterday, **out} if out else None
 
 
 # ---------------------------------------------------------------------------
@@ -667,6 +684,18 @@ def efficiency(db: Database, today: D, range_key: str) -> dict[str, Any]:
     return out
 
 
+def steps_series(db: Database, start: D, end: D) -> list[dict[str, Any]]:
+    """Daily steps with a 7-day average (over the days that have a count — gaps are not zeros)."""
+    series = rows(
+        db,
+        "SELECT date, steps AS value, round(avg(steps) OVER (ORDER BY date "
+        "RANGE BETWEEN INTERVAL 6 DAY PRECEDING AND CURRENT ROW)) AS avg7 "
+        "FROM daily_health WHERE date >= ? AND date <= ? AND steps IS NOT NULL ORDER BY date",
+        [start - datetime.timedelta(days=6), end],
+    )
+    return [r for r in series if r["date"] >= start]
+
+
 def health_series(db: Database, today: D, range_key: str) -> dict[str, Any]:
     start = _range_start(today, range_key)
     p = [start, today]
@@ -697,6 +726,7 @@ def health_series(db: Database, today: D, range_key: str) -> dict[str, Any]:
             "SELECT date, recovery_score AS value FROM daily_recovery WHERE date >= ? AND date <= ? ORDER BY date",
             p,
         ),
+        "steps": steps_series(db, start, today),
         "vo2max": rows(
             db,
             "SELECT date, vo2max_run AS run, vo2max_cycle AS cycle FROM daily_health "
