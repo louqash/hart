@@ -81,7 +81,7 @@
       <td class="spark-cell">{{ spark(x.history, x.metric) }}</td>
       <td class="num {{ 'ok' if x.block_change_pct and x.block_change_pct > 0 else 'warn' if x.block_change_pct and x.block_change_pct < 0 else 'faint' }}">{{ '%+.1f'|format(x.block_change_pct) ~ '%' if x.block_change_pct is not none else '—' }}</td>
       <td class="num">{{ x.sessions }}</td>
-      <td><select class="small-select" onchange="mergeLift(this, '{{ x.key }}')" title="Garmin recorded this lift under another name too? Merge them.">
+      <td><select class="small-select merge-lift" autocomplete="off" onchange="mergeLift(this, '{{ x.key }}')" title="Garmin recorded this lift under another name too? Merge them.">
         <option value="">—</option>
         {% for y in p.exercises if y.key != x.key %}<option value="{{ y.key }}">{{ y.label }}</option>{% endfor %}
       </select></td>
@@ -101,12 +101,16 @@
 {% endblock %}
 {% block scripts %}
 <script>
-  function mergeLift(select, name) {
+  async function mergeLift(select, name) {
     if (!select.value) return;
     const label = select.options[select.selectedIndex].text;
-    act(select, () => api.post("/api/strength/aliases", { name, same_as: select.value }),
+    const target = select.value;
+    select.value = "";  // never leave a choice behind: rows reorder after the merge
+    await act(select, () => api.post("/api/strength/aliases", { name, same_as: target }),
         { confirmText: `Treat this lift as ${label} everywhere (history, comparisons, grading)?` });
   }
+  // Browsers restore form fields by position after a reload (or back/forward); the rows have moved, so clear them.
+  window.addEventListener("pageshow", () => document.querySelectorAll("select.merge-lift").forEach((s) => { s.value = ""; }));
 </script>
 {% if selected %}
 <script>
