@@ -41,7 +41,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-SUGGEST_PROMPT_VERSION = "suggest@7"
+SUGGEST_PROMPT_VERSION = "suggest@8"
 HISTORY_DAYS = 14
 WEEKLY_TOTALS_WEEKS = 4
 FINAL_CUTOFF_HOUR = 14
@@ -106,8 +106,8 @@ You get a JSON bundle computed from their data: readiness (with the inputs and r
 and `steps`: yesterday on foot vs their usual — a `high` flag is a long walk or hike whose fatigue the \
 training load doesn't count, `low` often means travel or illness), \
 the coach's plan for the day (verbatim, if any), season phase and observed state, `training_history` \
-(every session of the last 14 days: sport, duration, load, heart-rate zones, grade, their RPE/feel, \
-their hart comment and the description they wrote in Garmin, \
+(every session of the last 14 days: sport, duration, load, heart-rate zones, grade, their RPE/feel and \
+their note on the session, \
 and the exercises of strength sessions), `weekly_totals` for the last 4 weeks, this week's plan, \
 `week_targets` (sessions per week the notes ask for, how many are done and still owed), active \
 athlete notes, `limits` — hard limits that code enforces after you answer — and, when regenerating, \
@@ -313,8 +313,7 @@ def training_history(db: Database, d: datetime.date, days: int = HISTORY_DAYS) -
             "grade": grade.get("letter"),
             "my_rpe": s.get("rpe"),
             "my_feel": s.get("feel"),
-            "my_comment": s.get("comment"),
-            "garmin_description": s.get("description"),
+            "note": s.get("note"),
         }
         if s["sport_type"] == "strength":
             summary = strength_summary(db, s) or {}

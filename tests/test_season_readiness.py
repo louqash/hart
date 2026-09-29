@@ -238,10 +238,52 @@ def test_notes_lifecycle(client) -> None:
 
 def test_feedback_validation(client) -> None:
     assert client.post("/api/sessions/a0/feedback", headers=W, json={"rpe": 11}).status_code == 422
-    ok = client.post("/api/sessions/a0/feedback", headers=W, json={"rpe": 6, "feel": 4, "comment": " fine "})
+    ok = client.post("/api/sessions/a0/feedback", headers=W, json={"rpe": 6, "feel": 4, "note": " fine "})
     assert ok.status_code == 200
     fb = client.get("/api/sessions/a0", headers=H).json()["feedback"]
-    assert fb == {"rpe": 6, "feel": 4, "comment": "fine", "saved": True}
+    assert (fb["rpe"], fb["feel"], fb["note"], fb["note_edited"], fb["saved"]) == (6, 4, "fine", True, True)
+
+
+def test_session_note_follows_garmin_until_written_in_hart(client) -> None:
+    db = client.app.state.db
+    db.execute("UPDATE activities SET description = '4x8 threshold' WHERE activity_id = 'a0'")
+    fb = client.get("/api/sessions/a0", headers=H).json()["feedback"]
+    assert (fb["note"], fb["note_edited"]) == ("4x8 threshold", False)
+    # Saving RPE with the prefilled Garmin text (browsers send CRLF) keeps following Garmin.
+    client.post("/api/sessions/a0/feedback", headers=W, json={"rpe": 7, "note": "4x8 threshold\r\n"})
+    db.execute("UPDATE activities SET description = '4x8 threshold, legs heavy' WHERE activity_id = 'a0'")
+    fb = client.get("/api/sessions/a0", headers=H).json()["feedback"]
+    assert (fb["note"], fb["note_edited"], fb["garmin_changed"]) == ("4x8 threshold, legs heavy", False, False)
+    # Written in hart: hart's text wins; a later Garmin edit is offered, not applied.
+    client.post("/api/sessions/a0/feedback", headers=W, json={"rpe": 7, "note": "Knee niggle on rep 3"})
+    db.execute("UPDATE activities SET description = 'Coach: 4x8 at 250 W' WHERE activity_id = 'a0'")
+    fb = client.get("/api/sessions/a0", headers=H).json()["feedback"]
+    assert (fb["note"], fb["garmin_changed"]) == ("Knee niggle on rep 3", True)
+    client.post("/api/sessions/a0/note/garmin", headers=W, json={"action": "keep_mine"})
+    assert client.get("/api/sessions/a0", headers=H).json()["feedback"]["garmin_changed"] is False
+    client.post("/api/sessions/a0/note/garmin", headers=W, json={"action": "use_garmin"})
+    fb = client.get("/api/sessions/a0", headers=H).json()["feedback"]
+    assert (fb["note"], fb["note_edited"]) == ("Coach: 4x8 at 250 W", False)
+    assert "Notes" in client.get("/sessions/a0", headers=H).text
+
+
+def test_old_comments_absorb_the_garmin_description(tmp_path) -> None:
+    from hart.storage.database import Database
+
+    db = Database(tmp_path / "m.duckdb").connect()
+    db.execute(
+        "INSERT INTO activities (activity_id, source, sport_type, start_time, elapsed_seconds, description) "
+        "VALUES ('x', 'garmin', 'run', '2026-09-01 07:00', 1800, 'Coach: 30 easy')"
+    )
+    db.execute("INSERT INTO session_feedback (activity_id, rpe, comment) VALUES ('x', 4, 'felt good')")
+    db.execute("DELETE FROM schema_version WHERE version = 13")
+    db.close()
+    db = Database(tmp_path / "m.duckdb").connect()  # migration v13 runs again
+    assert db.fetchone("SELECT comment, note_garmin_seen FROM session_feedback") == (
+        "Coach: 30 easy\n\nfelt good",
+        "Coach: 30 easy",
+    )
+    db.close()
 
 
 def _mcp(client, name: str, args: dict[str, Any]) -> Any:

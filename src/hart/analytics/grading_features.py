@@ -349,12 +349,11 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
         "comparison": comparable_sessions(db, a, injury) if a["sport_type"] in ("bike", "run", "swim") else None,
         "strength": strength_summary(db, a),
         "plan": None,  # the plan row this session matched (not linked into grading yet)
-        # Both of the athlete's texts: the description written in Garmin Connect and the comment in hart.
+        # The athlete's note on the session: written in hart, or the Garmin description until they do.
         "feedback": {
             "rpe": rpe,
             "feel": feel,
-            "comment": a.get("my_comment"),
-            "garmin_description": a.get("description"),
+            "note": a.get("my_comment") if a.get("my_comment") is not None else a.get("description"),
         },
         "context": {
             "phase": {

@@ -224,7 +224,9 @@ SESSION_COLUMNS = (
     "a.avg_cadence, a.avg_pace_sec_km, a.avg_speed_kmh, a.training_effect_aerobic, "
     "a.training_effect_anaerobic, a.training_effect_label, a.rpe AS garmin_rpe, a.feel AS garmin_feel, "
     "m.tss AS load, m.efficiency_factor, m.aerobic_decoupling_pct, m.hr_zone_seconds, "
-    "f.rpe, f.feel, f.comment, a.description"
+    "f.rpe, f.feel, f.comment, a.description, f.note_garmin_seen, "
+    # The session note: the athlete's text in hart, or — until they write one — the Garmin description.
+    "coalesce(f.comment, a.description) AS note, f.comment IS NOT NULL AS note_edited"
 )
 SESSION_FROM = (
     "FROM activities a LEFT JOIN activity_metrics m USING (activity_id) "
@@ -923,7 +925,7 @@ def sessions_list(
 
 
 def session_detail(db: Database, activity_id: str) -> dict[str, Any] | None:
-    row = one(db, f"SELECT {SESSION_COLUMNS}, a.description {SESSION_FROM} WHERE a.activity_id = ?", [activity_id])
+    row = one(db, f"SELECT {SESSION_COLUMNS} {SESSION_FROM} WHERE a.activity_id = ?", [activity_id])
     if row is None:
         return None
     detail = _session_row(row)
@@ -975,8 +977,16 @@ def session_detail(db: Database, activity_id: str) -> dict[str, Any] | None:
         "feel": detail.get("feel")
         if detail.get("feel") is not None
         else (round(detail["garmin_feel"] / 25) + 1 if detail.get("garmin_feel") is not None else None),
-        "comment": detail.get("comment"),
-        "saved": detail.get("rpe") is not None or detail.get("feel") is not None or bool(detail.get("comment")),
+        "note": detail.get("note"),
+        "note_edited": bool(detail.get("note_edited")),
+        "garmin_description": detail.get("description"),
+        # Written in hart, and Garmin's description changed since: offer it.
+        "garmin_changed": bool(
+            detail.get("note_edited")
+            and (detail.get("description") or "").strip()
+            and (detail.get("description") or "").strip() != (detail.get("note_garmin_seen") or "").strip()
+        ),
+        "saved": detail.get("rpe") is not None or detail.get("feel") is not None or bool(detail.get("note_edited")),
     }
     return detail
 

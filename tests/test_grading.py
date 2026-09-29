@@ -103,9 +103,9 @@ def test_features_for_indoor_ride(db: Database) -> None:
     db.execute("UPDATE activities SET description = '3x10 sweet spot, knee niggle' WHERE activity_id = 'ride'")
     db.execute("INSERT INTO session_feedback (activity_id, rpe, comment) VALUES ('ride', 6, 'legs ok')")
     f = build_features(db, "ride", DEFAULT_THRESHOLDS)
-    assert (
-        f["feedback"]["garmin_description"] == "3x10 sweet spot, knee niggle" and f["feedback"]["comment"] == "legs ok"
-    )
+    assert f["feedback"]["note"] == "legs ok"  # written in hart: it wins over the Garmin description
+    db.execute("UPDATE session_feedback SET comment = NULL WHERE activity_id = 'ride'")
+    assert build_features(db, "ride", DEFAULT_THRESHOLDS)["feedback"]["note"] == "3x10 sweet spot, knee niggle"
     assert f["gradable"] and f["basics"]["indoor"] is True
     assert f["intensity"]["hr_zone_pct"] == {"Z1": 17, "Z2": 78, "Z3": 6}
     dec = f["durability"]["stream_decoupling"]

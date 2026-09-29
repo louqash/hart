@@ -201,7 +201,7 @@ class NoteIn(BaseModel):
 class FeedbackIn(BaseModel):
     rpe: int | None = Field(default=None, ge=1, le=10)
     feel: int | None = Field(default=None, ge=1, le=5)
-    comment: str | None = Field(default=None, max_length=2000)
+    note: str | None = Field(default=None, max_length=4000)
 
 
 class CompareIn(BaseModel):
@@ -683,16 +683,52 @@ def api_grade_backfill(body: BackfillRequest, request: Request, db: Database = D
     return {"queued": sum(1 for j in jobs if j["status"] == "queued"), "activities": len(ids)}
 
 
+class GarminNoteIn(BaseModel):
+    action: Literal["use_garmin", "keep_mine"]
+
+
+@router.post("/api/sessions/{activity_id}/note/garmin")
+def api_session_note_garmin(
+    activity_id: str, body: GarminNoteIn, request: Request, db: Database = Depends(get_db)
+) -> dict[str, Any]:
+    """Garmin's description changed after the note was written in hart: take it, or keep the hart note."""
+    if db.fetchone("SELECT 1 FROM session_feedback WHERE activity_id = ?", [activity_id]) is None:
+        raise HTTPException(404, detail="no note for this session")
+    if body.action == "use_garmin":
+        db.execute(
+            "UPDATE session_feedback SET comment = NULL, note_garmin_seen = NULL WHERE activity_id = ?", [activity_id]
+        )
+        graded = db.fetchone(
+            "SELECT count(*) FROM session_grades WHERE activity_id = ? AND status = 'graded'", [activity_id]
+        )[0]
+        return {"note": "garmin", "regrade": _enqueue_grade(request, activity_id, "note_edited") if graded else None}
+    db.execute(
+        "UPDATE session_feedback AS f SET note_garmin_seen = a.description FROM activities AS a "
+        "WHERE a.activity_id = f.activity_id AND f.activity_id = ?",
+        [activity_id],
+    )
+    return {"note": "mine"}
+
+
 @router.post("/api/sessions/{activity_id}/feedback")
 def api_session_feedback(
     activity_id: str, body: FeedbackIn, request: Request, db: Database = Depends(get_db)
 ) -> dict[str, Any]:
     if db.fetchone("SELECT 1 FROM activities WHERE activity_id = ?", [activity_id]) is None:
         raise HTTPException(404, detail="session not found")
+    garmin = db.fetchone("SELECT description FROM activities WHERE activity_id = ?", [activity_id])[0] or ""
+    garmin = garmin.replace("\r\n", "\n").strip()
+    current = db.fetchone("SELECT comment, note_garmin_seen FROM session_feedback WHERE activity_id = ?", [activity_id])
+    note = (body.note or "").replace("\r\n", "\n").strip()
+    if current is None or current[0] is None:
+        # Following Garmin: an unchanged (or empty, with nothing in Garmin) note keeps following it.
+        comment, seen = (None, None) if note == garmin else (note, garmin or None)
+    else:
+        comment, seen = note, current[1]
     db.execute(
-        "INSERT OR REPLACE INTO session_feedback (activity_id, rpe, feel, comment, updated_at) "
-        "VALUES (?, ?, ?, ?, current_timestamp)",
-        [activity_id, body.rpe, body.feel, (body.comment or "").strip() or None],
+        "INSERT OR REPLACE INTO session_feedback (activity_id, rpe, feel, comment, note_garmin_seen, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, current_timestamp)",
+        [activity_id, body.rpe, body.feel, comment, seen],
     )
     # Feedback after grading → one regrade with it, never more.
     regrade = None

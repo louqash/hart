@@ -29,7 +29,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-GRADE_PROMPT_VERSION = "grade@3"
+GRADE_PROMPT_VERSION = "grade@4"
 WEIGHTS = {"execution": 0.45, "response": 0.30, "context_fit": 0.25}
 LETTERS = ((4.5, "A"), (3.75, "B"), (3.0, "C"), (2.25, "D"))
 UNVERIFIED_LIMIT = 0.30
@@ -99,10 +99,9 @@ there's nothing to compare or no heart rate.
 - context_fit: was it the right session given readiness that morning, form (TSB), the phase \
 (e.g. comeback: consistency and tissue tolerance over intensity), active constraints and their \
 feedback?
-- `feedback` holds everything the athlete said about the session: RPE and feel, their comment in hart \
-and the description they wrote in Garmin Connect (`garmin_description` — often the coach's \
-workout or how it went). Read both texts: they state the intent, pain or niggles, and \
-circumstances the numbers can't show, and they weigh in all three scores.
+- `feedback` holds what the athlete said about the session: RPE, feel and their `note` (written in \
+hart or in Garmin Connect — often the coach's workout or how it went). Read the note: it states the \
+intent, pain or niggles, and circumstances the numbers can't show, and it weighs in all three scores.
 For `event` sessions (trips, camps and similar) set session_type "event_trip" and execution and \
 response to null — score context fit only.
 

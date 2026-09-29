@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 12
+CURRENT_SCHEMA_VERSION: int = 13
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -637,6 +637,20 @@ def _run_migrations(db: Database) -> None:
         _add_column_if_missing(db, "athlete_notes", "target_id", "INTEGER")
         _add_column_if_missing(db, "athlete_notes", "proposed_action", "VARCHAR")  # NULL/create, update, archive
         _add_column_if_missing(db, "athlete_notes", "proposal_reason", "VARCHAR")
+
+    if 13 not in applied:
+        # v13: one session note. session_feedback.comment is the athlete's note in hart; NULL means "follow the
+        # Garmin description". note_garmin_seen is the Garmin text when the note was written in hart, so a
+        # later Garmin edit can be offered. Existing comments absorb the Garmin text so nothing is lost.
+        _add_column_if_missing(db, "session_feedback", "note_garmin_seen", "VARCHAR")
+        db.execute(
+            "UPDATE session_feedback AS f SET "
+            "comment = CASE WHEN a.description IS NOT NULL AND trim(a.description) <> '' "
+            "AND trim(a.description) <> trim(f.comment) THEN a.description || chr(10) || chr(10) || f.comment "
+            "ELSE f.comment END, note_garmin_seen = a.description "
+            "FROM activities AS a WHERE a.activity_id = f.activity_id AND f.comment IS NOT NULL "
+            "AND f.note_garmin_seen IS NULL"
+        )
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;

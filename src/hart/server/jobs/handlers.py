@@ -139,8 +139,13 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             is None
         ]
         described = [
-            a for a in result.get("description_edited_ids") or [] if a not in sets and a not in effort and graded(a)
-        ]
+            a
+            for a in result.get("description_edited_ids") or []
+            if a not in sets
+            and a not in effort
+            and graded(a)
+            and db.fetchone("SELECT 1 FROM session_feedback WHERE activity_id = ? AND comment IS NOT NULL", [a]) is None
+        ]  # a note written in hart wins, so a Garmin edit doesn't change what the grade read
         enqueue_grades(sets, "sets_edited")
         enqueue_grades(effort, "effort_edited")
         enqueue_grades(described, "description_edited")

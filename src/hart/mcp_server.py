@@ -2347,7 +2347,7 @@ def describe_schema(table_name: str = "") -> str:
             "athlete_notes": "Athlete context notes (injuries, constraints, baselines, preferences); status active/proposed/archived.",
             "training_phases": "Season phases (comeback, base, build, peak, taper, race, transition) with dates.",
             "planned_sessions": "Planned sessions per day (coach's plan pasted in, your own, accepted suggestions), matched to activities.",
-            "session_feedback": "Athlete's own RPE (1-10), feel (1-5) and comment per activity.",
+            "session_feedback": "Athlete's own RPE (1-10), feel (1-5) and note (comment; NULL = the note is the Garmin description in activities.description) per activity.",
             "session_grades": "Session grades (A-E) with dimension scores, summary and citations; latest = max(version).",
             "daily_suggestions": "Daily training suggestions with readiness; latest = max(version) per date.",
             "chat_conversations": "Web chat conversations.",

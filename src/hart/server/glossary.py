@@ -22,6 +22,8 @@ GLOSSARY: dict[str, str] = {
     "training_readiness": "Garmin's 0–100 Training Readiness (sleep, recovery time, HRV, acute load). Below 40 = amber.",
     "recovery_score": "hart's 0–100 recovery score: 30% HRV, 25% sleep, 20% Body Battery, 15% Training Readiness, 5% stress, 5% form. Missing parts count as neutral (50), so read it with care when the watch wasn't worn.",
     # Markers and performance
+    "session_note": "One note per session. Until you write here it shows the description from Garmin Connect (and follows edits there); once you save your own text it stays in hart only — Garmin isn't changed. The grade, suggestions and Ember read this note.",
+    "grade_confidence": "How sure the grade is. Ember sets it from the data it had: high = heart rate, streams and comparable sessions; medium = something missing or only a few comparisons (e.g. no power, a new kind of session); low = little data. hart also drops it to low when more than 30% of the numbers Ember cited can't be traced back to your data.",
     "steps": "Daily steps from Garmin, with the 7-day average. A big walking or hiking day adds fatigue a training plan doesn't see; a very low day often means travel or illness.",
     "vo2max_run": "Garmin's running VO2max estimate (ml/kg/min), from heart rate and pace on outdoor runs.",
     "vo2max_cycle": "Garmin's cycling VO2max estimate (ml/kg/min), from heart rate and power.",
