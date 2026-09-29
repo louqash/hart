@@ -216,3 +216,62 @@ def test_grade_message(db: Database, monkeypatch) -> None:
     settings.set_value(db, "grade_message_enabled", False)
     assert not grade_message.should_send(db, config, "sync")
     assert not grade_message.should_send(db, _config(webhook=""), "sync")
+
+
+def test_regrades_go_into_a_thread(db: Database, monkeypatch) -> None:
+    from hart.server import grade_message
+    from hart.server.grading import store_grade
+
+    _activity(db, "ride", datetime.datetime.combine(datetime.date.today(), datetime.time(9)), secs=3600)
+    activity_id = db.fetchone("SELECT activity_id FROM activities")[0]
+    grade = {
+        "status": "graded",
+        "intent_source": "inferred",
+        "session_type": "endurance",
+        "score_execution": 3,
+        "score_response": 3,
+        "score_context": 3,
+        "overall_score": 3.0,
+        "letter": "C",
+        "confidence": "high",
+        "summary": "OK.",
+        "highlights": [],
+        "concerns": [],
+        "citations": [],
+        "features": {},
+        "claude_run_id": None,
+    }
+    store_grade(db, activity_id, grade)
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class Response:
+        status_code = 200
+        text = ""
+
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    def post(url: str, **kw: Any) -> Response:
+        calls.append((url, kw["json"]))
+        return Response({"id": "T1"} if url.endswith("/threads") else {"id": f"M{len(calls)}"})
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "post", post)
+    base = _config(webhook="")
+    config = dataclasses.replace(base, discord=dataclasses.replace(base.discord, bot_token="tok", channel_id=123))
+    assert grade_message.send(db, config, activity_id) == "sent"
+    assert calls[0][0].endswith("/channels/123/messages")
+
+    store_grade(db, activity_id, {**grade, "letter": "B", "overall_score": 3.6})  # re-graded
+    assert grade_message.send(db, config, activity_id) == "sent (thread)"
+    assert calls[1][0].endswith("/channels/123/messages/M1/threads") and "re-grades" in calls[1][1]["name"]
+    assert calls[2][0].endswith("/channels/T1/messages")
+    assert calls[2][1]["embeds"][0]["title"].endswith("· B (re-graded, was C)")
+
+    store_grade(db, activity_id, {**grade, "letter": "A", "overall_score": 4.5})
+    grade_message.send(db, config, activity_id)
+    assert calls[3][0].endswith("/channels/T1/messages")  # the same thread, no new one

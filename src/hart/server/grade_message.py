@@ -11,7 +11,7 @@ import logging
 from typing import Any
 
 from hart.config import HartSettings
-from hart.server import evening, settings
+from hart.server import evening, settings, state
 from hart.server.data import one
 from hart.storage.database import Database
 
@@ -46,7 +46,18 @@ def build(db: Database, config: HartSettings, activity_id: str) -> dict[str, Any
     icon = evening.SPORT_ICONS.get(activity["sport_type"], "•")
     name = activity["name"] or activity["sport_type"].title()
     regraded = (grade.get("version") or 1) > 1
-    title = f"{icon} {name} · {grade['letter']}" + (" (re-graded)" if regraded else "")
+    previous = (
+        one(
+            db,
+            "SELECT letter FROM session_grades WHERE activity_id = ? AND status = 'graded' AND version < ? "
+            "ORDER BY version DESC LIMIT 1",
+            [activity_id, grade["version"]],
+        )
+        if regraded
+        else None
+    )
+    was = f", was {previous['letter']}" if previous and previous.get("letter") else ""
+    title = f"{icon} {name} · {grade['letter']}" + (f" (re-graded{was})" if regraded else "")
     facts = [f"{activity['start_time']:%a %d %b}", evening._minutes(activity["duration_seconds"])]
     if activity.get("distance_meters"):
         facts.append(f"{activity['distance_meters'] / 1000:.1f} km")
@@ -73,13 +84,33 @@ def build(db: Database, config: HartSettings, activity_id: str) -> dict[str, Any
     return {"embeds": [embed]}
 
 
+THREADS_KEY = "grade_messages"  # activity id → {"message_id", "thread_id"} of its first grade message
+
+
 def send(db: Database, config: HartSettings, activity_id: str) -> str:
-    """Post the grade; never fails the grading job (the grade is saved either way)."""
+    """Post the grade; never fails the grading job (the grade is saved either way). The first grade of a
+    session is a message in the channel; later ones (re-grades) go into a thread on it — with the bot;
+    a webhook can't open threads, so there they're new messages marked as re-graded."""
     try:
         message = build(db, config, activity_id)
         if message is None:
             return "skipped"
-        evening.send(config, message)
+        posted = state.get_setting(db, THREADS_KEY, {}) or {}
+        first = posted.get(activity_id)
+        bot = bool(config.discord.bot_token and config.discord.channel_id)
+        if first and bot:
+            thread_id = first.get("thread_id")
+            if not thread_id:
+                name = (message["embeds"][0]["title"].split(" · ")[0] + " · re-grades").strip()
+                thread_id = evening.start_thread(config, first["message_id"], name)
+                first["thread_id"] = thread_id
+                state.set_setting(db, THREADS_KEY, posted)
+            evening.send(config, message, channel_id=thread_id)
+            return "sent (thread)"
+        created = evening.send(config, message)
+        if created.get("id"):
+            posted[activity_id] = {"message_id": str(created["id"]), "thread_id": None}
+            state.set_setting(db, THREADS_KEY, posted)
         return "sent"
     except Exception as exc:  # noqa: BLE001
         logger.warning("Discord grade message for %s failed: %s", activity_id, exc)

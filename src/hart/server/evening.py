@@ -45,9 +45,13 @@ def configured(config: HartSettings) -> bool:
     return bool(d.webhook_url or (d.bot_token and d.channel_id))
 
 
-def send(config: HartSettings, message: dict[str, Any]) -> None:
+API = "https://discord.com/api/v10"
+
+
+def send(config: HartSettings, message: dict[str, Any], *, channel_id: int | str | None = None) -> dict[str, Any]:
     """Post a message (``content`` and/or ``embeds``) as the bot when there is one — the same Ember that
-    answers replies in Discord — otherwise through the webhook."""
+    answers replies in Discord — otherwise through the webhook. *channel_id* (bot only) posts into another
+    channel or a thread. Returns the created message (with its ``id``) when Discord sends it back."""
     import httpx
 
     body = {**message, "allowed_mentions": {"parse": []}}
@@ -56,20 +60,45 @@ def send(config: HartSettings, message: dict[str, Any]) -> None:
     d = config.discord
     if d.bot_token and d.channel_id:
         response = httpx.post(
-            f"https://discord.com/api/v10/channels/{d.channel_id}/messages",
+            f"{API}/channels/{channel_id or d.channel_id}/messages",
             headers={"Authorization": f"Bot {d.bot_token}"},
             json=body,
             timeout=10.0,
         )
     elif d.webhook_url:
         identity = {"username": d.username, "avatar_url": d.avatar_url}
-        response = httpx.post(d.webhook_url, json={**body, **{k: v for k, v in identity.items() if v}}, timeout=10.0)
+        response = httpx.post(
+            d.webhook_url,
+            params={"wait": "true"},  # returns the message, like the bot API
+            json={**body, **{k: v for k, v in identity.items() if v}},
+            timeout=10.0,
+        )
     else:
         raise DiscordError(
             "Discord isn't configured (set DISCORD_BOT_TOKEN + DISCORD_CHANNEL_ID, or HART_DISCORD_WEBHOOK_URL)"
         )
     if response.status_code not in (200, 201, 204):
         raise DiscordError(f"Discord answered {response.status_code}: {response.text[:200]}")
+    try:
+        return response.json() if response.status_code != 204 else {}
+    except (ValueError, AttributeError):
+        return {}
+
+
+def start_thread(config: HartSettings, message_id: str, name: str) -> str:
+    """Open a thread on one of the bot's messages (bot only; webhooks can't); returns the thread's id."""
+    import httpx
+
+    d = config.discord
+    response = httpx.post(
+        f"{API}/channels/{d.channel_id}/messages/{message_id}/threads",
+        headers={"Authorization": f"Bot {d.bot_token}"},
+        json={"name": name[:100], "auto_archive_duration": 10080},
+        timeout=10.0,
+    )
+    if response.status_code not in (200, 201):
+        raise DiscordError(f"Discord answered {response.status_code}: {response.text[:200]}")
+    return str(response.json()["id"])
 
 
 def _minutes(seconds: float | None) -> str:
