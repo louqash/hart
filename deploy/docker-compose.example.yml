@@ -9,6 +9,9 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
+      args:  # shown on the System page: HART_COMMIT=$(git describe --always --dirty) docker compose up -d --build
+        HART_COMMIT: ${HART_COMMIT:-unknown}
+        HART_BUILT_AT: ${HART_BUILT_AT:-}
     image: hart:local
     container_name: hart
     restart: unless-stopped

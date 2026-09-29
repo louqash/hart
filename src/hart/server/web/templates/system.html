@@ -29,6 +29,9 @@
       <div><span>Open anomalies</span><span class="{{ 'sunset' if s.counts.unacknowledged_anomalies else '' }}">{{ s.counts.unacknowledged_anomalies }}</span></div>
       <div><span>Notes to approve</span><span><a href="/notes">{{ s.counts.proposed_notes }}</a></span></div>
       <div><span>Schema version</span><span>{{ s.database.schema_version }}</span></div>
+      {% set b = s.server.build %}
+      <div title="{{ 'Built ' ~ b.built_at if b.built_at else 'The deploy didn\'t pass HART_COMMIT — see docs/deployment.md' }}"><span>Running</span>
+        <span>{{ b.version }} · {% if b.commit %}<code>{{ b.commit }}</code>{% else %}<span class="faint">commit unknown</span>{% endif %}</span></div>
     </div>
     <div class="kv" style="margin-top:10px">
       <div><span>Last backup</span>

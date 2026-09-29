@@ -55,7 +55,7 @@ Without a token hart still syncs, charts and computes readiness; Ember, grading 
 ## 3. Start
 
 ```bash
-docker compose up -d --build
+HART_COMMIT=$(git describe --always --dirty) docker compose up -d --build
 docker compose logs -f hart
 curl -s http://127.0.0.1:8765/healthz   # {"ok": true, ...}
 ```
@@ -207,8 +207,11 @@ docker compose start hart
 ## Updating
 
 ```bash
-git pull && docker compose up -d --build
+git pull && HART_COMMIT=$(git describe --always --dirty) HART_BUILT_AT=$(date -Iseconds) docker compose up -d --build
 ```
+
+The System page shows the running version and commit (also in `/healthz`), so you can check a deploy took.
+Without `HART_COMMIT` it says "commit unknown".
 
 The database schema migrates itself on start. Jobs running during a restart are marked as interrupted and
 picked up by the scheduler.

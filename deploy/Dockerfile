@@ -38,6 +38,13 @@ RUN uv sync --frozen --no-dev \
     && mkdir -p /app/data /home/app/.claude \
     && chown -R app:app /app/data /home/app
 
+# Which commit this image is built from (System page, /healthz). Last, so a new commit doesn't
+# invalidate the cached layers above:
+#   docker build --build-arg HART_COMMIT=$(git describe --always --dirty) ...
+ARG HART_COMMIT=unknown
+ARG HART_BUILT_AT=
+ENV HART_COMMIT=${HART_COMMIT} HART_BUILT_AT=${HART_BUILT_AT}
+
 USER app
 EXPOSE 8765
 

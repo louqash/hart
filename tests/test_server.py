@@ -414,7 +414,8 @@ class TestApp:
 
     def test_system_page_renders(self, client) -> None:
         resp = client.get("/system", headers=USER)
-        assert resp.status_code == 200 and "Sync now" in resp.text
+        assert resp.status_code == 200 and "Sync now" in resp.text and "Running" in resp.text
+        assert client.get("/healthz").json()["build"]["version"] == "0.1.0"
 
     def test_garmin_token_upload(self, client, tmp_path: Path) -> None:
         bad = client.post("/api/garmin/tokens", json={"files": {"../x.json": "{}"}}, headers=WRITE)
@@ -625,3 +626,17 @@ def test_rebuilds_are_invisible_to_readers_until_committed(tmp_path: Path) -> No
         pass
     assert reader.fetchone("SELECT count(*) FROM daily_training_load")[0] == 1  # a failed step changes nothing
     db.close()
+
+
+def test_build_info(monkeypatch) -> None:
+    from hart import build
+
+    build.build_info.cache_clear()
+    monkeypatch.setenv("HART_COMMIT", "a4bc303")
+    monkeypatch.setenv("HART_BUILT_AT", "2026-09-29T20:00:00Z")
+    assert build.build_info() == {"version": "0.1.0", "commit": "a4bc303", "built_at": "2026-09-29T20:00:00Z"}
+    build.build_info.cache_clear()
+    monkeypatch.setenv("HART_COMMIT", "unknown")  # the Dockerfile default: fall back to git in a checkout
+    info = build.build_info()
+    assert info["commit"] is None or len(info["commit"]) >= 7
+    build.build_info.cache_clear()

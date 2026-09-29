@@ -23,6 +23,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from hart.build import build_info
 from hart.config import HartSettings, get_config
 from hart.server import chat_routes, evening, health_routes, plan_routes, routes, settings, settings_routes, state
 from hart.server.auth import AuthMiddleware
@@ -214,7 +215,7 @@ def build_system(db: Database, config: HartSettings, runner: JobRunner, discord_
     ]
     db_path = Path(config.db_path)
     return {
-        "server": {"env": config.server.env, "tz": config.server.tz},
+        "server": {"env": config.server.env, "tz": config.server.tz, "build": build_info()},
         "database": {
             "path": str(db_path),
             "size_bytes": db_path.stat().st_size if db_path.is_file() else None,
@@ -359,6 +360,7 @@ def create_app(
             "runner_alive": worker is not None and not worker.done(),
             # Deployment check: is Tailscale Serve passing the identity header?
             "tailscale_login": request.headers.get("tailscale-user-login"),
+            "build": build_info(),
         }
 
     # ---- pages ----
