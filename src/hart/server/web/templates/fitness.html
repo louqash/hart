@@ -159,7 +159,7 @@ async function loadHealth(range = "180d") {
     { name: "Recovery", type: "line", symbolSize: 3, data: withGaps(pts(d.recovery, "value")), color: css("--green") },
   ]});
   if (!d.steps.length) emptyChart("steps", "No step counts from Garmin in this range.");
-  else makeChart("steps", { ...base, yAxis: { type: "value", name: "steps" }, series: [...bandSeries(d, { labels: false }),
+  else makeChart("steps", { ...base, yAxis: { type: "value", name: "steps", axisLabel: { formatter: (v) => (v >= 1000 ? `${v / 1000}k` : v) } }, series: [...bandSeries(d, { labels: false }),
     { name: "Steps", type: "bar", data: pts(d.steps, "value"), color: css("--accent"), barMaxWidth: 5 },
     { name: "7-day avg", type: "line", showSymbol: false, data: withGaps(pts(d.steps, "avg7")), color: css("--muted") },
   ]});
