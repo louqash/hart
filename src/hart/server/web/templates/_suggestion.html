@@ -68,7 +68,8 @@
           {% if s.cautions %}<ul class="hl bad">{% for x in s.cautions %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
           <div class="row" style="margin-top:10px">
             {% if s.recommendation in ('free_choice', 'modify', 'replace') %}
-              {% if s.accepted %}<span class="small ok">Accepted into your plan ✓</span>
+              {% if s.already_planned and not s.accepted %}<span class="small ok">Already in your plan ✓</span>
+              {% elif s.accepted %}<span class="small ok">Accepted into your plan ✓</span>
                 {% for a in s.accepted_rows if a.sport_type in ('run', 'bike') %}
                   {% if a.garmin_pending %}<span class="small muted"><span class="grade-chip pending"><i></i></span> sending to Garmin…</span>
                   {% elif a.garmin_status == 'sent' %}<span class="small ok">on Garmin ✓</span>

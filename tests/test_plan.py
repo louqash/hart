@@ -568,6 +568,7 @@ def test_ember_argues_with_the_coach(client) -> None:
     assert job["result"]["status"] == "ok", job  # 'replace' is fine with a case made against the plan
     s = client.get(f"/api/suggestions/{today}", headers=H).json()
     assert s["context"]["coach_take"] == {"stance": "disagree", "text": argued["coach_take"]}
+    client.put("/api/settings/preliminary_time", headers=W, json={"value": "23:59"})  # show today at any hour
     page = client.get("/", headers=H).text
     assert "Ember's take on the coach's plan" in page and "knee niggled" in page
 
@@ -599,3 +600,35 @@ def test_tomorrow_is_suggested_once_today_is_done(tmp_path: Path) -> None:
         (t, {k: p.get(k) for k in ("date", "kind", "trigger")}) for t, p in enqueued
     ]
     db.close()
+
+
+def test_a_suggestion_already_in_the_plan_is_not_planned_twice(client) -> None:
+    today = datetime.date.today()
+    client.put("/api/garmin/auto-send", headers=W, json={"enabled": False})  # no Garmin runs in between
+    FakeClient.scripts.append([_result(structured_output=_suggestion("free_choice", [_s("run", 30)]))])
+    _regenerate(client, today)
+    first = client.get(f"/api/suggestions/{today}", headers=H).json()
+    client.post(f"/api/suggestions/{first['id']}/accept", headers=W, json={})
+    # Regenerated: the accepted run is now the standing plan Ember works against.
+    FakeClient.scripts.append([_result(structured_output=_suggestion("as_planned", [_s("run", 30)]))])
+    _regenerate(client, today)
+    prompt = FakeClient.instances[-1].prompt
+    assert '"standing_plan"' in prompt and '"from": "accepted suggestion"' in prompt
+    again = client.get(f"/api/suggestions/{today}", headers=H).json()
+    assert again["recommendation"] == "as_planned" and again["already_planned"] is True
+    # An old-style duplicate can't be accepted either.
+    FakeClient.scripts.append([_result(structured_output=_suggestion("modify", [_s("run", 30)]))])
+    _regenerate(client, today)
+    dup = client.get(f"/api/suggestions/{today}", headers=H).json()
+    assert (
+        dup["already_planned"]
+        and client.post(f"/api/suggestions/{dup['id']}/accept", headers=W, json={}).status_code == 400
+    )
+    # A real change replaces the accepted session instead of adding one.
+    FakeClient.scripts.append([_result(structured_output=_suggestion("modify", [_s("run", 20)]))])
+    _regenerate(client, today)
+    change = client.get(f"/api/suggestions/{today}", headers=H).json()
+    client.post(f"/api/suggestions/{change['id']}/accept", headers=W, json={})
+    items = client.get(f"/api/plan?start={today}&end={today}", headers=H).json()["items"]
+    standing = [(i["duration_min"], i["source"]) for i in items if not i.get("replaced_by")]
+    assert standing == [(20, "suggestion_accepted")]

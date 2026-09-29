@@ -166,7 +166,7 @@ def test_accept_sends_to_garmin(client, garmin) -> None:
     assert garmin.scheduled and garmin.scheduled[0][1] == str(today)
     # Auto-send can be switched off.
     client.put("/api/garmin/auto-send", headers=W, json={"enabled": False})
-    FakeClient.scripts.append([_result(structured_output=_suggestion("free_choice", [_s("run", 30)]))])
+    FakeClient.scripts.append([_result(structured_output=_suggestion("modify", [_s("run", 25)]))])
     _regenerate(client, today)
     s2 = client.get(f"/api/suggestions/{today}", headers=H).json()
     assert client.post(f"/api/suggestions/{s2['id']}/accept", headers=W, json={}).json()["garmin"] == []

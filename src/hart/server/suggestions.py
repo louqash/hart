@@ -36,12 +36,12 @@ from hart.server.data import (
     season_context,
 )
 from hart.server.grading import Citation, _structured_raw, claude_paused, pause_claude, verify_citations
-from hart.server.plan import PlanRowIn, coach_plan_for, create_row, garmin_rules
+from hart.server.plan import PlanRowIn, active_plan_for, coach_plan_for, create_row, garmin_rules
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-SUGGEST_PROMPT_VERSION = "suggest@8"
+SUGGEST_PROMPT_VERSION = "suggest@9"
 HISTORY_DAYS = 14
 WEEKLY_TOTALS_WEEKS = 4
 FINAL_CUTOFF_HOUR = 14
@@ -105,7 +105,9 @@ sensible on open days.
 You get a JSON bundle computed from their data: readiness (with the inputs and rules that fired, \
 and `steps`: yesterday on foot vs their usual — a `high` flag is a long walk or hike whose fatigue the \
 training load doesn't count, `low` often means travel or illness), \
-the coach's plan for the day (verbatim, if any), season phase and observed state, `training_history` \
+the coach's plan for the day (verbatim, if any), `standing_plan` (what is planned for the day right \
+now — the coach's or the athlete's own sessions, and suggestions they already accepted), season phase \
+and observed state, `training_history` \
 (every session of the last 14 days: sport, duration, load, heart-rate zones, grade, their RPE/feel and \
 their note on the session, \
 and the exercises of strength sessions), `weekly_totals` for the last 4 weeks, this week's plan, \
@@ -125,8 +127,11 @@ week review shows it was wrong; if you change it, say what and why in `changed_f
 Don't swap sports or durations for no reason.
 
 # Recommendation
-- Coach plan exists: `as_planned` (repeat the coach's session in `sessions`, adding structure only if \
-useful), `modify` (same session, shorter or easier, with concrete changes), `replace` (a different \
+- `standing_plan` is what you work against. If it already holds what you'd suggest — including a \
+suggestion the athlete accepted earlier — answer `as_planned` and repeat it; never offer the same \
+session again as something new (accepting it would plan it twice).
+- A plan stands for the day: `as_planned` (repeat the planned session in `sessions`, adding structure \
+only if useful), `modify` (same session, shorter or easier, with concrete changes), `replace` (a different \
 session), or `rest`. Never add duration or intensity beyond the plan — code enforces it.
 - Think for yourself about the coach's session. The coach may not know what the data shows: a missed \
 session the week still owes, recovery spacing, a niggle in the comments, how the last similar \
@@ -369,6 +374,38 @@ def previous_for(db: Database, d: datetime.date, bundle: dict[str, Any]) -> dict
     }
 
 
+PLAN_SOURCES = {"coach_import": "coach", "manual": "athlete", "suggestion_accepted": "accepted suggestion"}
+
+
+def standing_plan_view(standing: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        {
+            "sport_type": r["sport_type"],
+            "title": r["title"],
+            "duration_min": r["duration_min"],
+            "intensity": r["intensity"],
+            "from": PLAN_SOURCES.get(r["source"], r["source"]),
+            "done": bool(r.get("activity_id")),
+        }
+        for r in standing
+    ]
+
+
+def _same_session(a: dict[str, Any], b: dict[str, Any]) -> bool:
+    return (
+        a.get("sport_type") == b.get("sport_type")
+        and (a.get("duration_min") or 0) == (b.get("duration_min") or 0)
+        and (a.get("intensity") or None) == (b.get("intensity") or None)
+    )
+
+
+def already_planned(db: Database, s: dict[str, Any]) -> bool:
+    """Every suggested session is already in the standing plan for its day (same sport, duration, intensity)."""
+    sessions = s.get("sessions") or []
+    standing = [r for r in active_plan_for(db, s["for_date"]) if r["sport_type"] != "rest"]
+    return bool(sessions) and all(any(_same_session(x, r) for r in standing) for x in sessions)
+
+
 def coach_plan_view(db: Database, d: datetime.date) -> list[dict[str, Any]]:
     """The coach's plan for a day as given to Claude (and stored in the suggestion's context)."""
     return [
@@ -425,6 +462,9 @@ def build_context(
     season = season_context(db, min(for_date, today), t)
     notes = active_notes(db, for_date)
     coach = coach_plan_for(db, for_date)
+    # What stands for the day: coach/manual sessions not replaced, plus suggestions already accepted.
+    # Suggestions work against this, so re-suggesting an accepted session can't add it a second time.
+    standing = active_plan_for(db, for_date)
     targets = week_targets(db, for_date, notes)
     injury_annotation = one(
         db,
@@ -442,7 +482,7 @@ def build_context(
                 "intensity": r["intensity"],
                 "title": r["title"],
             }
-            for r in coach
+            for r in standing
             if r["sport_type"] != "rest"
         ],
         rules=[(n["title"], n["rules"]) for n in notes if n.get("rules")],
@@ -472,6 +512,7 @@ def build_context(
         "generated_for": basis,
         "readiness": {k: readiness.get(k) for k in ("level", "reason", "inputs", "hits", "steps")} | {"basis": basis},
         "coach_plan": coach_plan_view(db, for_date),
+        "standing_plan": standing_plan_view(standing),
         "season": {
             "phase": season["phase"],
             "observed_state": season["state"],
@@ -710,6 +751,7 @@ def for_display(db: Database, for_date: datetime.date) -> dict[str, Any] | None:
         return last
     if last and last["id"] != good["id"] and last["status"] == "failed":
         good["newer_failed"] = {"version": last["version"], "error": last["error"]}
+    good["already_planned"] = good["status"] == "ok" and already_planned(db, good)
     return good
 
 
@@ -730,8 +772,12 @@ def accept(db: Database, suggestion_id: int) -> list[int]:
         raise ValueError("only free-choice, modified or replacement suggestions can be accepted")
     if db.fetchone("SELECT 1 FROM planned_sessions WHERE suggestion_id = ?", [suggestion_id]):
         raise ValueError("already accepted")
+    if already_planned(db, s):
+        raise ValueError("these sessions are already in your plan")
+    # A modified or replacing suggestion takes the place of what stands (coach sessions or an earlier
+    # accepted suggestion) — never next to it.
     coach = (
-        [r for r in coach_plan_for(db, s["for_date"]) if r["replaced_by"] is None]
+        [r for r in active_plan_for(db, s["for_date"]) if r["sport_type"] != "rest" and not r.get("activity_id")]
         if s["recommendation"] in ("modify", "replace")
         else []
     )
