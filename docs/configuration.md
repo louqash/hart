@@ -103,6 +103,7 @@ Everything below can be changed on the **Settings** page. The environment variab
 |---|---|---|---|
 | Evening Discord message | `HART_EVENING_MESSAGE` | `on` | Needs the Discord bot or HART_DISCORD_WEBHOOK_URL. |
 | Evening message at | `HART_EVENING_MESSAGE_AT` | `22:00` |  |
+| Discord message after each graded session | `HART_GRADE_MESSAGE` | `on` | The grade, its scores and what went well — not for the bulk 'grade past sessions' run. |
 | Send accepted suggestions to Garmin | `HART_GARMIN_AUTO_SEND` | `on` | Runs and rides are scheduled on your Garmin calendar. |
 
 ### Advanced thresholds

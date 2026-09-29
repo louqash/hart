@@ -40,7 +40,7 @@ you). Your data stays in one DuckDB file on your machine.
 | **Strength** | Progression per lift (top sets, estimated 1-rep max, 8-week change), sessions per week against your target; lifts Garmin names differently can be merged ("Barbell Deadlift" = "Deadlift"). |
 | **Health** | Lab results with trends, and reminders computed from them: follow-ups on flagged results, regular panels timed to your season, a pre-race medical, physio check-ins. |
 | **Ember** | Chat with an AI coach-analyst that reads your data through hart's tools, never invents numbers, and proposes changes (notes, plan, season, health checks) that you approve. |
-| **Discord** | An evening message with tomorrow's plan and suggestion, today's sessions and open alerts — and, with a bot, chat with Ember right there: reply to the message or tag @Ember in the channel. |
+| **Discord** | A message with each session's grade, an evening message with tomorrow's plan and suggestion, today's sessions and open alerts — and, with a bot, chat with Ember right there: reply to the message or tag @Ember in the channel. |
 
 | Session grade and side-by-side | Daily suggestion around the coach's plan |
 |---|---|

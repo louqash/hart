@@ -154,7 +154,8 @@ The files in [`examples/seed`](../examples/seed) show the same things as seed fi
 
 ## Discord (optional)
 
-A **bot** does everything: it posts the evening message and lets you chat with Ember in the channel. If you only
+A **bot** does everything: it posts the evening message and a message for each graded session (letter,
+scores, summary; Settings → Notifications), and lets you chat with Ember in the channel. If you only
 want the evening message, a channel **webhook** is enough — Edit channel → Integrations → Webhooks → Copy URL, set
 `HART_DISCORD_WEBHOOK_URL` — and it posts as Ember with Ember's avatar. With both set, the bot is used.
 

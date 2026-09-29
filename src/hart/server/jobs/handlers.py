@@ -162,18 +162,24 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         claude = runner_ref.get("claude")
         if claude is None:
             raise JobFailed("Claude runner not available")
+        from hart.server import grade_message
+
+        trigger = payload.get("trigger", "manual")
         try:
-            return grade_activity(
+            result = grade_activity(
                 db,
                 payload["activity_id"],
                 claude,
                 runner_ref["runner"].loop,
                 config,
-                trigger=payload.get("trigger", "manual"),
+                trigger=trigger,
                 force=bool(payload.get("force")),
             )
         except GradingPaused as exc:
             raise JobFailed(f"{exc} — the hourly sweep retries later") from exc
+        if result.get("status") == "graded" and grade_message.should_send(db, config, trigger):
+            result["discord"] = grade_message.send(db, config, payload["activity_id"])
+        return result
 
     def plan_import(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
         """Pasted coach text → the Plan page's parser → a proposal the athlete applies on the Plan page."""

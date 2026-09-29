@@ -165,3 +165,54 @@ def test_bot_is_preferred_over_the_webhook(db: Database, monkeypatch) -> None:
     assert sent[0]["url"] == "https://discord.com/api/v10/channels/123/messages"
     assert sent[0]["headers"] == {"Authorization": "Bot tok"}
     assert "username" not in sent[0]["json"]  # the bot posts with its own name and avatar
+
+
+def test_grade_message(db: Database, monkeypatch) -> None:
+    from hart.server import grade_message
+    from hart.server.grading import store_grade
+
+    today = datetime.date.today()
+    _activity(db, "ride", datetime.datetime.combine(today, datetime.time(9)), secs=3660)
+    activity_id = db.fetchone("SELECT activity_id FROM activities")[0]
+    store_grade(
+        db,
+        activity_id,
+        {
+            "status": "graded",
+            "intent_source": "inferred",
+            "session_type": "endurance",
+            "score_execution": 4,
+            "score_response": 3,
+            "score_context": 5,
+            "overall_score": 3.9,
+            "letter": "B",
+            "confidence": "high",
+            "summary": "Steady Z2 ride.",
+            "highlights": ["Even power"],
+            "concerns": [],
+            "citations": [],
+            "features": {},
+            "claude_run_id": None,
+        },
+    )
+    sent: list[dict[str, Any]] = []
+
+    class Response:
+        status_code = 204
+        text = ""
+
+    import httpx
+
+    monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.append(kw["json"]) or Response())
+    config = _config()
+    assert grade_message.should_send(db, config, "sync") and not grade_message.should_send(db, config, "backfill")
+    assert grade_message.send(db, config, activity_id) == "sent"
+    embed = sent[0]["embeds"][0]
+    assert embed["title"].endswith("· B") and embed["description"] == "Steady Z2 ride."
+    assert embed["url"] == f"https://hart.example.ts.net/sessions/{activity_id}"
+    fields = {f["name"]: f["value"] for f in embed["fields"]}
+    assert fields["Execution"] == "4/5" and fields["Context fit"] == "5/5" and fields["👍 Went well"] == "• Even power"
+    assert "1:01 h" in embed["footer"]["text"]
+    settings.set_value(db, "grade_message_enabled", False)
+    assert not grade_message.should_send(db, config, "sync")
+    assert not grade_message.should_send(db, _config(webhook=""), "sync")

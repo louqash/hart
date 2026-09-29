@@ -101,7 +101,7 @@ def settings_page(request: Request, db: Database = Depends(get_db), config=Depen
     items = settings.describe(db)
     groups: dict[str, list[dict[str, Any]]] = {}
     for item in items:
-        if item["key"].startswith("evening_message_") and not discord_ready:
+        if item["key"].startswith(("evening_message_", "grade_message_")) and not discord_ready:
             continue  # can't be sent without Discord; the note below says how to set it up
         groups.setdefault(item["group_label"], []).append(item)
     return page(

@@ -162,6 +162,15 @@ REGISTRY: tuple[Setting, ...] = (
         "evening_message_time", "notifications", "Evening message at", "22:00", "time", env="HART_EVENING_MESSAGE_AT"
     ),
     Setting(
+        "grade_message_enabled",
+        "notifications",
+        "Discord message after each graded session",
+        True,
+        "bool",
+        env="HART_GRADE_MESSAGE",
+        help="The grade, its scores and what went well — not for the bulk 'grade past sessions' run.",
+    ),
+    Setting(
         "garmin_auto_send",
         "notifications",
         "Send accepted suggestions to Garmin",
