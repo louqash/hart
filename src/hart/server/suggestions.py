@@ -41,7 +41,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-SUGGEST_PROMPT_VERSION = "suggest@6"
+SUGGEST_PROMPT_VERSION = "suggest@7"
 HISTORY_DAYS = 14
 WEEKLY_TOTALS_WEEKS = 4
 FINAL_CUTOFF_HOUR = 14
@@ -77,6 +77,17 @@ class SuggestionOutput(BaseModel):
         default=None,
         max_length=400,
         description=("Only when previous_suggestion exists: what you changed and why (null if you kept it)."),
+    )
+    coach_stance: Literal["agree", "partly", "disagree"] | None = Field(
+        default=None, description="Only when the coach planned the target date: do you agree with their session?"
+    )
+    coach_take: str | None = Field(
+        default=None,
+        max_length=600,
+        description=(
+            "Only when the coach planned the target date and you'd do something different: what, and why, from "
+            "the data — plainly, as you'd tell a friend. Null when you agree."
+        ),
     )
     recommendation: Recommendation
     sessions: list[SuggestedSession] = Field(default_factory=list, max_length=2)
@@ -115,9 +126,15 @@ Don't swap sports or durations for no reason.
 
 # Recommendation
 - Coach plan exists: `as_planned` (repeat the coach's session in `sessions`, adding structure only if \
-useful), `modify` (same session, shorter or easier, with concrete changes), `replace` (an easier \
-different session — only when readiness is red or an injury applies), or `rest`. Never add duration \
-or intensity beyond the plan.
+useful), `modify` (same session, shorter or easier, with concrete changes), `replace` (a different \
+session), or `rest`. Never add duration or intensity beyond the plan — code enforces it.
+- Think for yourself about the coach's session. The coach may not know what the data shows: a missed \
+session the week still owes, recovery spacing, a niggle in the comments, how the last similar \
+sessions went. Set `coach_stance` and, when you'd do something different, argue it in `coach_take` — \
+honestly and specifically, even when you still recommend `as_planned` (e.g. "I'd move the intervals \
+to Thursday: …"), and also when you'd do *more* than the plan (you can't prescribe more, but you can \
+say so). `replace` needs your case in `coach_take`. Don't disagree for the sake of it: agreeing is \
+fine and common. The athlete decides.
 - No coach plan: `free_choice` with 1–2 sessions consistent with the phase, readiness, what's been \
 done this week and the notes — or `rest`.
 - If sessions were already done on the target date, don't prescribe the same work again; suggest \
@@ -519,6 +536,11 @@ class SuggestionsPaused(Exception):
     pass
 
 
+def _argued(output: SuggestionOutput) -> bool:
+    """A case against the coach's session: a stance other than 'agree', with the reasons written out."""
+    return output.coach_stance in ("partly", "disagree") and bool((output.coach_take or "").strip())
+
+
 def _parse(outcome: RunOutcome) -> tuple[SuggestionOutput | None, str | None]:
     if outcome.status != "ok":
         return None, outcome.error
@@ -580,7 +602,9 @@ def generate(
     output, error = _parse(outcome)
     violations: list[str] = []
     if output is not None:
-        violations = check(output.recommendation, [s.model_dump() for s in output.sessions], guard)
+        violations = check(
+            output.recommendation, [s.model_dump() for s in output.sessions], guard, argued=_argued(output)
+        )
     if (output is None and outcome.status == "ok") or violations:
         problem = f"it broke these limits: {'; '.join(violations)}" if violations else f"it failed validation: {error}"
         repair = RunSpec(
@@ -595,7 +619,11 @@ def generate(
             pause_claude(db, outcome)
             raise SuggestionsPaused(outcome.error or outcome.status)
         output, error = _parse(outcome)
-        violations = check(output.recommendation, [s.model_dump() for s in output.sessions], guard) if output else []
+        violations = (
+            check(output.recommendation, [s.model_dump() for s in output.sessions], guard, argued=_argued(output))
+            if output
+            else []
+        )
 
     if output is None or violations:
         reason = ("guardrails: " + "; ".join(violations)) if violations else (error or outcome.error or "no output")
@@ -605,6 +633,8 @@ def generate(
         return {"status": "failed", "suggestion_id": suggestion_id, "error": reason}
 
     bundle["week_review"] = output.week_review
+    if guard.coach_sessions and output.coach_stance:
+        bundle["coach_take"] = {"stance": output.coach_stance, "text": output.coach_take}
     bundle["changed_from_previous"] = output.changed_from_previous
     citations = verify_citations(output.citations, [facts, *outcome.tool_outputs])
     sessions = [s.model_dump() for s in output.sessions]
@@ -760,6 +790,21 @@ def preliminary_count(db: Database, d: datetime.date) -> int:
     return db.fetchone("SELECT count(*) FROM daily_suggestions WHERE for_date = ? AND kind = 'preliminary'", [d])[0]
 
 
+def today_done(db: Database, today: datetime.date) -> dict[str, Any] | None:
+    """Today's training is done: every planned session (coach or accepted suggestion) has its activity, or —
+    with nothing planned — a training session was logged. Returns the session to show, or None."""
+    from hart.server.plan import active_plan_for
+
+    plan = [r for r in active_plan_for(db, today) if r["sport_type"] != "rest"]
+    done = recent_sessions(db, today, today)
+    done_training = [s for s in done if s["sport_type"] in TRAINING_SPORTS]
+    if not ((plan and all(r["activity_id"] for r in plan)) or (not plan and done_training)):
+        return None
+    key = plan[0]["activity_id"] if plan else done_training[0]["activity_id"]
+    session = next((s for s in done if s["activity_id"] == key), done_training[0] if done_training else None)
+    return {"activity_id": key, "name": session["name"] if session else None, "grade": (session or {}).get("grade")}
+
+
 def dashboard_card(db: Database, config: HartSettings) -> dict[str, Any]:
     now = local_now(config)
     today = now.date()
@@ -774,20 +819,19 @@ def dashboard_card(db: Database, config: HartSettings) -> dict[str, Any]:
 
     card["coach"] = coach_plan_for(db, target)
     if not evening:
-        from hart.server.plan import active_plan_for
-
-        plan = [r for r in active_plan_for(db, today) if r["sport_type"] != "rest"]
-        done = recent_sessions(db, today, today)
-        done_training = [s for s in done if s["sport_type"] in TRAINING_SPORTS]
-        if (plan and all(r["activity_id"] for r in plan)) or (not plan and done_training and latest(db, today)):
-            key = plan[0]["activity_id"] if plan else done_training[0]["activity_id"]
-            session = next((s for s in done if s["activity_id"] == key), done_training[0] if done_training else None)
-            card["done"] = {
-                "activity_id": key,
-                "name": session["name"] if session else None,
-                "grade": (session or {}).get("grade"),
+        done = today_done(db, today)
+        if done:
+            # Today is done: tomorrow's suggestion (made as soon as the session synced) takes the card.
+            card["done"] = done
+            card["tomorrow"] = {
+                "date": tomorrow,
+                "is_tomorrow": True,
+                "race": race_on(db, tomorrow),
+                "coach": coach_plan_for(db, tomorrow),
+                "suggestion": for_display(db, tomorrow),
+                "pending": pending(db, tomorrow),
+                "claude_paused": claude_paused(db),
             }
-            card["tomorrow"] = latest(db, tomorrow, ok_only=True)
     card["suggestion"] = for_display(db, target)
     card["pending"] = pending(db, target)
     card["claude_paused"] = claude_paused(db)

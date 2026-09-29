@@ -134,6 +134,9 @@ def build(db: Any, config: HartSettings) -> dict[str, Any]:
                         ),
                     }
                 )
+            take = (s.get("context") or {}).get("coach_take") or {}
+            if take.get("stance") in ("partly", "disagree") and take.get("text"):
+                fields.append({"name": "🗣️ Ember's take on the coach's plan", "value": _clip(take["text"], 1024)})
             cautions = (s.get("cautions") or [])[:2]
             if cautions:
                 fields.append({"name": "⚠️ Watch out", "value": "\n".join(f"• {c}" for c in cautions)})

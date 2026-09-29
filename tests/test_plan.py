@@ -73,7 +73,9 @@ def test_coach_plan_limits_modify_and_replace() -> None:
     ctx = GuardContext(date=TUE, readiness="amber", coach_sessions=[_s(minutes=60, intensity="tempo")])
     assert any("more than the coach" in p for p in check("modify", [_s(minutes=75)], ctx))
     assert any("harder than" in p for p in check("modify", [_s(minutes=50, intensity="vo2")], ctx))
-    assert any("'replace' is only allowed" in p for p in check("replace", [_s(minutes=30)], ctx))
+    assert any("'replace' needs" in p for p in check("replace", [_s(minutes=30)], ctx))
+    assert check("replace", [_s(minutes=30)], ctx, argued=True) == []  # Ember made its case against the plan
+    assert any("more than the coach" in p for p in check("replace", [_s(minutes=90)], ctx, argued=True))
     assert any("not allowed" in p for p in check("free_choice", [_s()], ctx))
     assert any("must not list" in p for p in check("rest", [_s()], ctx))
 
@@ -541,3 +543,59 @@ def test_coach_plan_from_chat_goes_through_the_paste_reader(client) -> None:
     assert applied["created"] == 1 and applied["replaced"] == 1
     items = client.get(f"/api/plan?start={day}&end={day}", headers=H).json()["items"]
     assert [(i["title"], i["source"]) for i in items] == [("Progression + 3x5'", "coach_import")]
+
+
+def test_ember_argues_with_the_coach(client) -> None:
+    today = datetime.date.today()
+    client.post(
+        "/api/plan",
+        headers=W,
+        json={
+            "date": str(today),
+            "sport_type": "bike",
+            "title": "Coach VO2 intervals",
+            "duration_min": 60,
+            "intensity": "vo2",
+        },
+    )
+    argued = {
+        **_suggestion("replace", [_s("run", 40, intensity="endurance")]),
+        "coach_stance": "disagree",
+        "coach_take": "Strength is still owed this week and the knee niggled on Sunday — I'd swap the intervals.",
+    }
+    FakeClient.scripts.append([_result(structured_output=argued)])
+    job = _regenerate(client, today)
+    assert job["result"]["status"] == "ok", job  # 'replace' is fine with a case made against the plan
+    s = client.get(f"/api/suggestions/{today}", headers=H).json()
+    assert s["context"]["coach_take"] == {"stance": "disagree", "text": argued["coach_take"]}
+    page = client.get("/", headers=H).text
+    assert "Ember's take on the coach's plan" in page and "knee niggled" in page
+
+
+def test_tomorrow_is_suggested_once_today_is_done(tmp_path: Path) -> None:
+    from hart.server.jobs.handlers import make_handlers
+
+    db = Database(tmp_path / "t.duckdb").connect()
+    today = datetime.date.today()
+    enqueued: list[tuple[str, dict[str, Any]]] = []
+
+    class Runner:
+        loop = None
+
+        def enqueue(self, job_type: str, payload: dict[str, Any], **kw: Any) -> dict[str, Any]:
+            enqueued.append((job_type, payload))
+            return {"status": "queued", "job_id": 1}
+
+    handlers = make_handlers(get_config(), {"runner": Runner()})
+    plan.create_row(db, plan.PlanRowIn(date=today, sport_type="run", title="Coach run", duration_min=40))
+    _activity(db, "run1", datetime.datetime.combine(today, datetime.time(7)), sport="run")
+    from unittest import mock
+
+    import hart.server.jobs.handlers as h
+
+    with mock.patch.object(h, "run_sync_pipeline", return_value={"error_code": None, "new_activity_ids": ["run1"]}):
+        handlers["sync"](db, {"manual": True})
+    assert ("suggest", {"date": str(today + datetime.timedelta(days=1)), "kind": "preliminary", "trigger": "sync"}) in [
+        (t, {k: p.get(k) for k in ("date", "kind", "trigger")}) for t, p in enqueued
+    ]
+    db.close()

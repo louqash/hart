@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from hart.config import HartSettings
 from hart.server import state
+from hart.server.data import TRAINING_SPORTS
 from hart.server.jobs.backup import run_backup
 from hart.server.jobs.pipeline import run_sync_pipeline
 from hart.server.jobs.runner import JobFailed
@@ -89,10 +90,15 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             a
             for a in result.get("new_activity_ids") or []
             if db.fetchone(
-                "SELECT 1 FROM activities WHERE activity_id = ? AND CAST(start_time AS DATE) = ?", [a, today]
+                "SELECT 1 FROM activities WHERE activity_id = ? AND CAST(start_time AS DATE) = ? AND sport_type IN "
+                f"({', '.join('?' for _ in TRAINING_SPORTS)})",
+                [a, today, *TRAINING_SPORTS],
             )
         ]
-        if new_today and suggestions.preliminary_count(db, tomorrow) == 1:
+        # A session done today: tomorrow's suggestion now, rather than at the evening time — as soon as
+        # today's plan is complete, and again (once) for a late extra session after it was made.
+        count = suggestions.preliminary_count(db, tomorrow)
+        if new_today and (count == 1 or (count == 0 and suggestions.today_done(db, today))):
             result["suggestion_tomorrow"] = enqueue_suggestion(tomorrow, "preliminary", "sync")["status"]
 
     def sync(db: Database, payload: dict[str, Any]) -> dict[str, Any]:

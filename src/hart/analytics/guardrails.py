@@ -48,7 +48,7 @@ def limits(ctx: GuardContext) -> dict[str, Any]:
     if ctx.coach_sessions:
         out["coach_plan"] = "must not add duration or intensity beyond the coach's plan for this day"
         if not (ctx.readiness == "red" or ctx.injury_active):
-            out["replace"] = "not allowed today (only when readiness is red or an injury applies)"
+            out["replace"] = "only with your case against the coach's session in coach_take (stance partly/disagree)"
     if ctx.required_today and not ctx.coach_sessions:
         out["required_today"] = {
             sport: f"{why} — include a {sport} session (rest only if readiness is red)"
@@ -70,8 +70,9 @@ def _level(intensity: str | None) -> int:
     return INTENSITY_ORDER.get(intensity or "", 1)
 
 
-def check(recommendation: str, sessions: list[dict[str, Any]], ctx: GuardContext) -> list[str]:
-    """Violations of the hard limits; empty when the suggestion is acceptable."""
+def check(recommendation: str, sessions: list[dict[str, Any]], ctx: GuardContext, *, argued: bool = False) -> list[str]:
+    """Violations of the hard limits; empty when the suggestion is acceptable. *argued*: the suggestion
+    makes a case against the coach's session (its coach_take), which allows replacing it."""
     problems: list[str] = []
     has_plan = bool(ctx.coach_sessions)
     allowed = RECOMMENDATIONS_WITH_PLAN if has_plan else RECOMMENDATIONS_NO_PLAN
@@ -87,8 +88,11 @@ def check(recommendation: str, sessions: list[dict[str, Any]], ctx: GuardContext
         problems.append(f"recommendation '{recommendation}' needs at least one session")
     if ctx.readiness == "red" and recommendation == "as_planned":
         problems.append("readiness is red: the coach's session must be modified, replaced or skipped")
-    if recommendation == "replace" and not (ctx.readiness == "red" or ctx.injury_active):
-        problems.append("'replace' is only allowed when readiness is red or an injury applies — use 'modify'")
+    if recommendation == "replace" and not (ctx.readiness == "red" or ctx.injury_active or argued):
+        problems.append(
+            "'replace' needs red readiness, an injury, or your case against the coach's session in coach_take "
+            "(stance 'partly' or 'disagree') — otherwise use 'modify'"
+        )
 
     if has_plan and recommendation in ("modify", "replace"):
         plan_min = sum(s.get("duration_min") or 0 for s in ctx.coach_sessions)

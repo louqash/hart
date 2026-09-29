@@ -520,3 +520,8 @@ table.compare th a { color: var(--muted); }
 .setting-input select, .setting-input input:not([type=checkbox]) { width: 100%; }
 @media (max-width: 600px) { .setting { grid-template-columns: 1fr; gap: 6px; } }
 .chat-head-text { flex: 1; min-width: 0; }
+/* Ember arguing with the coach's session (suggestion card) */
+.coach-take { margin: 0 0 12px; padding: 10px 12px; border-left: 3px solid var(--amber); border-radius: 0 10px 10px 0;
+  background: rgba(226, 164, 95, .08); }
+.coach-take.disagree { border-left-color: var(--sunset); background: rgba(226, 125, 96, .1); }
+.coach-take p { margin: 4px 0 0; color: var(--text); line-height: 1.55; }

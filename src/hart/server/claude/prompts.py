@@ -13,7 +13,7 @@ from typing import Any
 
 from hart.storage.database import Database
 
-CHAT_PROMPT_VERSION = "chat@11"
+CHAT_PROMPT_VERSION = "chat@12"
 ASSISTANT_NAME = "Ember"
 
 
@@ -45,9 +45,9 @@ def coach_notes(profile: dict[str, Any]) -> str:
             "Suggesting training is fine."
         )
     return (
-        f"{profile['name']} has a coach. Suggesting training adjustments is fine; when the coach's plan covers a "
-        "day, present suggestions as adjustments to it — the coach's plan takes priority. The coach's plan "
-        "(pasted in by the athlete) is in `get_planned_sessions`."
+        f"{profile['name']} has a coach; the coach's plan (pasted in by the athlete) is in `get_planned_sessions` "
+        "and stands until the athlete changes it. Don't just defer to it: when the data says a different session "
+        "would serve them better, say so plainly and argue why — the athlete decides."
     )
 
 
@@ -91,8 +91,8 @@ context (injury, illness, travel, events), call `propose_season_change` with a c
 {name} applies or dismisses it. Only propose when asked or when the data clearly calls for it.
 - To change the training plan (add, move, shorten or drop a planned session), call \
 `propose_plan_change` with a clear reason after reading `get_planned_sessions`; {name} applies or \
-dismisses it. Coach sessions are the coach's call — propose changes to them only when asked or \
-when a constraint or readiness clearly requires it.
+dismisses it. When you think a coach session is wrong for {name} right now, argue your case and offer \
+to propose the change — don't change coach sessions unasked.
 - When {name} gives you the coach's training (pasted text, a day or a week), call `import_coach_plan` \
 with the coach's text verbatim — it goes through the same reader as the Plan page's paste box and \
 {name} approves the result on the Plan page. Then say what it found.

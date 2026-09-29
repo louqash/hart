@@ -38,41 +38,12 @@
 {% endfor %}
 {%- endmacro %}
 
-{% macro suggestion_card(c, compact=false) %}
-{% set s = c.suggestion %}
-<section class="card hero" id="suggestion">
-  <div class="spread">
-    <h2 class="sunset">{{ icon("compass") }}Next Steps <span class="plain">suggestion · {{ 'tomorrow' if c.is_tomorrow else 'today' }}, {{ c.date|date('%a %d %b') }}</span></h2>
-    {% if not c.race %}
-    <div class="row">
-      <a class="small" href="/chat?context=suggestion:{{ c.date }}">Ask Ember →</a>
-      {% if not c.pending %}<button class="small secondary" onclick="act(this, () => api.post('/api/suggestions/{{ c.date }}/regenerate'))">{{ 'Regenerate' if s else 'Suggest now' }}</button>{% endif %}
-    </div>
-    {% endif %}
-  </div>
-
-  {% if c.race %}
-    <p class="serif" style="font-size:22px; color:var(--cream); margin:6px 0">Race day — {{ c.race.name }}</p>
-    <p class="muted small">No suggestion on race days. Trust the taper.</p>
-  {% else %}
-    {% if c.done %}
-    <div class="callout" style="margin-bottom:14px">{{ icon("flag") }}<div><strong>Done ✓</strong> —
-      <a href="/sessions/{{ c.done.activity_id }}">{{ c.done.name or 'today\'s session' }}</a>
-      {% if c.done.grade and c.done.grade.status == 'graded' %}graded {{ grade_chip(c.done.grade) }}{% elif c.done.grade and c.done.grade.pending %}being graded…{% endif %}
-      {% if c.tomorrow %}<div class="small muted" style="margin-top:4px">Tomorrow ({{ REC[c.tomorrow.recommendation][0]|lower }}): {{ c.tomorrow.summary }}</div>
-      {% else %}<div class="small faint" style="margin-top:4px">Tomorrow's preliminary suggestion arrives at 20:00.</div>{% endif %}
-    </div></div>
-    {% endif %}
-
-    {% if c.pending %}
-      <p class="muted"><span class="grade-chip pending"><i></i></span>&nbsp; Ember is working on a suggestion — the page updates when it's ready.</p>
-    {% endif %}
-
-    {% if c.done %}<details class="legend"><summary>Today's plan and suggestion</summary>{% endif %}
+{% macro day_grid(d, compact=false) %}
+{% set s = d.suggestion %}
     <div class="grid two sugg-grid">
       <div>
         <div class="eyebrow">Coach's plan{{ tip("coach_plan") }}</div>
-        {% for r in c.coach %}{{ plan_text(r) }}{% else %}<p class="faint small">No coach plan for this day. <a href="/plan">Add or paste the week →</a></p>{% endfor %}
+        {% for r in d.coach %}{{ plan_text(r) }}{% else %}<p class="faint small">No coach plan for this day. <a href="/plan">Add or paste the week →</a></p>{% endfor %}
       </div>
       <div>
         <div class="eyebrow">Suggestion{{ tip("suggestion") }}</div>
@@ -84,8 +55,13 @@
             {% if s.kind == 'preliminary' %}<span class="chip unknown" title="Made the evening before; the morning version uses last night's sleep">preliminary</span>{% endif %}
             {% if s.recommendation == 'free_choice' %}<span class="faint">No coach plan for this day</span>{% endif %}
           </div>
-          <p style="margin:0 0 10px; color:var(--cream); line-height:1.6">{{ s.summary }}</p>
           {% set ctx = s.context or {} %}
+          {% set take = ctx.coach_take %}
+          {% if take and take.stance != 'agree' and take.text %}
+          <div class="coach-take {{ take.stance }}"><span class="eyebrow">Ember's take on the coach's plan ·
+            {{ 'partly agrees' if take.stance == 'partly' else 'disagrees' }}</span><p>{{ take.text }}</p></div>
+          {% endif %}
+          <p style="margin:0 0 10px; color:var(--cream); line-height:1.6">{{ s.summary }}</p>
           {% if ctx.week_review %}<p class="small muted week-review"><span class="eyebrow">Week so far</span> {{ ctx.week_review }}</p>{% endif %}
           {% if ctx.changed_from_previous %}<p class="small faint"><span class="eyebrow">Changed from v{{ ctx.previous_suggestion.version if ctx.previous_suggestion else '?' }}</span> {{ ctx.changed_from_previous }}</p>{% endif %}
           {{ sessions_list(s) }}
@@ -118,15 +94,51 @@
           {% endif %}
         {% elif s and s.status == 'failed' %}
           <p class="small err">The last suggestion was rejected: {{ s.error }}</p>
-        {% elif c.claude_paused %}
-          <p class="small warn">Claude is paused until {{ c.claude_paused[:16]|replace('T', ' ') }} (usage limit or token problem).</p>
-        {% elif not c.pending %}
-          <p class="faint small">{{ 'Tomorrow\'s suggestion is made at 20:00.' if c.is_tomorrow else 'Today\'s suggestion comes once last night\'s sleep has synced (10:30 at the latest).' }}</p>
+        {% elif d.claude_paused %}
+          <p class="small warn">Claude is paused until {{ d.claude_paused[:16]|replace('T', ' ') }} (usage limit or token problem).</p>
+        {% elif not d.pending %}
+          <p class="faint small">{{ 'Tomorrow\'s suggestion comes once today\'s session has synced, or in the evening at the latest.' if d.is_tomorrow else 'Today\'s suggestion comes once last night\'s sleep has synced (10:30 at the latest).' }}</p>
         {% endif %}
       </div>
     </div>
+{% endmacro %}
+
+{% macro suggestion_card(c, compact=false) %}
+{% set s = c.suggestion %}
+<section class="card hero" id="suggestion">
+  <div class="spread">
+    <h2 class="sunset">{{ icon("compass") }}Next Steps <span class="plain">suggestion · {% if c.done %}tomorrow, {{ c.tomorrow.date|date('%a %d %b') }}{% else %}{{ 'tomorrow' if c.is_tomorrow else 'today' }}, {{ c.date|date('%a %d %b') }}{% endif %}</span></h2>
+    {% set head = c.tomorrow if c.done else c %}{#- the day the card leads with -#}
+    {% if not head.race %}
+    <div class="row">
+      <a class="small" href="/chat?context=suggestion:{{ head.date }}">Ask Ember →</a>
+      {% if not head.pending %}<button class="small secondary" onclick="act(this, () => api.post('/api/suggestions/{{ head.date }}/regenerate'))">{{ 'Regenerate' if head.suggestion else 'Suggest now' }}</button>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if c.race %}
+    <p class="serif" style="font-size:22px; color:var(--cream); margin:6px 0">Race day — {{ c.race.name }}</p>
+    <p class="muted small">No suggestion on race days. Trust the taper.</p>
+  {% else %}
+    {% if c.done %}
+    <div class="callout" style="margin-bottom:14px">{{ icon("flag") }}<div><strong>Done ✓</strong> —
+      <a href="/sessions/{{ c.done.activity_id }}">{{ c.done.name or 'today\'s session' }}</a>
+      {% if c.done.grade and c.done.grade.status == 'graded' %}graded {{ grade_chip(c.done.grade) }}{% elif c.done.grade and c.done.grade.pending %}being graded…{% endif %}
+    </div></div>
+    {% set t = c.tomorrow %}
+    <div class="eyebrow" style="margin:0 0 8px">Tomorrow · {{ t.date|date('%a %d %b') }}</div>
+    {% if t.race %}<p class="muted">Race day — {{ t.race.name }}. Trust the taper.</p>
+    {% else %}
+      {% if t.pending %}<p class="muted"><span class="grade-chip pending"><i></i></span>&nbsp; Ember is working on tomorrow's suggestion — the page updates when it's ready.</p>{% endif %}
+      {{ day_grid(t, compact) }}
+    {% endif %}
+    {% endif %}
+
+    {% if c.done %}<details class="legend" style="margin-top:14px"><summary>Today's plan and suggestion</summary>{% endif %}
+    {{ day_grid(c, compact) }}
     {% if c.done %}</details>{% endif %}
-    <p class="faint small" style="margin:14px 0 0">Suggestion based on your data — your coach's plan takes priority.</p>
+    <p class="faint small" style="margin:14px 0 0">Suggestion based on your data — your coach's plan stands unless you accept a change.</p>
   {% endif %}
 </section>
 {% endmacro %}
