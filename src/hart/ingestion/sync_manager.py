@@ -51,6 +51,7 @@ class SyncResult:
 
     new_activities: int = 0
     updated_activities: int = 0
+    described_ids: list[str] = field(default_factory=list)  # description edited in Garmin (re-grade)
     new_health_days: int = 0
     errors: int = 0
     error_details: list[str] = field(default_factory=list)
@@ -193,7 +194,7 @@ class SyncManager:
         # Garmin Connect since; the list carries the current values, so update
         # them without any extra API calls.
         result.updated_activities += self._refresh_edited(
-            [a for a in activities_list if str(a.get("activityId", "")) in existing_ids]
+            [a for a in activities_list if str(a.get("activityId", "")) in existing_ids], result.described_ids
         )
 
         parser = FitParser()
@@ -251,8 +252,9 @@ class SyncManager:
         logger.info("Garmin activity sync complete: %s", result)
         return result
 
-    def _refresh_edited(self, listed: list[dict[str, Any]]) -> int:
-        """Apply names/descriptions edited in Garmin Connect to stored activities."""
+    def _refresh_edited(self, listed: list[dict[str, Any]], described: list[str] | None = None) -> int:
+        """Apply names/descriptions edited in Garmin Connect to stored activities; ids whose description
+        changed go to *described* (a description is part of what the session is graded on)."""
         changed = 0
         for act in listed:
             name = act.get("activityName")
@@ -270,6 +272,8 @@ class SyncManager:
                 [name, description, row[0]],
             )
             logger.info("Activity %s renamed in Garmin: %r → %r", row[0], row[1], name)
+            if described is not None and description is not None and description != row[2]:
+                described.append(row[0])
             changed += 1
         return changed
 

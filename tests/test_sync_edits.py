@@ -45,7 +45,14 @@ def test_renamed_activities_are_updated(db: Database) -> None:
     names = dict(db.fetchall("SELECT external_id, name FROM activities"))
     assert names == {"111": "Easy Z2 run", "222": "Indoor Cycling"}
     assert db.fetchone("SELECT description FROM activities WHERE external_id = '222'")[0] == "old notes"
-    manager._refresh_edited([{"activityId": 222, "activityName": "Trainer: sweet spot", "description": "legs heavy"}])
+    described: list[str] = []
+    manager._refresh_edited(
+        [{"activityId": 222, "activityName": "Trainer: sweet spot", "description": "legs heavy"}], described
+    )
+    assert described == ["fit_222"]  # a new description means a re-grade
+    renamed_only: list[str] = []
+    manager._refresh_edited([{"activityId": 111, "activityName": "Z2 run"}], renamed_only)
+    assert renamed_only == []  # a rename alone doesn't
     assert db.fetchone("SELECT name, description FROM activities WHERE external_id = '222'") == (
         "Trainer: sweet spot",
         "legs heavy",

@@ -219,6 +219,7 @@ def run_sync_pipeline(
         "sleep_today": False,
         "strength_edited_ids": [],
         "effort_edited_ids": [],
+        "description_edited_ids": [],
     }
 
     def step(name: str, fn: Callable[[], Any], *, atomic: bool = False) -> Any:
@@ -287,6 +288,7 @@ def run_sync_pipeline(
             }
             after = {r[0] for r in db.fetchall("SELECT activity_id FROM activities WHERE start_time >= ?", [since])}
             result["new_activity_ids"] = sorted(after - before)
+            result["description_edited_ids"] = [a for a in acts.described_ids if a not in result["new_activity_ids"]]
             # Gym sets are usually corrected in Garmin Connect after the first sync.
             edited = step(
                 "strength_edits",

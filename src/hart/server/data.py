@@ -224,7 +224,7 @@ SESSION_COLUMNS = (
     "a.avg_cadence, a.avg_pace_sec_km, a.avg_speed_kmh, a.training_effect_aerobic, "
     "a.training_effect_anaerobic, a.training_effect_label, a.rpe AS garmin_rpe, a.feel AS garmin_feel, "
     "m.tss AS load, m.efficiency_factor, m.aerobic_decoupling_pct, m.hr_zone_seconds, "
-    "f.rpe, f.feel, f.comment"
+    "f.rpe, f.feel, f.comment, a.description"
 )
 SESSION_FROM = (
     "FROM activities a LEFT JOIN activity_metrics m USING (activity_id) "

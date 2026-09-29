@@ -9,7 +9,7 @@
   <h1><span class="sport {{ s.sport_type }}"></span>{{ s.name or (s.sport_type|sport(s.sub_type)) }}</h1>
   <span class="muted">{{ s.start_time|date('%A %d %B %Y, %H:%M') }} · {{ s.sport_type|sport(s.sub_type) }}</span>
 </div>
-{% if s.description %}<p class="muted">{{ s.description }}</p>{% endif %}
+{% if s.description %}<p class="muted" style="white-space:pre-line"><span class="chip small-chip" title="Written in Garmin Connect; edit it there — hart picks up changes on the next sync">Garmin</span> {{ s.description }}</p>{% endif %}
 
 <section class="card">
   <div class="stats">
@@ -157,7 +157,7 @@
         <div><label>RPE (1–10){{ tip("rpe") }}</label><input type="number" name="rpe" min="1" max="10" value="{{ fb.rpe if fb.rpe is not none else '' }}" style="width:90px"></div>
         <div><label>Feel (1–5){{ tip("feel") }}</label><input type="number" name="feel" min="1" max="5" value="{{ fb.feel if fb.feel is not none else '' }}" style="width:90px"></div>
       </div>
-      <div><label>Comment</label><textarea name="comment" style="min-height:70px; font-family:inherit; font-size:14px" placeholder="legs heavy, shoulder fine…">{{ fb.comment or '' }}</textarea></div>
+      <div><label>Comment <span class="faint small">— in hart only{% if s.description %}; the Garmin description above is read too{% endif %}</span></label><textarea name="comment" style="min-height:70px; font-family:inherit; font-size:14px" placeholder="legs heavy, shoulder fine…">{{ fb.comment or '' }}</textarea></div>
       <div class="row"><button type="submit" class="primary">Save</button>
         {% if not fb.saved and (fb.rpe is not none or fb.feel is not none) %}<span class="small muted">Prefilled from Garmin</span>{% endif %}</div>
     </form>

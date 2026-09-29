@@ -132,8 +132,12 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             )
             is None
         ]
+        described = [
+            a for a in result.get("description_edited_ids") or [] if a not in sets and a not in effort and graded(a)
+        ]
         enqueue_grades(sets, "sets_edited")
         enqueue_grades(effort, "effort_edited")
+        enqueue_grades(described, "description_edited")
         after_sync(db, result, days)
         return _fail_on_garmin_errors(result)
 

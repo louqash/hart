@@ -100,7 +100,12 @@ def test_features_for_indoor_ride(db: Database) -> None:
         _activity(db, f"old{i}", NOW - datetime.timedelta(days=7 * i), hr=135)
     _activity(db, "ride", NOW - datetime.timedelta(hours=2), hr=130)
     _streams(db, "ride")
+    db.execute("UPDATE activities SET description = '3x10 sweet spot, knee niggle' WHERE activity_id = 'ride'")
+    db.execute("INSERT INTO session_feedback (activity_id, rpe, comment) VALUES ('ride', 6, 'legs ok')")
     f = build_features(db, "ride", DEFAULT_THRESHOLDS)
+    assert (
+        f["feedback"]["garmin_description"] == "3x10 sweet spot, knee niggle" and f["feedback"]["comment"] == "legs ok"
+    )
     assert f["gradable"] and f["basics"]["indoor"] is True
     assert f["intensity"]["hr_zone_pct"] == {"Z1": 17, "Z2": 78, "Z3": 6}
     dec = f["durability"]["stream_decoupling"]
