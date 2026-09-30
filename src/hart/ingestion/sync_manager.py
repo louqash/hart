@@ -27,6 +27,7 @@ from hart.models.health import HealthDay, HRVDaily, SleepRecord
 from hart.storage.database import Database
 from hart.storage.writers import (
     replace_strength_sets,
+    replace_workout_steps,
     update_sync_state,
     upsert_activity,
     upsert_health_day,
@@ -236,6 +237,7 @@ class SyncManager:
                 upsert_activity(self._db, parsed.activity)
                 upsert_stream_points(self._db, parsed.activity.activity_id, parsed.stream_points)
                 upsert_laps(self._db, parsed.activity.activity_id, parsed.laps)
+                replace_workout_steps(self._db, parsed.activity.activity_id, parsed.workout_steps)
                 upsert_hrv_samples(self._db, parsed.activity.activity_id, parsed.hrv_rr_intervals)
                 if parsed.activity.sport_type == SportType.strength:
                     sets = _fetch_strength_sets(garmin, act_id) or parsed.strength_sets
@@ -425,6 +427,48 @@ class SyncManager:
 
         logger.info("Strength backfill complete: %s", result)
         return result
+
+    def backfill_intervals(self, days: int = 60) -> dict[str, Any]:
+        """Re-read laps and the structured workout of recent sessions from Garmin's original files.
+
+        New syncs store both; older sessions were synced before lap kinds and workout steps were read.
+        One download per session, so it takes a while for long ranges.
+        """
+        from garminconnect import Garmin as _Garmin  # type: ignore[import-untyped]
+
+        from hart.ingestion.fit_parser import FitParser
+
+        DL_FMT = _Garmin.ActivityDownloadFormat  # noqa: N806
+        garmin = self.get_garmin_client()
+        since = datetime.date.today() - datetime.timedelta(days=days)
+        targets = self._db.fetchall(
+            "SELECT activity_id, external_id FROM activities WHERE source = 'garmin' AND external_id IS NOT NULL "
+            "AND sport_type IN ('bike', 'run', 'swim') AND start_time >= ? ORDER BY start_time",
+            [since],
+        )
+        parser = FitParser()
+        out = {"sessions": len(targets), "updated": 0, "with_workout": 0, "errors": 0}
+        for activity_id, external_id in targets:
+            try:
+                fit_data = _extract_fit(garmin.download_activity(external_id, dl_fmt=DL_FMT.ORIGINAL))
+                if fit_data is None:
+                    out["errors"] += 1
+                    continue
+                with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as tmp:
+                    tmp.write(fit_data)
+                    tmp_path = Path(tmp.name)
+                try:
+                    parsed = parser.parse_file(tmp_path)
+                finally:
+                    tmp_path.unlink(missing_ok=True)
+                upsert_laps(self._db, activity_id, parsed.laps)
+                replace_workout_steps(self._db, activity_id, parsed.workout_steps)
+                out["updated"] += 1
+                out["with_workout"] += bool(parsed.workout_steps)
+            except Exception as exc:  # noqa: BLE001 — one bad download doesn't stop the rest
+                logger.warning("Intervals backfill for %s failed: %s", activity_id, exc)
+                out["errors"] += 1
+        return out
 
     def backfill_vo2max(
         self,

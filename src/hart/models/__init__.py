@@ -1,6 +1,6 @@
 """Public model re-exports."""
 
-from hart.models.activity import Activity, Lap, SportType, StreamPoint, StrengthSet
+from hart.models.activity import Activity, Lap, SportType, StreamPoint, StrengthSet, WorkoutStep
 from hart.models.athlete import AthleteProfile
 from hart.models.health import (
     HealthDay,
@@ -23,6 +23,7 @@ __all__ = [
     "SportType",
     "StreamPoint",
     "StrengthSet",
+    "WorkoutStep",
     # athlete
     "AthleteProfile",
     # health

@@ -17,7 +17,7 @@ from typing import Any
 
 import fitparse  # type: ignore[import-untyped]
 
-from hart.models.activity import Activity, Lap, SportType, StreamPoint, StrengthSet
+from hart.models.activity import Activity, Lap, SportType, StreamPoint, StrengthSet, WorkoutStep
 
 logger = logging.getLogger(__name__)
 
@@ -115,10 +115,94 @@ class FitParseResult:
     hrv_rr_intervals: list[tuple[int, float]]  # (global_index, rr_ms)
     device_info: dict[str, Any]
     strength_sets: list[StrengthSet] = field(default_factory=list)
+    workout_steps: list[WorkoutStep] = field(default_factory=list)  # the structured workout followed, if any
 
     # Power-meter flags (the caller decides whether to apply correction)
     has_favero_assioma: bool = False
     is_single_sided_power: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Workout steps
+# ---------------------------------------------------------------------------
+
+
+def _num(value: Any) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _less(value: float | None, offset: float) -> float | None:
+    return value - offset if value is not None and value > offset else value
+
+
+def _first(msg: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if msg.get(key) is not None:
+            return msg[key]
+    return None
+
+
+def workout_step_from_fit(msg: dict[str, Any], fallback_index: int) -> WorkoutStep:
+    """A FIT ``workout_step`` message as a :class:`WorkoutStep` with readable targets.
+
+    fitparse names dynamic fields after the resolved sub-field (``duration_time``,
+    ``custom_target_power_low``, ``target_hr_zone``, ``repeat_steps``…). Custom power targets above
+    1000 are watts + 1000 (below: % of FTP); heart rate above 100 is bpm + 100 (below: % of max);
+    speed targets are m/s, stored as pace in seconds per km.
+    """
+    index = msg.get("message_index")
+    index = int(index) if isinstance(index, int | float) else fallback_index
+    duration_type = str(msg["duration_type"]) if msg.get("duration_type") is not None else None
+    target_type = str(msg["target_type"]) if msg.get("target_type") is not None else None
+    step = WorkoutStep(
+        step_index=index,
+        name=msg.get("wkt_step_name") or None,
+        intensity=str(msg["intensity"]) if msg.get("intensity") is not None else None,
+        duration_type=duration_type,
+        target_type=target_type,
+        notes=msg.get("notes") or None,
+    )
+    if duration_type and duration_type.startswith("repeat"):
+        step.repeat_from = int(_num(_first(msg, "duration_step", "duration_value")) or 0)
+        step.repeat_count = int(_num(_first(msg, "repeat_steps", "target_value")) or 0) or None
+        return step
+    step.duration_value = _num(_first(msg, "duration_time", "duration_distance", "duration_value"))
+
+    low = _num(
+        _first(msg, f"custom_target_{target_type}_low", "custom_target_heart_rate_low", "custom_target_value_low")
+    )
+    high = _num(
+        _first(msg, f"custom_target_{target_type}_high", "custom_target_heart_rate_high", "custom_target_value_high")
+    )
+    if target_type in (None, "open") or not (low or high):
+        zone = _num(
+            _first(
+                msg, "target_power_zone", "target_hr_zone", "target_speed_zone", "target_cadence_zone", "target_value"
+            )
+        )
+        if target_type not in (None, "open") and zone:
+            step.target_low = step.target_high = zone
+            step.target_unit = "zone"
+        return step
+    if target_type == "power":
+        watts = (low or 0) > 1000 or (high or 0) > 1000
+        step.target_low, step.target_high = (_less(low, 1000), _less(high, 1000)) if watts else (low, high)
+        step.target_unit = "W" if watts else "%FTP"
+    elif target_type == "heart_rate":
+        bpm = (low or 0) > 100 or (high or 0) > 100
+        step.target_low, step.target_high = (_less(low, 100), _less(high, 100)) if bpm else (low, high)
+        step.target_unit = "bpm" if bpm else "%HRmax"
+    elif target_type == "speed":
+        # Faster speed = lower pace: the high speed bound is the fast (low) pace bound.
+        step.target_low = round(1000 / high, 1) if high else None
+        step.target_high = round(1000 / low, 1) if low else None
+        step.target_unit = "sec_km"
+    elif target_type == "cadence":
+        step.target_low, step.target_high, step.target_unit = low, high, "rpm"
+    return step
 
 
 # ---------------------------------------------------------------------------
@@ -172,6 +256,7 @@ class FitParser:
         hrv_msgs: list[dict[str, Any]] = []
         device_msgs: list[dict[str, Any]] = []
         set_msgs: list[dict[str, Any]] = []
+        step_msgs: list[dict[str, Any]] = []
 
         for message in fit_file.get_messages():
             msg_type = message.name
@@ -188,6 +273,8 @@ class FitParser:
                 device_msgs.append(msg_fields)
             elif msg_type == "set":
                 set_msgs.append(msg_fields)
+            elif msg_type == "workout_step":
+                step_msgs.append(msg_fields)
 
         if not sessions:
             raise ValueError(f"No session message found in {fit_path} — file is likely not an activity recording.")
@@ -217,6 +304,7 @@ class FitParser:
             hrv_rr_intervals=hrv_rr,
             device_info=device_info,
             strength_sets=self._build_strength_sets(set_msgs),
+            workout_steps=[workout_step_from_fit(m, i) for i, m in enumerate(step_msgs)],
             has_favero_assioma=has_favero,
             is_single_sided_power=is_single_sided,
         )
@@ -363,6 +451,8 @@ class FitParser:
                     avg_pace_sec_km=avg_pace,
                     total_elevation_m=self._get_float(msg, "total_ascent"),
                     avg_temperature=self._get_float(msg, "avg_temperature"),
+                    intensity=str(msg["intensity"]) if msg.get("intensity") is not None else None,
+                    wkt_step_index=self._get_int(msg, "wkt_step_index"),
                 )
             )
 

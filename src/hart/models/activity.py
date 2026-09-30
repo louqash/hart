@@ -95,6 +95,27 @@ class Lap(BaseModel):
     avg_pace_sec_km: float | None = None
     total_elevation_m: float | None = None
     avg_temperature: float | None = None
+    # Structured workouts: the lap's kind (warmup, active, interval, rest, recovery, cooldown) and the
+    # workout step it belongs to (WorkoutStep.step_index).
+    intensity: str | None = None
+    wkt_step_index: int | None = None
+
+
+class WorkoutStep(BaseModel):
+    """One step of the structured workout that was followed (from the FIT file)."""
+
+    step_index: int
+    name: str | None = None
+    intensity: str | None = None  # warmup, active, interval, rest, recovery, cooldown
+    duration_type: str | None = None  # time, distance, open, repeat_until_steps_cmplt, …
+    duration_value: float | None = None  # seconds or metres
+    target_type: str | None = None  # power, heart_rate, speed, cadence, open
+    target_low: float | None = None
+    target_high: float | None = None
+    target_unit: str | None = None  # W, %FTP, bpm, %HRmax, sec_km, rpm, zone
+    repeat_from: int | None = None  # repeat steps: back to this step…
+    repeat_count: int | None = None  # …this many times
+    notes: str | None = None
 
 
 class StrengthSet(BaseModel):

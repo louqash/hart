@@ -74,6 +74,10 @@ class SyncRequest(BaseModel):
     days: int | None = Field(default=None, ge=1, le=MAX_SYNC_DAYS)  # history backfill: `hart sync all --days 90`
 
 
+class IntervalsBackfillRequest(BaseModel):
+    days: int = Field(default=60, ge=1, le=MAX_SYNC_DAYS)
+
+
 class Vo2maxBackfillRequest(BaseModel):
     start: datetime.date | None = None
     end: datetime.date | None = None
@@ -393,6 +397,12 @@ def create_app(
         job_type = "sync" if body.full else "sync_light"
         payload: dict[str, Any] = {"manual": True, **({"days": body.days} if body.days and body.full else {})}
         return _runner(request).enqueue(job_type, payload, trigger="manual", dedupe_key=job_type)
+
+    @app.post("/api/backfill/intervals")
+    def api_backfill_intervals(body: IntervalsBackfillRequest, request: Request) -> dict[str, Any]:
+        return _runner(request).enqueue(
+            "intervals_backfill", {"days": body.days}, trigger="manual", dedupe_key="intervals_backfill"
+        )
 
     @app.post("/api/backfill/vo2max")
     def api_backfill_vo2max(body: Vo2maxBackfillRequest, request: Request) -> dict[str, Any]:

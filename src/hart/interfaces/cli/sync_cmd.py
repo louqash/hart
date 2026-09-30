@@ -555,6 +555,47 @@ def backfill_vo2max(
     console.print()
 
 
+@sync_app.command("backfill-intervals")
+def backfill_intervals_cmd(
+    days: int = typer.Option(60, "--days", min=1, max=365, help="How far back (one Garmin download per session)."),
+) -> None:
+    """Re-read laps and structured-workout targets of recent sessions, for the interval breakdown.
+
+    New syncs store them automatically — run this once for older sessions.
+    Uses hart server when HART_SERVER_URL is set; otherwise the server must be stopped.
+    """
+    config = get_config()
+    if config.server.server_url:
+        from hart.interfaces.cli import server_client
+
+        try:
+            job = server_client.request(config, "POST", "/api/backfill/intervals", {"days": days})
+            if job["status"].startswith("already_"):
+                console.print(f"[yellow]{job['message']}[/yellow] — waiting for it instead.")
+            with console.status(f"Re-reading laps on hart server (job #{job['job_id']})..."):
+                final = server_client.wait_for_job(config, job["job_id"], timeout_s=max(900, days * 30))
+        except RuntimeError as exc:
+            console.print(f"[red]Error:[/red] {exc}")
+            raise typer.Exit(1) from exc
+        if final.get("status") != "ok":
+            console.print(f"[red]Job {final.get('status')}:[/red] {final.get('error')}")
+            raise typer.Exit(1)
+        result = final.get("result") or {}
+    else:
+        if not config.garmin.email:
+            console.print("[red]Error:[/red] Garmin credentials not configured (GARMIN_EMAIL).")
+            raise typer.Exit(1)
+        from hart.ingestion.sync_manager import SyncManager
+
+        db = _get_db(config)
+        with console.status("Re-reading laps and workouts from Garmin..."):
+            result = SyncManager(db, config).backfill_intervals(days=days)
+    console.print(
+        f"Sessions: {result.get('sessions', 0)} · updated: [green]{result.get('updated', 0)}[/green] · "
+        f"with a structured workout: {result.get('with_workout', 0)} · errors: {result.get('errors', 0)}"
+    )
+
+
 @sync_app.command("backfill-decoupling")
 def backfill_decoupling_cmd(
     only_missing: Annotated[

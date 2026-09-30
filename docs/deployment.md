@@ -123,7 +123,9 @@ recomputes the analytics; only sessions from the last week are graded. Each day 
 a long range takes a while, and Garmin rate-limits long runs — go back further in steps (e.g. `--days 180`
 another day) rather than all at once. The maximum is 365.
 
-Optional extras: `hart sync backfill-vo2max` (VO2max history) runs through the server like the sync above.
+Optional extras: `hart sync backfill-vo2max` (VO2max history) and `hart sync backfill-intervals --days 60`
+(lap kinds and structured-workout targets for the interval breakdown; one Garmin download per session) run
+through the server like the sync above.
 `backfill-strength` (sets for older strength sessions) and `backfill-metrics` (Garmin metrics missing on older
 activities) open the database themselves, so run them with the server stopped, like the import below:
 `docker compose run --rm hart /app/.venv/bin/hart sync backfill-strength`.

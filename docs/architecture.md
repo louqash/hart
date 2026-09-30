@@ -106,6 +106,10 @@ failed and not shown.
 - **Discord:** `server.evening` builds the evening message (an embed, no Claude usage) and posts it through the
   webhook; `server.discord_chat` runs a discord.py bot in the server's event loop that turns channel messages
   and replies into threads, each backed by an ordinary `ChatService` conversation.
+- **Intervals:** the FIT parser keeps each lap's kind and workout step and the structured workout's steps
+  (`activity_workout_steps`, targets as W / bpm / pace / rpm); `analytics.intervals` lines laps up with steps,
+  numbers the reps and marks each on / under / over target, plus fading and HR drift. The grade bundle, the
+  session page and `get_activity_detail` use it.
 - **Strength:** `analytics.strength_progress` — top sets, estimated 1-rep max, weekly sessions. Lifts are
   merged at read time by `exercise_key` (the name without a `BARBELL_` prefix that matches the category, then
   the athlete's aliases from the `exercise_aliases` app setting); `strength_sets` keeps Garmin's names. See

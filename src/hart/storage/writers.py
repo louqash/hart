@@ -27,6 +27,7 @@ from hart.models import (
     StrengthSet,
     TrainingLoadDay,
     WeeklySummary,
+    WorkoutStep,
 )
 from hart.storage.database import Database
 
@@ -246,6 +247,8 @@ _LAP_COLS: list[str] = [
     "avg_pace_sec_km",
     "total_elevation_m",
     "avg_temperature",
+    "intensity",
+    "wkt_step_index",
 ]
 
 _LAP_SQL: str = (
@@ -272,7 +275,36 @@ def _lap_row(activity_id: str, lap: Lap) -> list[Any]:
         lap.avg_pace_sec_km,
         lap.total_elevation_m,
         lap.avg_temperature,
+        lap.intensity,
+        lap.wkt_step_index,
     ]
+
+
+_STEP_COLS = (
+    "step_index",
+    "name",
+    "intensity",
+    "duration_type",
+    "duration_value",
+    "target_type",
+    "target_low",
+    "target_high",
+    "target_unit",
+    "repeat_from",
+    "repeat_count",
+    "notes",
+)
+
+
+def replace_workout_steps(db: Database, activity_id: str, steps: list[WorkoutStep]) -> None:
+    """Replace the structured-workout steps stored for *activity_id* (none: the session had no workout)."""
+    db.execute("DELETE FROM activity_workout_steps WHERE activity_id = ?", [activity_id])
+    if steps:
+        db.executemany(
+            f"INSERT INTO activity_workout_steps (activity_id, {', '.join(_STEP_COLS)}) "
+            f"VALUES (?, {', '.join('?' for _ in _STEP_COLS)})",
+            [[activity_id, *(getattr(s, c) for c in _STEP_COLS)] for s in steps],
+        )
 
 
 def upsert_laps(db: Database, activity_id: str, laps: list[Lap]) -> None:

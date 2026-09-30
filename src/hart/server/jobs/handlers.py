@@ -269,6 +269,13 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
 
         return SyncManager(db, config).backfill_vo2max(start=day("start"), end=day("end"))
 
+    def intervals_backfill(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
+        from hart.ingestion.sync_manager import SyncManager
+
+        if not config.garmin.email:
+            raise JobFailed("Garmin credentials missing (GARMIN_EMAIL) — nothing was fetched")
+        return SyncManager(db, config).backfill_intervals(days=int(payload.get("days") or 60))
+
     def decoupling_backfill(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
         from hart.ingestion.decoupling import backfill_decoupling
         from hart.storage.views import refresh_all_views
@@ -283,6 +290,7 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         "backup": backup,
         "vo2max_backfill": vo2max_backfill,
         "decoupling_backfill": decoupling_backfill,
+        "intervals_backfill": intervals_backfill,
         "grade": grade,
         "suggest": suggest,
         "garmin_workout": garmin_workout,

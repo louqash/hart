@@ -29,7 +29,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-GRADE_PROMPT_VERSION = "grade@4"
+GRADE_PROMPT_VERSION = "grade@5"
 WEIGHTS = {"execution": 0.45, "response": 0.30, "context_fit": 0.25}
 LETTERS = ((4.5, "A"), (3.75, "B"), (3.0, "C"), (2.25, "D"))
 UNVERIFIED_LIMIT = 0.30
@@ -99,6 +99,12 @@ there's nothing to compare or no heart rate.
 - context_fit: was it the right session given readiness that morning, form (TSB), the phase \
 (e.g. comeback: consistency and tissue tolerance over intensity), active constraints and their \
 feedback?
+- `intervals` (when present) is the session lap by lap. With `summary.source` "workout" the laps come \
+from the structured workout on the watch: each work rep has its step, target and a `verdict` (on / \
+under / over, with `off_pct`), and the summary counts them and shows fading (`last_vs_first_rep_pct`, \
+`hr_drift_bpm`) and recovery length. Judge execution per interval — were the targets hit, did the reps \
+fade, were recoveries respected — not from the session averages, which warm-up and recoveries dilute. \
+With "laps" (manual or auto laps, no targets) compare the laps with the note or the coach's text.
 - `feedback` holds what the athlete said about the session: RPE, feel and their `note` (written in \
 hart or in Garmin Connect — often the coach's workout or how it went). Read the note: it states the \
 intent, pain or niggles, and circumstances the numbers can't show, and it weighs in all three scores.

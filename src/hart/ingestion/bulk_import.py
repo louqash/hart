@@ -21,6 +21,7 @@ from hart.ingestion.fit_parser import FitParser, FitParseResult
 from hart.storage.database import Database
 from hart.storage.writers import (
     replace_strength_sets,
+    replace_workout_steps,
     upsert_activity,
     upsert_hrv_samples,
     upsert_laps,
@@ -208,6 +209,7 @@ def _persist_parsed_result(
     upsert_activity(db, activity)
     upsert_stream_points(db, activity.activity_id, parsed.stream_points)
     upsert_laps(db, activity.activity_id, parsed.laps)
+    replace_workout_steps(db, activity.activity_id, parsed.workout_steps)
     upsert_hrv_samples(db, activity.activity_id, parsed.hrv_rr_intervals)
     replace_strength_sets(db, activity.activity_id, parsed.strength_sets)
 

@@ -433,6 +433,11 @@ def get_activity_detail(activity_id: str) -> str:
         }
         if activity.get("sport_type") == "strength":
             result["strength"] = _strength_summary(db, activity_id)
+        else:
+            from hart.analytics.grading_features import interval_breakdown
+
+            # Lap by lap against the structured workout's targets (verdicts, fading, HR drift).
+            result["intervals"] = interval_breakdown(db, activity_id, str(activity.get("sport_type")))
         return _json(result)
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})

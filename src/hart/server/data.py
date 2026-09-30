@@ -967,6 +967,13 @@ def session_detail(db: Database, activity_id: str) -> dict[str, Any] | None:
                 "ms": run["duration_ms"],
                 "tool_calls": transcript.get("tool_calls", []),
             }
+    from hart.analytics.grading_features import interval_breakdown
+
+    detail["intervals"] = (
+        interval_breakdown(db, activity_id, detail["sport_type"])
+        if detail["sport_type"] in ("bike", "run", "swim")
+        else None
+    )
     detail["has_streams"] = db.fetchone(
         "SELECT count(*) > 0 FROM activity_streams WHERE activity_id = ?", [activity_id]
     )[0]

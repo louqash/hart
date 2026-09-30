@@ -37,7 +37,17 @@ LANES: dict[str, str] = {
 
 # Jobs that reach Garmin, Claude or Discord: refused on a `hart demo` database.
 DEMO_BLOCKED = frozenset(
-    {"sync", "sync_light", "grade", "suggest", "garmin_workout", "evening_message", "vo2max_backfill", "plan_import"}
+    {
+        "sync",
+        "sync_light",
+        "grade",
+        "suggest",
+        "garmin_workout",
+        "evening_message",
+        "vo2max_backfill",
+        "intervals_backfill",
+        "plan_import",
+    }
 )
 
 

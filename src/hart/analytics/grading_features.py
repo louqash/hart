@@ -247,6 +247,23 @@ def _single_sided(db: Database) -> bool:
     return bool(settings.get(db, "power_single_sided"))
 
 
+def interval_breakdown(
+    db: Database, activity_id: str, sport: str, laps: list[dict[str, Any]] | None = None
+) -> dict[str, Any] | None:
+    from hart.analytics.intervals import breakdown
+
+    if laps is None:
+        laps = rows(
+            db,
+            "SELECT lap_index, elapsed_seconds, moving_seconds, distance_meters, avg_hr, max_hr, avg_power, "
+            "avg_cadence, avg_pace_sec_km, intensity, wkt_step_index "
+            "FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
+            [activity_id],
+        )
+    steps = rows(db, "SELECT * FROM activity_workout_steps WHERE activity_id = ? ORDER BY step_index", [activity_id])
+    return breakdown(sport, laps, steps)
+
+
 def build_features(db: Database, activity_id: str, thresholds: dict[str, float]) -> dict[str, Any] | None:
     a = one(
         db,
@@ -284,7 +301,8 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
 
     laps = rows(
         db,
-        "SELECT lap_index, elapsed_seconds, distance_meters, avg_hr, avg_power, avg_pace_sec_km "
+        "SELECT lap_index, elapsed_seconds, moving_seconds, distance_meters, avg_hr, max_hr, avg_power, "
+        "avg_cadence, avg_pace_sec_km, intensity, wkt_step_index "
         "FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
         [activity_id],
     )
@@ -346,6 +364,10 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
             "stream_decoupling": stream_durability(db, activity_id, a["sport_type"]),
             "lap_variability": lap_variability(laps, a["sport_type"]),
         },
+        # Lap by lap against the workout's targets (structured workouts), or as recorded (manual laps).
+        "intervals": interval_breakdown(db, activity_id, a["sport_type"], laps)
+        if a["sport_type"] in ("bike", "run", "swim")
+        else None,
         "comparison": comparable_sessions(db, a, injury) if a["sport_type"] in ("bike", "run", "swim") else None,
         "strength": strength_summary(db, a),
         "plan": None,  # the plan row this session matched (not linked into grading yet)

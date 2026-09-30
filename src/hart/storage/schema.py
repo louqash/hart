@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 13
+CURRENT_SCHEMA_VERSION: int = 14
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -97,6 +97,23 @@ CREATE TABLE IF NOT EXISTS activity_laps (
     total_elevation_m DOUBLE,
     avg_temperature   DOUBLE,
     PRIMARY KEY (activity_id, lap_index)
+);
+
+CREATE TABLE IF NOT EXISTS activity_workout_steps (
+    activity_id     VARCHAR NOT NULL,
+    step_index      INT NOT NULL,
+    name            VARCHAR,
+    intensity       VARCHAR,
+    duration_type   VARCHAR,
+    duration_value  DOUBLE,
+    target_type     VARCHAR,
+    target_low      DOUBLE,
+    target_high     DOUBLE,
+    target_unit     VARCHAR,
+    repeat_from     INT,
+    repeat_count    INT,
+    notes           VARCHAR,
+    PRIMARY KEY (activity_id, step_index)
 );
 
 CREATE TABLE IF NOT EXISTS strength_sets (
@@ -651,6 +668,11 @@ def _run_migrations(db: Database) -> None:
             "FROM activities AS a WHERE a.activity_id = f.activity_id AND f.comment IS NOT NULL "
             "AND f.note_garmin_seen IS NULL"
         )
+
+    if 14 not in applied:
+        # v14: interval breakdowns — each lap's kind and workout step (the table itself is created above).
+        _add_column_if_missing(db, "activity_laps", "intensity", "VARCHAR")
+        _add_column_if_missing(db, "activity_laps", "wkt_step_index", "INT")
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;
