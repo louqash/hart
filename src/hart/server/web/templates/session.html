@@ -39,7 +39,7 @@
 {%- endmacro %}
 <section class="card">
   <h2>{{ icon("map") }}Planned <span class="plain">what this session was meant to be</span></h2>
-  <div class="grid two">
+  <div class="{{ 'grid two' if s.planned and s.workout_steps else '' }}">
     {% if s.planned %}
     <div>
       {% for p in s.planned %}
@@ -56,12 +56,13 @@
     {% endif %}
     {% if s.workout_steps %}
     <div>
-      <div class="eyebrow">On the watch</div>
+      <div class="eyebrow">Workout your watch guided</div>
+      <p class="small faint" style="margin:2px 0 0">The steps and targets of the structured workout you followed, from the activity file.</p>
       <ul class="list small" style="margin-top:4px">
         {% for t in s.workout_steps %}
-        <li>{% if t.repeat_count %}<span class="muted">↻ repeat from step {{ t.repeat_from + 1 }} × {{ t.repeat_count }}</span>
+        <li>{% if t.repeat_count %}<span class="muted">↻ {{ s.workout_steps|selectattr('step_index', 'ge', t.repeat_from)|selectattr('step_index', 'lt', t.step_index)|map(attribute='name', default='step')|join(' + ') }} × {{ t.repeat_count }}</span>
           {% else %}<span><strong>{{ t.name or (t.intensity or 'step')|replace('active', 'work') }}</strong>
-            <span class="muted">{% if t.duration_type == 'time' and t.duration_value %}{{ t.duration_value|minsec }}{% elif t.duration_type == 'distance' and t.duration_value %}{{ (t.duration_value / 1000)|num(2) }} km{% elif t.duration_type == 'open' %}until lap press{% endif %}</span></span>
+            <span class="muted" style="margin-left:8px">{% if t.duration_type == 'time' and t.duration_value %}{{ t.duration_value|minsec }}{% elif t.duration_type == 'distance' and t.duration_value %}{{ (t.duration_value / 1000)|num(2) }} km{% elif t.duration_type == 'open' %}until lap press{% endif %}</span></span>
             <span class="num">{{ step_target(t) }}</span>{% endif %}</li>
         {% endfor %}
       </ul>

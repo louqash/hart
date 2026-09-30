@@ -505,21 +505,30 @@ def _newer_features(db: Database, rng: random.Random, today: D, activity_ids: li
     ride = next((a for a in reversed(activity_ids) if a.endswith("_bike_2")), None)
     if ride:
         steps = [
-            (0, "Warm up", "warmup", "open", None, None, None),
-            (1, "12' sweet spot", "active", "power", 230, 240, "W"),
-            (2, "Easy", "rest", "power", 140, 160, "W"),
-            (3, "Cool down", "cooldown", "open", None, None, None),
+            (0, "Warm up", "warmup", "time", 900, "open", None, None, None, None, None),
+            (1, "12' sweet spot", "active", "time", 720, "power", 230, 240, "W", None, None),
+            (2, "Easy", "rest", "time", 240, "power", 140, 160, "W", None, None),
+            (3, None, None, "repeat_until_steps_cmplt", None, None, None, None, None, 1, 3),
+            (4, "Cool down", "cooldown", "time", 600, "open", None, None, None, None, None),
         ]
-        for index, name, intensity, ttype, low, high, unit in steps:
+        for index, name, intensity, dtype, dvalue, ttype, low, high, unit, rfrom, rcount in steps:
             db.execute(
-                "INSERT INTO activity_workout_steps (activity_id, step_index, name, intensity, target_type, target_low, "
-                "target_high, target_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                [ride, index, name, intensity, ttype, low, high, unit],
+                "INSERT INTO activity_workout_steps (activity_id, step_index, name, intensity, duration_type, "
+                "duration_value, target_type, target_low, target_high, target_unit, repeat_from, repeat_count) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [ride, index, name, intensity, dtype, dvalue, ttype, low, high, unit, rfrom, rcount],
             )
+        # ...and the coach's session it was matched to on the plan.
+        db.execute(
+            "INSERT INTO planned_sessions (date, sport_type, title, description, duration_min, intensity, source, "
+            "activity_id) SELECT CAST(start_time AS DATE), 'bike', ?, ?, 75, 'tempo', 'coach_import', activity_id "
+            "FROM activities WHERE activity_id = ?",
+            ["Sweet spot 3x12'", "15' easy\n3x(12' @ 230-240 W + 4' easy)\n10' easy", ride],
+        )
         laps = [(900, 165, 118, "warmup", 0)]
         for power, hr in ((236, 151), (234, 155), (221, 160)):
             laps += [(720, power, hr, "active", 1), (240, 150, 128, "rest", 2)]
-        laps.append((600, 145, 122, "cooldown", 3))
+        laps.append((600, 145, 122, "cooldown", 4))
         db.execute("DELETE FROM activity_laps WHERE activity_id = ?", [ride])
         for i, (secs, power, hr, intensity, step) in enumerate(laps):
             db.execute(
