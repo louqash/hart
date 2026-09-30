@@ -314,8 +314,9 @@ def _health(db: Database, rng: random.Random, today: D) -> None:
 
 
 def _plan_and_ember(db: Database, today: D, activity_ids: list[str]) -> None:
-    # The coach's upcoming sessions (none today: today's suggestion is a free choice).
+    # The coach's upcoming sessions — today's tempo run is the one Ember argues against.
     coach = [
+        (0, "run", "Tempo run 3x10'", 60, "tempo", "15' easy\n3x(10' tempo + 3' easy)\n10' easy"),
         (1, "bike", "Sweet spot 3x12'", 70, "tempo", "15'- progression to 190W\n3x(12'-235W >85 + 4'-150W)\n10' easy"),
         (2, "swim", "Technique swim", 45, "endurance", "10' easy\n8x50 drills / 25 easy\n6x100 steady\n5' easy"),
         (3, "run", "Tempo run", 50, "tempo", "15' easy\n20' at tempo (Z3)\n15' easy"),
@@ -358,18 +359,22 @@ def _plan_and_ember(db: Database, today: D, activity_ids: list[str]) -> None:
         (
             "threshold",
             3,
-            3,
             4,
-            "Intervals started too hard and faded in the last rep; power held but HR crept up.",
-            ["Hit target power in reps 1–2"],
-            ["Rep 3 faded by 6%", "HR drift of 7%"],
+            4,
+            "Reps 1 and 2 sat in the 230–240 W target (236 and 234 W); the last faded to 221 W, 4% under, with "
+            "heart rate up 9 bpm across the reps. Recoveries were respected — keep the third rep for when the "
+            "first two feel easy.",
+            ["Reps 1–2 on target", "4-minute recoveries respected"],
+            ["Rep 3 faded to 221 W (4% under)", "HR +9 bpm across the reps"],
         ),
     ]
+    by_name = {"Long ride": 0, "Long run": 0, "Easy run": 0, "Tempo run": 1, "Sweet spot intervals": 2}
     from hart.server.grading import Scores, overall
 
     recent = [a for a in activity_ids if a.split("_")[2] in ("bike", "run")][-8:]
+    names = dict(db.fetchall("SELECT activity_id, name FROM activities"))
     for i, aid in enumerate(recent):
-        stype, ex, rs, cx, summary, hl, cc = samples[i % len(samples)]
+        stype, ex, rs, cx, summary, hl, cc = samples[by_name.get(names.get(aid, ""), i % len(samples))]
         score, letter = overall(Scores(execution=ex, response=rs, context_fit=cx))
         db.execute(
             "INSERT INTO session_grades (activity_id, version, status, intent_source, session_type, score_execution, "
@@ -413,18 +418,24 @@ def _plan_and_ember(db: Database, today: D, activity_ids: list[str]) -> None:
     ]
     db.execute(
         "INSERT INTO daily_suggestions (for_date, version, kind, readiness, readiness_detail, recommendation, sessions, "
-        "cautions, summary, citations, status, context) VALUES (?, 1, 'final', 'green', '{}', 'free_choice', ?, ?, ?, "
+        "cautions, summary, citations, status, context) VALUES (?, 1, 'final', 'green', '{}', 'modify', ?, ?, ?, "
         "'[]', 'ok', ?)",
         [
             today,
             json.dumps(sessions),
             json.dumps(["Stop the strides if the Achilles complains"]),
-            "No coach session today and readiness is green. An easy run with strides keeps the run frequency up without "
-            "adding fatigue before the weekend's long sessions.",
+            "Readiness is green, but the Achilles note asks for no sudden jumps in run intensity. Keep today easy "
+            "with strides and save the tempo for later in the week.",
             json.dumps(
                 {
-                    "week_review": "The coach's sweet spot ride, tempo run and both long sessions are still "
-                    "ahead; today is open. Strength is on track."
+                    "week_review": "The coach's sweet spot ride and both long sessions are still ahead. Strength is on "
+                    "track; the run volume went up 20% last week.",
+                    "coach_take": {
+                        "stance": "partly",
+                        "text": "The tempo itself is right for the phase, but it's the third run in four days and run "
+                        "volume jumped 20% last week — exactly what your Achilles note warns about. I'd do the tempo "
+                        "on Friday after the swim and keep today easy.",
+                    },
                 }
             ),
         ],
@@ -461,6 +472,94 @@ def _plan_and_ember(db: Database, today: D, activity_ids: list[str]) -> None:
             ),
         ],
     )
+
+
+def _newer_features(db: Database, rng: random.Random, today: D, activity_ids: list[str]) -> None:
+    """Data for the features added after the demo was first written: Claude usage with costs, an interval
+    workout, session notes, and a pending note change."""
+    # Claude usage over two weeks (API-equivalent costs, as the CLI reports them).
+    now = datetime.datetime.now(datetime.UTC)
+    for day in range(13, -1, -1):
+        for purpose, model, low, high, count in (
+            ("chat", "claude-opus-5-5", 0.2, 1.4, rng.randint(0, 3)),
+            ("suggest", "claude-opus-5-5", 0.12, 0.3, 2),
+            ("grade", "claude-sonnet-5", 0.02, 0.08, rng.randint(0, 2)),
+            ("parse_plan", "claude-haiku-4-5", 0.004, 0.01, rng.randint(0, 1)),
+        ):
+            for _ in range(count):
+                at = now - datetime.timedelta(days=day, hours=rng.randint(0, 10))
+                db.execute(
+                    "INSERT INTO claude_runs (purpose, model, prompt_version, status, num_turns, duration_ms, "
+                    "transcript, started_at, finished_at) VALUES (?, ?, 'demo', 'ok', 3, ?, ?, ?, ?)",
+                    [
+                        purpose,
+                        model,
+                        rng.randint(15000, 110000),
+                        json.dumps({"cost_usd": rng.uniform(low, high)}),
+                        at,
+                        at,
+                    ],
+                )
+
+    # The latest sweet spot ride was done as a structured workout: laps against targets, the last rep faded.
+    ride = next((a for a in reversed(activity_ids) if a.endswith("_bike_2")), None)
+    if ride:
+        steps = [
+            (0, "Warm up", "warmup", "open", None, None, None),
+            (1, "12' sweet spot", "active", "power", 230, 240, "W"),
+            (2, "Easy", "rest", "power", 140, 160, "W"),
+            (3, "Cool down", "cooldown", "open", None, None, None),
+        ]
+        for index, name, intensity, ttype, low, high, unit in steps:
+            db.execute(
+                "INSERT INTO activity_workout_steps (activity_id, step_index, name, intensity, target_type, target_low, "
+                "target_high, target_unit) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [ride, index, name, intensity, ttype, low, high, unit],
+            )
+        laps = [(900, 165, 118, "warmup", 0)]
+        for power, hr in ((236, 151), (234, 155), (221, 160)):
+            laps += [(720, power, hr, "active", 1), (240, 150, 128, "rest", 2)]
+        laps.append((600, 145, 122, "cooldown", 3))
+        db.execute("DELETE FROM activity_laps WHERE activity_id = ?", [ride])
+        for i, (secs, power, hr, intensity, step) in enumerate(laps):
+            db.execute(
+                "INSERT INTO activity_laps (activity_id, lap_index, elapsed_seconds, moving_seconds, avg_hr, max_hr, "
+                "avg_power, avg_cadence, intensity, wkt_step_index) VALUES (?, ?, ?, ?, ?, ?, ?, 88, ?, ?)",
+                [ride, i, secs, secs, hr, hr + 8, power, intensity, step],
+            )
+        db.execute(
+            "UPDATE activities SET description = ? WHERE activity_id = ?",
+            ["Coach: 3x12' sweet spot @ 230–240 W, 4' easy between", ride],
+        )
+
+    # Session notes: a Garmin description on a run, and one written in hart.
+    runs = [a for a in activity_ids if "_run_" in a]
+    if len(runs) >= 2:
+        db.execute(
+            "UPDATE activities SET description = 'Long run, flat loop. Fuelled every 30 min.' WHERE activity_id = ?",
+            [runs[-1]],
+        )
+        db.execute(
+            "INSERT INTO session_feedback (activity_id, rpe, feel, comment) VALUES (?, 5, 4, "
+            "'Achilles fine; a bit tight on the last km, gone after the calf raises.')",
+            [runs[-2]],
+        )
+
+    # Ember proposes updating the Achilles note (waits for approval on the Notes page).
+    note = db.fetchone("SELECT id, category FROM athlete_notes WHERE title LIKE 'Achilles%'")
+    if note:
+        db.execute(
+            "INSERT INTO athlete_notes (category, title, body, status, source, target_id, proposed_action, "
+            "proposal_reason) VALUES (?, 'Achilles: tendinopathy (settling)', ?, 'proposed', 'claude_proposed', ?, "
+            "'update', ?)",
+            [
+                note[1],
+                "Right Achilles flares up after sudden jumps in running volume. No pain in the last three weeks; "
+                "physio cleared strides. Keep weekly run volume increases under 10%.",
+                note[0],
+                "Your last three weeks of notes report no pain, and the physio cleared strides.",
+            ],
+        )
 
 
 def build(path: Path, today: D | None = None) -> dict[str, Any]:
@@ -503,6 +602,7 @@ def build(path: Path, today: D | None = None) -> dict[str, Any]:
         for key, value in (("athlete_name", "Alex"), ("has_coach", True), ("power_single_sided", True)):
             settings.set_value(db, key, value)
         _plan_and_ember(db, today, ids)
+        _newer_features(db, rng, today, ids)
         return {"path": str(path), "activities": len(ids)}
     finally:
         db.close()

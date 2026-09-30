@@ -42,9 +42,9 @@ you). Your data stays in one DuckDB file on your machine.
 | **Ember** | Chat with an AI coach-analyst that reads your data through hart's tools, never invents numbers, and proposes changes (notes, plan, season, health checks) that you approve. |
 | **Discord** | A message with each session's grade, an evening message with tomorrow's plan and suggestion, today's sessions and open alerts — and, with a bot, chat with Ember right there: reply to the message or tag @Ember in the channel. |
 
-| Session grade and side-by-side | Daily suggestion around the coach's plan |
+| Session grade, judged rep by rep | Daily suggestion — and Ember's take on the coach's plan |
 |---|---|
-| ![A session graded B with execution, response and context scores, compared with a similar ride](docs/images/session.webp) | ![Next Steps: a suggested easy run with structure, rationale and cautions](docs/images/plan.webp) |
+| ![An interval ride graded C: reps 1–2 on target, the last faded — with execution, response and context scores](docs/images/session.webp) | ![Next Steps: Ember partly disagrees with the coach's tempo run and suggests an easy run with strides](docs/images/plan.webp) |
 | **Strength progression** | **Fitness, fatigue and form over the season** |
 | ![Deadlift top sets and estimated 1-rep max over six months](docs/images/strength.webp) | ![Performance-management chart with a cold and a training camp marked](docs/images/fitness.webp) |
 | **Health checks from lab results** | |
