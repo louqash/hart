@@ -173,6 +173,7 @@ def test_grader_and_session_page_see_the_intervals(tmp_path) -> None:
     with TestClient(create_app(config, run_scheduler=False), base_url="https://hart.example.ts.net") as c:
         page = c.get("/sessions/ride", headers={"Tailscale-User-Login": "a@example.com"}).text
     assert "Intervals" in page and "240–250 W" in page and "under 7.9%" in page and "Rep 3" in page
+    assert "Planned" in page and "On the watch" in page and "8&#39; threshold" in page and "8′" in page
 
 
 def test_intervals_backfill(tmp_path, monkeypatch) -> None:

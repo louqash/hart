@@ -52,6 +52,17 @@ def fmt_duration(seconds: float | None) -> str:
     return f"{minutes // 60}:{minutes % 60:02d}"
 
 
+def fmt_minsec(seconds: float | None) -> str:
+    """Short spans (laps, workout steps): 10′, 4′30″, 45″ — unlike h:mm, never mistaken for seconds."""
+    if not seconds:
+        return "—"
+    total = round(seconds)
+    minutes, secs = divmod(total, 60)
+    if not minutes:
+        return f"{secs}″"
+    return f"{minutes}′" if not secs else f"{minutes}′{secs:02d}″"
+
+
 def fmt_pace(sec_per_km: float | None) -> str:
     if not sec_per_km:
         return "—"
@@ -88,6 +99,7 @@ def sport_label(sport: str | None, sub_type: str | None = None) -> str:
 for name, fn in {
     "duration": fmt_duration,
     "pace": fmt_pace,
+    "minsec": fmt_minsec,
     "num": fmt_num,
     "date": fmt_date,
     "markdown": markdown,

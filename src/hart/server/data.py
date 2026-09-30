@@ -967,6 +967,19 @@ def session_detail(db: Database, activity_id: str) -> dict[str, Any] | None:
                 "ms": run["duration_ms"],
                 "tool_calls": transcript.get("tool_calls", []),
             }
+    # What was planned: the plan rows this session was matched to (and, for an accepted suggestion, the coach
+    # session it replaced), plus the structured workout as it was on the watch.
+    detail["planned"] = rows(
+        db,
+        "SELECT p.id, p.title, p.sport_type, p.duration_min, p.intensity, p.description, p.source, "
+        "c.title AS replaced_title, c.duration_min AS replaced_duration, c.description AS replaced_description "
+        "FROM planned_sessions p LEFT JOIN planned_sessions c ON c.id = p.replaces_id "
+        "WHERE p.activity_id = ? ORDER BY p.id",
+        [activity_id],
+    )
+    detail["workout_steps"] = rows(
+        db, "SELECT * FROM activity_workout_steps WHERE activity_id = ? ORDER BY step_index", [activity_id]
+    )
     from hart.analytics.grading_features import interval_breakdown
 
     detail["intervals"] = (

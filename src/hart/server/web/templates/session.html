@@ -30,6 +30,47 @@
 </section>
 
 {% set g = s.grade %}
+{% if s.planned or s.workout_steps %}
+{% macro step_target(t) -%}
+  {%- if t.target_type in (none, 'open') or (t.target_low is none and t.target_high is none) -%}
+  {%- elif t.target_unit == 'sec_km' -%}{{ t.target_low|pace }}–{{ t.target_high|pace }}
+  {%- elif t.target_unit == 'zone' -%}{{ {'heart_rate': 'HR', 'power': 'power'}.get(t.target_type, '') }} zone {{ t.target_low|int }}
+  {%- else -%}{{ t.target_low|num }}{% if t.target_high and t.target_high != t.target_low %}–{{ t.target_high|num }}{% endif %} {{ {'%FTP': '% FTP', '%HRmax': '% max HR'}.get(t.target_unit, t.target_unit) }}{%- endif -%}
+{%- endmacro %}
+<section class="card">
+  <h2>{{ icon("map") }}Planned <span class="plain">what this session was meant to be</span></h2>
+  <div class="grid two">
+    {% if s.planned %}
+    <div>
+      {% for p in s.planned %}
+      <div class="plan-row" style="margin-bottom:10px">
+        <div><span class="sport {{ p.sport_type }}"></span><strong>{{ p.title }}</strong>
+          <span class="faint small">{% if p.duration_min %}{{ p.duration_min }}′{% endif %}{% if p.intensity %} · {{ p.intensity }}{% endif %}
+            · {{ {'coach_import': 'coach', 'manual': 'your plan', 'suggestion_accepted': 'accepted suggestion'}.get(p.source, p.source) }}</span></div>
+        {% if p.description %}<div class="coach-text">{{ p.description }}</div>{% endif %}
+        {% if p.replaced_title %}<details class="small" style="margin-top:6px"><summary>Instead of the coach's {{ p.replaced_title }}{% if p.replaced_duration %} ({{ p.replaced_duration }}′){% endif %}</summary>
+          {% if p.replaced_description %}<div class="coach-text">{{ p.replaced_description }}</div>{% endif %}</details>{% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% if s.workout_steps %}
+    <div>
+      <div class="eyebrow">On the watch</div>
+      <ul class="list small" style="margin-top:4px">
+        {% for t in s.workout_steps %}
+        <li>{% if t.repeat_count %}<span class="muted">↻ repeat from step {{ t.repeat_from + 1 }} × {{ t.repeat_count }}</span>
+          {% else %}<span><strong>{{ t.name or (t.intensity or 'step')|replace('active', 'work') }}</strong>
+            <span class="muted">{% if t.duration_type == 'time' and t.duration_value %}{{ t.duration_value|minsec }}{% elif t.duration_type == 'distance' and t.duration_value %}{{ (t.duration_value / 1000)|num(2) }} km{% elif t.duration_type == 'open' %}until lap press{% endif %}</span></span>
+            <span class="num">{{ step_target(t) }}</span>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+  </div>
+</section>
+{% endif %}
+
 <section class="card hero" id="grade">
   <div class="spread">
     <h2 class="sunset">{{ icon("compass") }}Trail Report <span class="plain">grade</span></h2>
@@ -225,7 +266,7 @@
     <tr class="{{ 'faint' if r.kind in ('recovery', 'warmup', 'cooldown') }}">
       <td>{{ r.lap }}</td>
       <td>{% if r.rep %}<strong>Rep {{ r.rep }}</strong> {% endif %}<span class="small {{ '' if r.rep else 'muted' }}">{{ r.step or r.kind or '' }}</span></td>
-      <td class="num">{{ r.get('seconds')|duration }}</td>
+      <td class="num">{{ r.get('seconds')|minsec }}</td>
       <td class="num small">{{ target(r.get('target')) }}</td>
       <td class="num">{% if s.sport_type == 'bike' %}{{ r.get('power')|num(0, 'W') }}{% else %}{{ r.get('pace_sec_km')|pace }}{% endif %}</td>
       <td class="num">{{ r.get('hr')|num }}</td><td class="num">{{ r.get('cadence')|num }}</td>
@@ -243,7 +284,7 @@
     <tr><th>#</th><th class="num">Time</th><th class="num">Distance</th><th class="num">Avg HR</th><th class="num">Max HR</th>
       <th class="num">{{ 'Power' if s.sport_type == 'bike' else 'Pace' }}</th><th class="num">Cadence</th></tr>
     {% for lap in s.laps %}
-    <tr><td>{{ lap.lap_index + 1 }}</td><td class="num">{{ lap.elapsed_seconds|duration }}</td>
+    <tr><td>{{ lap.lap_index + 1 }}</td><td class="num">{{ lap.elapsed_seconds|minsec }}</td>
       <td class="num">{{ (lap.distance_meters / 1000)|num(2, 'km') if lap.distance_meters else '—' }}</td>
       <td class="num">{{ lap.avg_hr|num }}</td><td class="num">{{ lap.max_hr|num }}</td>
       <td class="num">{% if s.sport_type == 'bike' %}{{ lap.avg_power|num(0, 'W') }}{% else %}{{ lap.avg_pace_sec_km|pace }}{% endif %}</td>
