@@ -260,3 +260,21 @@ def test_absurd_misses_are_not_judged() -> None:
     ]
     rep = breakdown("bike", laps, steps)["laps"][0]
     assert "verdict" not in rep and rep["target_doubtful"] is True
+
+
+def test_misread_heart_rate_targets_are_repaired(tmp_path) -> None:
+    from hart.storage.database import Database
+
+    db = Database(tmp_path / "m.duckdb").connect()
+    db.execute(
+        "INSERT INTO activity_workout_steps (activity_id, step_index, target_type, target_low, target_high, "
+        "target_unit) VALUES ('a', 1, 'heart_rate', 20, 40, 'bpm'), ('a', 2, 'heart_rate', 120, 140, 'bpm')"
+    )
+    db.execute("DELETE FROM schema_version WHERE version = 15")
+    db.close()
+    db = Database(tmp_path / "m.duckdb").connect()  # v15 runs again
+    assert db.fetchall("SELECT target_low, target_high FROM activity_workout_steps ORDER BY step_index") == [
+        (120, 140),
+        (120, 140),
+    ]
+    db.close()

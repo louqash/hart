@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 14
+CURRENT_SCHEMA_VERSION: int = 15
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -673,6 +673,14 @@ def _run_migrations(db: Database) -> None:
         # v14: interval breakdowns — each lap's kind and workout step (the table itself is created above).
         _add_column_if_missing(db, "activity_laps", "intensity", "VARCHAR")
         _add_column_if_missing(db, "activity_laps", "wkt_step_index", "INT")
+
+    if 15 not in applied:
+        # v15: heart-rate targets stored before plain-bpm files were recognised: the parser subtracted the FIT
+        # +100 offset from values that had none (120-140 bpm became 20-40). No workout targets under 80 bpm.
+        db.execute(
+            "UPDATE activity_workout_steps SET target_low = target_low + 100, target_high = target_high + 100 "
+            "WHERE target_unit = 'bpm' AND coalesce(target_high, target_low) < 80"
+        )
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;
