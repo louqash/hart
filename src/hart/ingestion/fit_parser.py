@@ -134,6 +134,20 @@ def _num(value: Any) -> float | None:
         return None
 
 
+def _heart_rate_target(low: float | None, high: float | None) -> tuple[float | None, float | None, str]:
+    """The FIT spec stores bpm as bpm + 100 (0-100 = % of max HR), but watches also write plain bpm — a
+    zone-2 target of 120-140 bpm arrives as 120/140, which the spec would read as 20-40 bpm. The offset
+    reading is used only when it gives a believable workout target (80 bpm or more)."""
+    values = [v for v in (low, high) if v is not None]
+    if not values:
+        return low, high, "bpm"
+    if max(values) <= 100:
+        return low, high, "%HRmax"
+    if min(values) - 100 >= 80 and max(values) > 200:
+        return _less(low, 100), _less(high, 100), "bpm"
+    return low, high, "bpm"
+
+
 def _less(value: float | None, offset: float) -> float | None:
     return value - offset if value is not None and value > offset else value
 
@@ -192,9 +206,7 @@ def workout_step_from_fit(msg: dict[str, Any], fallback_index: int) -> WorkoutSt
         step.target_low, step.target_high = (_less(low, 1000), _less(high, 1000)) if watts else (low, high)
         step.target_unit = "W" if watts else "%FTP"
     elif target_type == "heart_rate":
-        bpm = (low or 0) > 100 or (high or 0) > 100
-        step.target_low, step.target_high = (_less(low, 100), _less(high, 100)) if bpm else (low, high)
-        step.target_unit = "bpm" if bpm else "%HRmax"
+        step.target_low, step.target_high, step.target_unit = _heart_rate_target(low, high)
     elif target_type == "speed":
         # Faster speed = lower pace: the high speed bound is the fast (low) pace bound.
         step.target_low = round(1000 / high, 1) if high else None

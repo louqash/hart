@@ -12,6 +12,7 @@ from __future__ import annotations
 from typing import Any
 
 TOLERANCE = 0.02  # 2 % around the target range still counts as on target
+DOUBTFUL_PCT = 50  # further off than this, the target was probably misread
 MAX_LAPS = 60
 KINDS = {
     "warmup": "warmup",
@@ -22,6 +23,20 @@ KINDS = {
     "recovery": "recovery",
 }
 METRIC_FOR_UNIT = {"W": "avg_power", "bpm": "avg_hr", "sec_km": "avg_pace_sec_km", "rpm": "avg_cadence"}
+
+
+def _resolve_power_unit(step: dict[str, Any], laps: list[dict[str, Any]]) -> dict[str, Any]:
+    """A power target read as % of FTP may be plain watts (watches don't always use the FIT +1000 offset).
+    With no FTP to convert a percentage, trust the laps: if they were ridden close to the numbers, they're W."""
+    if step.get("target_unit") != "%FTP":
+        return step
+    mid = ((step.get("target_low") or 0) + (step.get("target_high") or step.get("target_low") or 0)) / 2
+    ridden = [
+        lap["avg_power"] for lap in laps if lap.get("wkt_step_index") == step["step_index"] and lap.get("avg_power")
+    ]
+    if mid and ridden and 0.6 <= (sum(ridden) / len(ridden)) / mid <= 1.4:
+        return {**step, "target_unit": "W"}
+    return step
 
 
 def _kind(lap: dict[str, Any], step: dict[str, Any] | None) -> str | None:
@@ -61,13 +76,16 @@ def breakdown(sport: str, laps: list[dict[str, Any]], steps: list[dict[str, Any]
     """Lap-by-lap view of a session. None when there's nothing to break down (fewer than 2 laps)."""
     if len(laps) < 2:
         return None
-    by_step = {s["step_index"]: s for s in steps if s.get("step_index") is not None}
+    by_step = {s["step_index"]: _resolve_power_unit(s, laps) for s in steps if s.get("step_index") is not None}
     structured = bool(by_step) and any(lap.get("wkt_step_index") is not None for lap in laps)
     fallback_metric = _default_metric(sport, laps)
     rows: list[dict[str, Any]] = []
     rep = 0
     for lap in laps[:MAX_LAPS]:
         step = by_step.get(lap.get("wkt_step_index")) if structured else None
+        seconds = lap.get("moving_seconds") or lap.get("elapsed_seconds") or 0
+        if structured and step is None and seconds < 60:
+            continue  # the few seconds recorded after the workout ended
         kind = _kind(lap, step)
         unit = (step or {}).get("target_unit")
         metric = METRIC_FOR_UNIT.get(unit or "", fallback_metric)
@@ -91,6 +109,10 @@ def breakdown(sport: str, laps: list[dict[str, Any]], steps: list[dict[str, Any]
                 row["verdict"], row["off_pct"] = verdict(
                     lap.get(metric), step.get("target_low"), step.get("target_high"), metric
                 )
+                if row.get("off_pct") is not None and row["off_pct"] > DOUBTFUL_PCT:
+                    # That far off is a misread target (units), not a real miss: don't judge it.
+                    row["verdict"], row["off_pct"] = None, None
+                    row["target_doubtful"] = True
         rows.append({k: v for k, v in row.items() if v is not None})
 
     work = [r for r in rows if r.get("kind") == "work"]

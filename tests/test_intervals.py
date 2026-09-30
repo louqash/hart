@@ -28,7 +28,15 @@ def test_workout_steps_from_fit() -> None:
     hr = workout_step_from_fit(
         {"target_type": "heart_rate", "custom_target_heart_rate_low": 240, "custom_target_heart_rate_high": 250}, 0
     )
-    assert (hr.target_low, hr.target_high, hr.target_unit) == (140, 150, "bpm")
+    assert (hr.target_low, hr.target_high, hr.target_unit) == (140, 150, "bpm")  # FIT spec: bpm + 100
+    plain = workout_step_from_fit(
+        {"target_type": "heart_rate", "custom_target_heart_rate_low": 120, "custom_target_heart_rate_high": 140}, 0
+    )
+    assert (plain.target_low, plain.target_high, plain.target_unit) == (120, 140, "bpm")  # watches write plain bpm
+    high = workout_step_from_fit(
+        {"target_type": "heart_rate", "custom_target_heart_rate_low": 170, "custom_target_heart_rate_high": 185}, 0
+    )
+    assert (high.target_low, high.target_high) == (170, 185)  # not 70-85
     pace = workout_step_from_fit(
         {"target_type": "speed", "custom_target_speed_low": 3.333, "custom_target_speed_high": 3.571}, 0
     )
@@ -209,3 +217,45 @@ def test_intervals_backfill(tmp_path, monkeypatch) -> None:
     assert db.fetchone("SELECT intensity, wkt_step_index FROM activity_laps WHERE lap_index = 1") == ("active", 1)
     assert db.fetchone("SELECT count(*) FROM activity_workout_steps")[0] == 1
     db.close()
+
+
+def test_plain_watts_and_the_lap_after_the_workout() -> None:
+    steps = [
+        {"step_index": 0, "intensity": "warmup", "target_type": "open"},
+        {
+            "step_index": 1,
+            "intensity": "active",
+            "target_type": "power",
+            "target_low": 230,
+            "target_high": 240,
+            "target_unit": "%FTP",
+        },  # the watch wrote plain watts
+    ]
+    laps = [
+        {"lap_index": 0, "elapsed_seconds": 600, "avg_power": 150, "intensity": "warmup", "wkt_step_index": 0},
+        {"lap_index": 1, "elapsed_seconds": 720, "avg_power": 236, "intensity": "active", "wkt_step_index": 1},
+        {"lap_index": 2, "elapsed_seconds": 4, "avg_power": 78},  # after the workout ended
+    ]
+    out = breakdown("bike", laps, steps)
+    assert len(out["laps"]) == 2
+    rep = out["laps"][1]
+    assert rep["target"]["unit"] == "W" and rep["verdict"] == "on"
+
+
+def test_absurd_misses_are_not_judged() -> None:
+    steps = [
+        {
+            "step_index": 1,
+            "intensity": "active",
+            "target_type": "heart_rate",
+            "target_low": 20,
+            "target_high": 40,
+            "target_unit": "bpm",
+        }
+    ]
+    laps = [
+        {"lap_index": i, "elapsed_seconds": 600, "avg_hr": 122, "intensity": "active", "wkt_step_index": 1}
+        for i in range(2)
+    ]
+    rep = breakdown("bike", laps, steps)["laps"][0]
+    assert "verdict" not in rep and rep["target_doubtful"] is True
