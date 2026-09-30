@@ -161,10 +161,12 @@ def comparable_sessions(db: Database, activity: dict[str, Any], injury: dict[str
         for k in this
         if this[k] not in (None, 0) and medians.get(k)
     }
+    main = _main_block_comparison(db, activity, similar)
     return {
         "count": len(similar),
         "window_days": window,
         "indoor": indoor,
+        "main_block": main,
         "pre_injury_baseline": pre_injury,
         "criteria": f"same sport, {'indoor' if indoor else 'outdoor'}, duration ±25%, last {window} days",
         "notes": "this_vs_median_pct: + means higher than the median. avg_pace_sec_km is seconds per km, "
@@ -173,6 +175,43 @@ def comparable_sessions(db: Database, activity: dict[str, Any], injury: dict[str
         "this_vs_median_pct": deltas,
         "recent": [{"date": s["date"], "avg_hr": _r(s["avg_hr"], 0), "load": _r(s["load"], 0)} for s in similar[:5]],
     }
+
+
+def _laps(db: Database, activity_id: str) -> list[dict[str, Any]]:
+    return rows(
+        db,
+        "SELECT lap_index, elapsed_seconds, moving_seconds, avg_hr, avg_power, avg_pace_sec_km, intensity "
+        "FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
+        [activity_id],
+    )
+
+
+def _main_block_comparison(
+    db: Database, activity: dict[str, Any], similar: list[dict[str, Any]]
+) -> dict[str, Any] | None:
+    """This session's work laps against the same in similar sessions that have lap kinds."""
+    from hart.analytics.intervals import main_block
+
+    sport = activity["sport_type"]
+    this = main_block(_laps(db, activity["activity_id"]), sport)
+    if this is None:
+        return None
+    others = [m for m in (main_block(_laps(db, s["activity_id"]), sport) for s in similar) if m]
+    out: dict[str, Any] = {
+        "this": this,
+        "notes": "The work laps only (no warm-up, cool-down or recoveries). Prefer this over whole-session "
+        "averages; similar sessions synced before lap kinds were stored have no main block.",
+        "similar_with_main_block": len(others),
+    }
+    if others:
+        medians = {
+            k: _r(median([o[k] for o in others if o.get(k)]), 3 if k == "ef" else 1)
+            for k in ("avg_power", "avg_hr", "pace_sec_km", "ef")
+            if any(o.get(k) for o in others)
+        }
+        out["similar_median"] = medians
+        out["this_vs_median_pct"] = {k: _r((this[k] - v) / v * 100, 1) for k, v in medians.items() if v and this.get(k)}
+    return out
 
 
 # ---------------------------------------------------------------------------

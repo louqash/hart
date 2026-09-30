@@ -29,7 +29,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-GRADE_PROMPT_VERSION = "grade@5"
+GRADE_PROMPT_VERSION = "grade@6"
 WEIGHTS = {"execution": 0.45, "response": 0.30, "context_fit": 0.25}
 LETTERS = ((4.5, "A"), (3.75, "B"), (3.0, "C"), (2.25, "D"))
 UNVERIFIED_LIMIT = 0.30
@@ -93,13 +93,18 @@ but the bundle is usually enough — keep it to a few calls.
 - execution: did the session hit its intent? No coach plan is linked yet, so infer the intent \
 (session_type) from the facts and judge zones, duration, pacing/power steadiness, structure.
 - response: how did the body respond vs their own comparable sessions (efficiency, HR at output, \
-decoupling, HR drift)? If `comparison.pre_injury_baseline` is true, the comparison sessions are \
-from before the injury: judge the trajectory back toward that level, not the gap. Use null when \
-there's nothing to compare or no heart rate.
+decoupling, HR drift)? Calibrate: 4 = their usual response — differences within about ±3% of the \
+comparison (±5% with a single-sided power meter) are noise, not a worse response; 3 = a clear \
+negative beyond that noise, or several signals agreeing (efficiency down and HR drifting and a poor \
+feel); 2 or 1 = a marked decline; 5 = clearly better than usual. Use `comparison.main_block` when it's \
+there — whole-session averages are diluted by an easy warm-up and cool-down, so never mark a session \
+down for a difference the structure explains. If `comparison.pre_injury_baseline` is true, the \
+comparison sessions are from before the injury: judge the trajectory back toward that level, not the \
+gap. Use null when there's nothing to compare or no heart rate.
 - context_fit: was it the right session given readiness that morning, form (TSB), the phase \
 (e.g. comeback: consistency and tissue tolerance over intensity), active constraints and their \
 feedback?
-- `intervals` (when present) is the session lap by lap. With `summary.source` "workout" the laps come \
+- Read the splits first. `intervals` (when present) is the session lap by lap. With `summary.source` "workout" the laps come \
 from the structured workout on the watch: each work rep has its step, target and a `verdict` (on / \
 under / over, with `off_pct`), and the summary counts them and shows fading (`last_vs_first_rep_pct`, \
 `hr_drift_bpm`) and recovery length. Judge execution per interval — were the targets hit, did the reps \
@@ -107,7 +112,11 @@ fade, were recoveries respected — not from the session averages, which warm-up
 With "laps" (manual or auto laps, no targets) compare the laps with the note or the coach's text.
 - `feedback` holds what the athlete said about the session: RPE, feel and their `note` (written in \
 hart or in Garmin Connect — often the coach's workout or how it went). Read the note: it states the \
-intent, pain or niggles, and circumstances the numbers can't show, and it weighs in all three scores.
+intent, pain or niggles, and circumstances the numbers can't show, and it weighs in all three scores. \
+Tiredness with a known cause — yesterday's strength session, a planned hard block — is expected load, \
+not a poor response: weigh it in context_fit (was an easy session the right call?), not against \
+response. A low feel or high RPE counts against response only when it's unexplained, or points to \
+pain or illness.
 For `event` sessions (trips, camps and similar) set session_type "event_trip" and execution and \
 response to null — score context fit only.
 

@@ -138,3 +138,44 @@ def breakdown(sport: str, laps: list[dict[str, Any]], steps: list[dict[str, Any]
     if recoveries:
         summary["avg_recovery_seconds"] = round(sum(recoveries) / len(recoveries))
     return {"summary": summary, "laps": rows}
+
+
+MAIN_KINDS = {"active", "interval"}
+
+
+def main_block(laps: list[dict[str, Any]], sport: str) -> dict[str, Any] | None:
+    """The session without its warm-up, cool-down and recoveries: the work laps, time-weighted.
+
+    Whole-session averages are diluted by an easy warm-up and cool-down (a 45' Z2 block at 126 W reads as
+    117 W over the whole ride), so comparisons of structured sessions use this. None when the laps carry no
+    kinds (older syncs, unstructured rides) or there's nothing but work laps.
+    """
+    kinds = [str(lap.get("intensity")) if lap.get("intensity") else None for lap in laps]
+    if not any(kinds) or all(k in MAIN_KINDS for k in kinds):
+        return None
+    work = [lap for lap, k in zip(laps, kinds, strict=True) if k in MAIN_KINDS]
+    secs = [(lap.get("moving_seconds") or lap.get("elapsed_seconds") or 0) for lap in work]
+    total = sum(secs)
+    if total < 300:
+        return None
+
+    def weighted(key: str) -> float | None:
+        pairs = [(lap[key], s) for lap, s in zip(work, secs, strict=True) if lap.get(key)]
+        weight = sum(s for _, s in pairs)
+        return sum(v * s for v, s in pairs) / weight if weight else None
+
+    power, hr, pace = weighted("avg_power"), weighted("avg_hr"), weighted("avg_pace_sec_km")
+    out: dict[str, Any] = {"minutes": round(total / 60), "laps": len(work), "avg_hr": _r(hr, 0)}
+    if sport == "bike" and power:
+        out["avg_power"] = _r(power, 0)
+        if hr:
+            out["ef"] = _r(power / hr, 3)  # watts per beat, over the work laps
+    elif sport == "run" and pace:
+        out["pace_sec_km"] = _r(pace, 1)
+        if hr:
+            out["ef"] = _r((1000 / pace * 60) / hr, 3)  # metres per minute per beat
+    return out
+
+
+def _r(value: float | None, digits: int) -> float | None:
+    return round(value, digits) if value is not None else None

@@ -278,3 +278,51 @@ def test_misread_heart_rate_targets_are_repaired(tmp_path) -> None:
         (120, 140),
     ]
     db.close()
+
+
+def _z2_ride(power: float, hr: float) -> list[dict]:
+    return [
+        {"lap_index": 0, "elapsed_seconds": 600, "avg_power": 86, "avg_hr": 102, "intensity": "warmup"},
+        {"lap_index": 1, "elapsed_seconds": 2700, "avg_power": power, "avg_hr": hr, "intensity": "active"},
+        {"lap_index": 2, "elapsed_seconds": 300, "avg_power": 90, "avg_hr": 116, "intensity": "cooldown"},
+    ]
+
+
+def test_main_block_leaves_out_warm_up_and_cool_down() -> None:
+    from hart.analytics.intervals import main_block
+
+    block = main_block(_z2_ride(126, 122), "bike")
+    assert block == {"minutes": 45, "laps": 1, "avg_hr": 122, "avg_power": 126, "ef": 1.033}
+    # No lap kinds (older syncs, unstructured rides) or nothing but work: no main block.
+    assert main_block([{**lap, "intensity": None} for lap in _z2_ride(126, 122)], "bike") is None
+    assert (
+        main_block([{"lap_index": 0, "elapsed_seconds": 3600, "avg_power": 150, "intensity": "active"}], "bike") is None
+    )
+
+
+def test_comparison_uses_main_blocks(tmp_path) -> None:
+    import datetime
+
+    from hart.analytics.grading_features import build_features
+    from hart.server.state import DEFAULT_THRESHOLDS
+    from hart.storage.database import Database
+
+    db = Database(tmp_path / "c.duckdb").connect()
+    now = datetime.datetime.now()
+    for i, (aid, power, hr) in enumerate([("today", 126, 122), ("prev1", 125, 121), ("prev2", 127, 123)]):
+        db.execute(
+            "INSERT INTO activities (activity_id, source, sport_type, sub_type, name, start_time, elapsed_seconds, "
+            "moving_seconds, avg_hr, avg_power) VALUES (?, 'garmin', 'bike', 'indoor_cycling', 'Z2', ?, 3600, 3600, "
+            "118, 117)",
+            [aid, now - datetime.timedelta(days=7 * i, hours=1)],
+        )
+        for lap in _z2_ride(power, hr):
+            db.execute(
+                "INSERT INTO activity_laps (activity_id, lap_index, elapsed_seconds, avg_power, avg_hr, intensity) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                [aid, lap["lap_index"], lap["elapsed_seconds"], lap["avg_power"], lap["avg_hr"], lap["intensity"]],
+            )
+    main = build_features(db, "today", DEFAULT_THRESHOLDS)["comparison"]["main_block"]
+    assert main["this"]["avg_power"] == 126 and main["similar_with_main_block"] == 2
+    assert main["similar_median"]["avg_power"] == 126.0 and main["this_vs_median_pct"]["avg_power"] == 0.0
+    db.close()
