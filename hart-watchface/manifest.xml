@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<iq:manifest version="3" xmlns:iq="http://www.garmin.com/xml/connectiq">
+    <iq:application id="e49ffc18-43ae-4fc0-bee2-fe4e305ca0f1" type="watchface" name="@Strings.AppName" entry="HartApp" launcherIcon="@Drawables.LauncherIcon" minApiLevel="5.0.0">
+        <iq:products>
+            <iq:product id="fr965"/>
+        </iq:products>
+        <iq:permissions>
+            <iq:uses-permission id="SensorHistory"/>
+        </iq:permissions>
+        <iq:languages>
+            <iq:language>eng</iq:language>
+        </iq:languages>
+        <iq:barrels/>
+    </iq:application>
+</iq:manifest>

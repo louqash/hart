@@ -1,0 +1,9 @@
+<!-- Generated bitmaps: see tools/make_assets.py -->
+<fonts>
+    <font id="Time" filename="time.fnt" antialias="true"/>
+    <font id="Label" filename="label.fnt" antialias="true"/>
+    <font id="Body" filename="body.fnt" antialias="true"/>
+    <font id="Small" filename="small.fnt" antialias="true"/>
+    <font id="Arc" filename="arc.fnt" antialias="true"/>
+    <font id="SerifItalic" filename="serif_italic.fnt" antialias="true"/>
+</fonts>

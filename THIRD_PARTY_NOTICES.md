@@ -35,3 +35,5 @@ USE OR PERFORMANCE OF THIS SOFTWARE.
   (https://github.com/clauseggers/Playfair-Display)
 
 Both are licensed under the SIL Open Font License, Version 1.1 — full text in `static/fonts/OFL.txt`.
+The watch face (`hart-watchface/resources/fonts/`) embeds bitmap renderings of the same fonts under
+the same licence.

@@ -33,3 +33,7 @@ dist/
 
 # Claude Code worktrees (separate checkouts)
 .claude/worktrees/
+
+# Garmin watch face: signing key and build output
+hart-watchface/developer_key
+hart-watchface/bin/
