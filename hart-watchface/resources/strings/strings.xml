@@ -1,4 +1,6 @@
 <strings>
     <string id="AppName">hart</string>
-    <string id="RaceDateTitle">Race date (YYYY-MM-DD)</string>
+    <!-- Built in, not a setting: sideloaded faces get no settings page. Set it in the gitignored
+         resources-local/strings.xml (README). Empty: on-watch data only. -->
+    <string id="HartUrl" scope="background"></string>
 </strings>

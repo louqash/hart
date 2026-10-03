@@ -387,6 +387,11 @@ def api_readiness(
     return data.readiness_on(db, date or data.local_today(config), state.get_thresholds(db))
 
 
+@router.get("/api/watch")
+def api_watch(db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+    return data.watch_summary(db, data.local_today(config), state.get_thresholds(db))
+
+
 @router.post("/api/anomalies/{anomaly_id}/ack")
 def api_ack_anomaly(anomaly_id: int, db: Database = Depends(get_db)) -> dict[str, Any]:
     if db.fetchone("SELECT 1 FROM anomaly_log WHERE id = ?", [anomaly_id]) is None:

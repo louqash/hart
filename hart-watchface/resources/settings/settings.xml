@@ -1,5 +1,0 @@
-<settings>
-    <setting propertyKey="@Properties.raceDate" title="@Strings.RaceDateTitle">
-        <settingConfig type="alphaNumeric"/>
-    </setting>
-</settings>

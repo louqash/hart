@@ -21,6 +21,9 @@ in sees everything.
 - `HART_ENV=dev` turns the check off and is refused unless hart listens on 127.0.0.1.
 - `/healthz` is open (no data). `/mcp` also accepts an internal bearer token, generated per start, used only by
   the server's own Claude runs.
+- The Garmin watch face (`hart-watchface/`) reads `GET /api/watch` through the phone's Garmin Connect app. It has
+  no credentials of its own: it relies on the phone being one of your Tailscale devices, so it gets in exactly
+  when the phone's browser would.
 
 ## Cross-site requests
 

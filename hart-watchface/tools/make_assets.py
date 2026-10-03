@@ -121,7 +121,9 @@ def render(spec: Spec) -> None:
         shelf = max(shelf, h)
     height = y + shelf + 1
 
-    sheet = Image.new("RGBA", (width, height), (255, 255, 255, 0))
+    # Coverage goes in every channel (grey on transparent black): with white RGB and coverage
+    # only in alpha, the Connect IQ compiler drops the anti-aliasing and glyph edges come out jagged.
+    sheet = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     lines = [
         f'info face="{spec.name}" size={spec.size} bold=0 italic=0 charset="" unicode=1 '
         f"stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1",
@@ -131,9 +133,7 @@ def render(spec: Spec) -> None:
     ]
     for ch, img, px, py, w, h, xo, yo, adv in placed:
         if img:
-            white = Image.new("RGBA", img.size, (255, 255, 255, 255))
-            white.putalpha(img)
-            sheet.paste(white, (px, py))
+            sheet.paste(Image.merge("RGBA", (img, img, img, img)), (px, py))
         lines.append(
             f"char id={ord(ch)} x={px} y={py} width={w} height={h} "
             f"xoffset={xo} yoffset={yo} xadvance={adv} page=0 chnl=15"

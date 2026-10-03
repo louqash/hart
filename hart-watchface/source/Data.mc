@@ -25,19 +25,22 @@ module Data {
         return ActivityMonitor.getInfo().steps;
     }
 
-    //! Body Battery as 0..100
+    //! Body Battery as 0..100: the newest sample that has a value. The newest entry is
+    //! sometimes empty while the watch is still computing it, which made the number flicker.
     function bodyBattery() as Number? {
         if (!(Toybox has :SensorHistory) || !(SensorHistory has :getBodyBatteryHistory)) {
             return null;
         }
-        var sample = SensorHistory.getBodyBatteryHistory({
-            :period => 1,
+        var history = SensorHistory.getBodyBatteryHistory({
+            :period => 10,
             :order => SensorHistory.ORDER_NEWEST_FIRST,
-        }).next();
-        if (sample == null || sample.data == null) {
-            return null;
+        });
+        for (var sample = history.next(); sample != null; sample = history.next()) {
+            if (sample.data != null) {
+                return (sample.data as Numeric).toNumber();
+            }
         }
-        return (sample.data as Numeric).toNumber();
+        return null;
     }
 
     //! Watch battery as 0..100
@@ -45,14 +48,20 @@ module Data {
         return System.getSystemStats().battery.toNumber();
     }
 
-    //! Days from today to the race date in settings, or null when unset or invalid
-    function daysToRace() as Number? {
-        var race = parseDate(Application.Properties.getValue("raceDate") as String?);
+    //! Days from today to hart's next race, or null when there's no hart data or no race
+    function daysToRace(hart as Dictionary?) as Number? {
+        var race = hart != null ? parseDate(hart["race"] as String?) : null;
         if (race == null) {
             return null;
         }
         var today = Gregorian.info(Time.now(), Time.FORMAT_SHORT);
         return race - dayNumber(today.year, today.month as Number, today.day);
+    }
+
+    //! Today as "YYYY-MM-DD"
+    function todayIso() as String {
+        var t = Gregorian.info(Time.now(), Time.FORMAT_SHORT);
+        return t.year.format("%04d") + "-" + (t.month as Number).format("%02d") + "-" + t.day.format("%02d");
     }
 
     //! "YYYY-MM-DD" to a day number, or null

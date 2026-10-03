@@ -1,3 +1,4 @@
+import Toybox.Application;
 import Toybox.Graphics;
 import Toybox.Lang;
 import Toybox.Math;
@@ -25,9 +26,17 @@ module Palette {
 //! Layout is designed on the FR965's 454px screen; y values are text baselines.
 class HartView extends WatchUi.WatchFace {
     private const DAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
-    //! Date baseline sits this far above the time baseline in both modes
+    //! Date baseline sits this far above the time baseline when there's no hart line between them
     private const DATE_ABOVE_TIME = 128;
     private const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+
+    //! hart's readiness level → word and colour
+    private const READINESS = {
+        "green" => ["Ready", Palette.GREEN],
+        "amber" => ["Caution", Palette.AMBER],
+        "red" => ["Recover", Palette.RED],
+        "unknown" => ["No readiness", Palette.FAINT],
+    };
 
     private var _awake as Boolean = true;
     private var _scale as Float = 1.0;
@@ -74,6 +83,8 @@ class HartView extends WatchUi.WatchFace {
         WatchUi.requestUpdate();
     }
 
+    //! Without hart data the face keeps the phase 1 layout; with it, a readiness line goes
+    //! above the time and form joins the countdown at the bottom.
     private function drawActive(dc as Dc, clock as System.ClockTime) as Void {
         var cx = dc.getWidth() / 2;
         dc.setColor(Palette.BG, Palette.BG);
@@ -86,69 +97,176 @@ class HartView extends WatchUi.WatchFace {
         text(dc, px(46), py(236), _arc, valueOrDash(bodyBattery), Palette.GREEN, Graphics.TEXT_JUSTIFY_LEFT);
         text(dc, px(408), py(236), _arc, battery.toString(), Palette.AMBER, Graphics.TEXT_JUSTIFY_RIGHT);
 
-        text(dc, cx, py(246 - DATE_ABOVE_TIME), _label, dateLabel(), Palette.MUTED, Graphics.TEXT_JUSTIFY_CENTER);
-        text(dc, cx, py(246), _time, timeLabel(clock), Palette.CREAM, Graphics.TEXT_JUSTIFY_CENTER);
+        var hart = Application.Storage.getValue("hart") as Dictionary?;
+        var days = Data.daysToRace(hart);
+        var time = timeBaseline(hart);
+        text(dc, cx, py(dateBaseline(hart)), _label, dateLabel(), Palette.MUTED, Graphics.TEXT_JUSTIFY_CENTER);
+        text(dc, cx, py(time), _time, timeLabel(clock), Palette.CREAM, Graphics.TEXT_JUSTIFY_CENTER);
 
         dc.setColor(Palette.LINE, Graphics.COLOR_TRANSPARENT);
         dc.setPenWidth(px(2));
-        dc.drawLine(px(187), py(276), px(267), py(276));
+        dc.drawLine(px(187), py(time + 30), px(267), py(time + 30));
 
-        drawVitals(dc, cx, py(320));
-        drawCountdown(dc, cx, py(372));
+        if (hart == null) {
+            drawVitals(dc, cx, py(320));
+            drawCountdown(dc, cx, py(372), days);
+            drawFetchProblem(dc, cx, py(372));
+            return;
+        }
+        var fresh = isFresh(hart);
+        drawStatus(dc, cx, py(146), hart, fresh);
+        drawVitals(dc, cx, py(332));
+        drawFormAndDays(dc, cx, py(368), hart["form"] as Number?, days, fresh);
+        dc.setColor(fresh ? Palette.GREEN : Palette.FAINT, Graphics.COLOR_TRANSPARENT);
+        dc.fillCircle(cx, py(402), px(4));
+    }
+
+    //! Shared by the active and always-on faces so the time and date don't move between them
+    private function timeBaseline(hart as Dictionary?) as Number {
+        return hart == null ? 246 : 262;
+    }
+
+    private function dateBaseline(hart as Dictionary?) as Number {
+        return hart == null ? 246 - DATE_ABOVE_TIME : 104;
+    }
+
+    //! Values are current when they are today's and arrived within the last three hours
+    private function isFresh(hart as Dictionary) as Boolean {
+        var at = Application.Storage.getValue("hartAt") as Number?;
+        return at != null && Time.now().value() - at < 3 * 3600 && Data.todayIso().equals(hart["date"] as String?);
+    }
+
+    //! Until hart data arrives: "hart: waiting" before the first reply, else the last error code
+    //! (see README). Shown only when an address is set.
+    private function drawFetchProblem(dc as Dc, cx as Number, baseline as Number) as Void {
+        if (Config.hartUrl().length() == 0) {
+            return;
+        }
+        var code = Application.Storage.getValue("hartError") as Number?;
+        var label = code == null ? "hart: waiting" : "hart: error " + code;
+        text(dc, cx, baseline, _small, label, Palette.FAINT, Graphics.TEXT_JUSTIFY_CENTER);
+    }
+
+    //! "Ready · build phase", dimmed when the values are stale; the phase gives way to the last
+    //! error code when stale values are all there is
+    private function drawStatus(dc as Dc, cx as Number, baseline as Number, hart as Dictionary, fresh as Boolean) as Void {
+        var ready = READINESS[hart["ready"]] as [String, Number]?;
+        if (ready == null) {
+            ready = READINESS["unknown"] as [String, Number];
+        }
+        var word = ready[0];
+        var phase = hart["phase"] as String?;
+        var rest = phase == null ? "" : "  ·  " + phase + " phase";
+        var code = Application.Storage.getValue("hartError") as Number?;
+        if (!fresh && code != null) {
+            rest = "  ·  error " + code;
+        }
+        var x = cx - (dc.getTextWidthInPixels(word, _small) + dc.getTextWidthInPixels(rest, _small)) / 2;
+        x = text(dc, x, baseline, _small, word, fresh ? ready[1] : Palette.FAINT, Graphics.TEXT_JUSTIFY_LEFT);
+        text(dc, x, baseline, _small, rest, Palette.FAINT, Graphics.TEXT_JUSTIFY_LEFT);
+    }
+
+    //! "form +6 · 323 days"; either half is left out when unknown
+    private function drawFormAndDays(dc as Dc, cx as Number, baseline as Number, form as Number?, days as Number?, fresh as Boolean) as Void {
+        var parts = [] as Array<[String, FontResource, Number]>;
+        if (form != null) {
+            parts.add(["form ", _small, Palette.MUTED]);
+            parts.add([(form > 0 ? "+" : "") + form, _small, fresh ? Palette.TEXT : Palette.FAINT]);
+        }
+        if (days != null && days >= 0) {
+            if (parts.size() > 0) {
+                parts.add(["   ·   ", _small, Palette.FAINT]);
+            }
+            parts.add([days == 0 ? "Race day" : days + (days == 1 ? " day" : " days"), _italic, Palette.SUNSET]);
+        }
+        var width = 0;
+        for (var i = 0; i < parts.size(); i++) {
+            width += dc.getTextWidthInPixels(parts[i][0], parts[i][1]);
+        }
+        var x = cx - width / 2;
+        for (var i = 0; i < parts.size(); i++) {
+            x = text(dc, x, baseline, parts[i][1], parts[i][0], parts[i][2], Graphics.TEXT_JUSTIFY_LEFT);
+        }
     }
 
     //! Burn-in safe: outlined digits, a few lit pixels, position drifting each minute.
     private function drawAlwaysOn(dc as Dc, clock as System.ClockTime) as Void {
         var cx = dc.getWidth() / 2;
-        var drift = [-6, -3, 0, 3, 6] as Array<Number>;
-        var dx = px(drift[clock.min % 5]);
-        var dy = px(drift[(clock.min / 5) % 5]);
+        // Same place as the active face, give or take a 2px drift: enough that the 2px outline
+        // never lights the same pixels for long, too little to see the face jump on wake/sleep.
+        var drift = [0, 2, 0, -2] as Array<Number>;
+        var dx = drift[clock.min % 4];
+        var dy = drift[(clock.min / 4 + 1) % 4];
+        var hart = Application.Storage.getValue("hart") as Dictionary?;
+        var baseline = py(timeBaseline(hart)) + dy;
         dc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
         dc.clear();
 
-        text(dc, cx + dx, py(262 - DATE_ABOVE_TIME) + dy, _label, dateLabel(), Palette.FAINT, Graphics.TEXT_JUSTIFY_CENTER);
+        text(dc, cx + dx, py(dateBaseline(hart)) + dy, _label, dateLabel(), Palette.FAINT, Graphics.TEXT_JUSTIFY_CENTER);
 
         var time = timeLabel(clock);
         var o = px(2);
         var offsets = [[-o, 0], [o, 0], [0, -o], [0, o], [-o, -o], [o, -o], [-o, o], [o, o]] as Array<Array<Number>>;
         for (var i = 0; i < offsets.size(); i++) {
-            text(dc, cx + dx + offsets[i][0], py(262) + dy + offsets[i][1], _time, time, Palette.AOD_OUTLINE, Graphics.TEXT_JUSTIFY_CENTER);
+            text(dc, cx + dx + offsets[i][0], baseline + offsets[i][1], _time, time, Palette.AOD_OUTLINE, Graphics.TEXT_JUSTIFY_CENTER);
         }
-        text(dc, cx + dx, py(262) + dy, _time, time, Graphics.COLOR_BLACK, Graphics.TEXT_JUSTIFY_CENTER);
+        text(dc, cx + dx, baseline, _time, time, Graphics.COLOR_BLACK, Graphics.TEXT_JUSTIFY_CENTER);
     }
 
     //! A 100° arc on the left (filling upward clockwise) or right (upward anticlockwise)
     private function drawGauge(dc as Dc, left as Boolean, percent as Number?, color as Number) as Void {
-        var cx = dc.getWidth() / 2;
-        var cy = dc.getHeight() / 2;
-        var r = px(212);
-        var pen = px(7);
         var start = left ? 230 : 310;
-        var direction = left ? Graphics.ARC_CLOCKWISE : Graphics.ARC_COUNTER_CLOCKWISE;
         var sign = left ? -1 : 1;
-        dc.setPenWidth(pen);
-
-        dc.setColor(Palette.SOFT, Graphics.COLOR_TRANSPARENT);
-        dc.drawArc(cx, cy, r, direction, start, start + sign * 100);
-        cap(dc, cx, cy, r, start, pen);
-        cap(dc, cx, cy, r, start + sign * 100, pen);
-
-        if (percent == null || percent <= 0) {
-            return;
+        stroke(dc, start, start + sign * 100, Palette.SOFT);
+        if (percent != null && percent > 0) {
+            stroke(dc, start, start + sign * (percent > 100 ? 100 : percent), color);
         }
-        var sweep = (percent > 100 ? 100 : percent);
-        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
-        if (sweep > 1) {
-            dc.drawArc(cx, cy, r, direction, start, start + sign * sweep);
-        }
-        cap(dc, cx, cy, r, start, pen);
-        cap(dc, cx, cy, r, start + sign * sweep, pen);
     }
 
-    //! Round line end at an arc angle (degrees anticlockwise from 3 o'clock)
-    private function cap(dc as Dc, cx as Number, cy as Number, r as Number, degrees as Number, pen as Number) as Void {
+    //! A round-ended arc between two angles (degrees anticlockwise from 3 o'clock), filled as a
+    //! single polygon — outer edge, rounded end, inner edge, rounded start — so the line and its
+    //! ends are one shape. (drawArc plus fillCircle caps never matched in width or position.)
+    //! At most 26 + 26 edge points and 5 + 5 cap points: under fillPolygon's 64-point limit.
+    private function stroke(dc as Dc, from as Number, to as Number, color as Number) as Void {
+        var cx = dc.getWidth() / 2.0;
+        var cy = dc.getHeight() / 2.0;
+        var r = 212 * _scale;
+        var w = 3.5 * _scale;
+        var dir = to >= from ? 1 : -1;
+        var n = ((to - from).abs() / 4.0).toNumber() + 2;
+        var pts = [] as Array<[Numeric, Numeric]>;
+        for (var i = 0; i < n; i++) {
+            edgePoint(pts, cx, cy, r + w, from + (to - from) * i / (n - 1.0));
+        }
+        roundEnd(pts, cx, cy, r, w, to, dir, 1);
+        for (var i = n - 1; i >= 0; i--) {
+            edgePoint(pts, cx, cy, r - w, from + (to - from) * i / (n - 1.0));
+        }
+        roundEnd(pts, cx, cy, r, w, from, dir, -1);
+        dc.setColor(color, Graphics.COLOR_TRANSPARENT);
+        dc.fillPolygon(pts);
+    }
+
+    private function edgePoint(pts as Array<[Numeric, Numeric]>, cx as Float, cy as Float, radius as Float, degrees as Float) as Void {
         var a = Math.toRadians(degrees);
-        dc.fillCircle(cx + r * Math.cos(a), cy - r * Math.sin(a), pen / 2.0);
+        pts.add([cx + radius * Math.cos(a), cy - radius * Math.sin(a)]);
+    }
+
+    //! Half circle around the arc's end at `degrees`, from the outer edge to the inner (side 1,
+    //! pointing along the arc) or from the inner edge to the outer (side -1, pointing back)
+    private function roundEnd(pts as Array<[Numeric, Numeric]>, cx as Float, cy as Float, r as Float, w as Float, degrees as Number, dir as Number, side as Number) as Void {
+        var a = Math.toRadians(degrees);
+        var ex = cx + r * Math.cos(a);
+        var ey = cy - r * Math.sin(a);
+        var ux = Math.cos(a);   // outward, in screen coordinates
+        var uy = -Math.sin(a);
+        var tx = -dir * Math.sin(a);  // along the arc's travel
+        var ty = -dir * Math.cos(a);
+        for (var k = 1; k <= 5; k++) {
+            var c = Math.cos(k * Math.PI / 6);
+            var s = Math.sin(k * Math.PI / 6);
+            pts.add([ex + side * w * (ux * c + tx * s), ey + side * w * (uy * c + ty * s)]);
+        }
     }
 
     //! Heart, bpm · steps
@@ -173,9 +291,8 @@ class HartView extends WatchUi.WatchFace {
         text(dc, x, baseline, _small, unit, Palette.FAINT, Graphics.TEXT_JUSTIFY_LEFT);
     }
 
-    //! "323 days to go", hidden when no race date is set or it has passed
-    private function drawCountdown(dc as Dc, cx as Number, baseline as Number) as Void {
-        var days = Data.daysToRace();
+    //! "323 days to go", hidden when no race date is known or it has passed
+    private function drawCountdown(dc as Dc, cx as Number, baseline as Number, days as Number?) as Void {
         if (days == null || days < 0) {
             return;
         }

@@ -197,6 +197,31 @@ def readiness_on(db: Database, d: D, t: dict[str, float]) -> dict[str, Any]:
     return {"date": d, **result, "steps": steps_context(db, d)}
 
 
+def watch_summary(db: Database, d: D, t: dict[str, float]) -> dict[str, Any]:
+    """The few values the Garmin watch face shows (hart-watchface/), kept small for the watch.
+
+    ``form`` is the latest combined TSB from the past week; ``race`` the next A-race, or the
+    next race of any priority when no A-race is planned.
+    """
+    phase = phase_on(db, d)
+    tsb = db.fetchone(
+        "SELECT tsb FROM daily_training_load WHERE sport_type = 'combined' AND date <= ? AND date > ? "
+        "AND tsb IS NOT NULL ORDER BY date DESC LIMIT 1",
+        [d, d - 7 * DAY],
+    )
+    race = db.fetchone(
+        "SELECT race_date FROM races WHERE race_date >= ? ORDER BY priority = 'A' DESC, race_date LIMIT 1", [d]
+    )
+    return {
+        "date": d.isoformat(),
+        "ready": readiness_on(db, d, t)["level"],
+        "phase": phase["phase_type"] if phase else None,
+        "week": phase["week"] if phase else None,
+        "form": round(tsb[0]) if tsb else None,
+        "race": race[0].isoformat() if race else None,
+    }
+
+
 def steps_context(db: Database, d: D) -> dict[str, Any] | None:
     """The day before *d* on foot vs the usual (context only; doesn't change the readiness level)."""
     from hart.analytics.steps import step_context

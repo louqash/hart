@@ -196,6 +196,7 @@ def test_json_endpoints_are_strict_json(client) -> None:
         "/api/sessions/a0",
         "/api/sessions/a0/streams",
         "/api/notes",
+        "/api/watch",
     ):
         resp = client.get(path, headers=H)
         assert resp.status_code == 200, (path, resp.text[:300])
@@ -433,3 +434,53 @@ def test_unknown_readiness_explains_itself() -> None:
     short = compute_readiness(ReadinessInputs(sleep_hours=7.5, hrv_last_night=60, hrv_history=[58] * 5), T)
     detail = short["missing_detail"][0]
     assert detail["input"] == "HRV baseline" and "you have 5" in detail["why"] and "9 more night" in detail["fix"]
+
+
+# ---------------------------------------------------------------------------
+# Watch face summary
+# ---------------------------------------------------------------------------
+
+
+def test_watch_summary(tmp_path: Path) -> None:
+    from hart.server.data import watch_summary
+    from hart.storage.database import Database
+
+    db = Database(tmp_path / "w.duckdb").connect()
+    today = D(2026, 10, 3)
+    assert watch_summary(db, today, T) == {
+        "date": "2026-10-03",
+        "ready": "unknown",
+        "phase": None,
+        "week": None,
+        "form": None,
+        "race": None,
+    }
+
+    db.execute(
+        "INSERT INTO training_phases (phase_type, name, start_date, end_date, source) "
+        "VALUES ('build', 'Build 1', '2026-09-21', '2026-11-15', 'test')"
+    )
+    # Today's load isn't computed yet: form falls back to the latest day of the past week
+    db.execute(
+        "INSERT INTO daily_training_load (date, sport_type, tsb) VALUES "
+        "('2026-10-01', 'combined', 5.6), ('2026-10-02', 'bike', -20), ('2026-09-20', 'combined', 30)"
+    )
+    # The next A-race wins over an earlier B-race; past races are ignored
+    db.execute(
+        "INSERT INTO races (name, race_date, distance, priority) VALUES "
+        "('Old', '2026-06-01', 'half', 'A'), ('Tune-up', '2027-05-01', 'half', 'B'), "
+        "('Goal', '2027-08-01', 'full', 'A')"
+    )
+    summary = watch_summary(db, today, T)
+    assert (summary["phase"], summary["week"], summary["form"], summary["race"]) == ("build", 2, 6, "2027-08-01")
+
+    db.execute("DELETE FROM races WHERE priority = 'A'")
+    assert watch_summary(db, today, T)["race"] == "2027-05-01"
+    assert watch_summary(db, D(2026, 10, 12), T)["form"] is None  # last value is over a week old
+    db.close()
+
+
+def test_watch_endpoint_requires_identity(client) -> None:
+    assert client.get("/api/watch").status_code == 403
+    body = client.get("/api/watch", headers=H).json()
+    assert set(body) == {"date", "ready", "phase", "week", "form", "race"}
