@@ -43,7 +43,7 @@ class Spec:
 
 
 SPECS = [
-    Spec("time", "playfair-display-latin-wght-normal.woff2", 500, 132, DIGITS + ":"),
+    Spec("time", "playfair-display-latin-wght-normal.woff2", 500, 124, DIGITS + ":"),  # "00:00" fits between the arcs
     Spec("label", "inter-latin-wght-normal.woff2", 400, 24, UPPER + DIGITS + " ", tracking=3),
     Spec("body", "inter-latin-wght-normal.woff2", 400, 26, ASCII),
     Spec("small", "inter-latin-wght-normal.woff2", 400, 20, ASCII),

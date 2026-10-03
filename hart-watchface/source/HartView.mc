@@ -94,8 +94,9 @@ class HartView extends WatchUi.WatchFace {
         var battery = Data.battery();
         drawGauge(dc, true, bodyBattery, Palette.GREEN);
         drawGauge(dc, false, battery, Palette.AMBER);
-        text(dc, px(46), py(236), _arc, valueOrDash(bodyBattery), Palette.GREEN, Graphics.TEXT_JUSTIFY_LEFT);
-        text(dc, px(408), py(236), _arc, battery.toString(), Palette.AMBER, Graphics.TEXT_JUSTIFY_RIGHT);
+        // Values sit by the arcs' top ends: at mid-height a four-digit 24-hour time runs into them
+        text(dc, px(93), py(106), _arc, valueOrDash(bodyBattery), Palette.GREEN, Graphics.TEXT_JUSTIFY_CENTER);
+        text(dc, px(361), py(106), _arc, battery.toString(), Palette.AMBER, Graphics.TEXT_JUSTIFY_CENTER);
 
         var hart = Application.Storage.getValue("hart") as Dictionary?;
         var days = Data.daysToRace(hart);

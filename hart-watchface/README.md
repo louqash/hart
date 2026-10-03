@@ -1,5 +1,7 @@
 # hart watch face
 
+![The face with hart data (fictional values), and its always-on mode](../docs/images/watchface.webp)
+
 A Connect IQ watch face for the Forerunner 965 in the hart web UI's style: Playfair Display time,
 Body Battery and watch-battery arcs, heart rate and steps. In always-on mode it
 draws outlined digits in the same place as the active face, drifting by 2px each minute

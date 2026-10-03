@@ -40,6 +40,7 @@ you). Your data stays in one DuckDB file on your machine.
 | **Strength** | Progression per lift (top sets, estimated 1-rep max, 8-week change), sessions per week against your target; lifts Garmin names differently can be merged ("Barbell Deadlift" = "Deadlift"). |
 | **Health** | Lab results with trends, and reminders computed from them: follow-ups on flagged results, regular panels timed to your season, a pre-race medical, physio check-ins. |
 | **Ember** | Chat with an AI coach-analyst that reads your data through hart's tools, never invents numbers, and proposes changes (notes, plan, season, health checks) that you approve. |
+| **Watch face** | A Garmin Forerunner 965 face in hart's style (optional): time, Body Battery, heart rate and steps, plus today's readiness, training phase, form and a countdown to your A-race, fetched from hart through your phone. |
 | **Discord** | A message with each session's grade, an evening message with tomorrow's plan and suggestion, today's sessions and open alerts — and, with a bot, chat with Ember right there: reply to the message or tag @Ember in the channel. |
 
 | Session grade, judged rep by rep | Daily suggestion — and Ember's take on the coach's plan |
@@ -47,8 +48,8 @@ you). Your data stays in one DuckDB file on your machine.
 | ![An interval ride graded C: reps 1–2 on target, the last faded — with execution, response and context scores](docs/images/session.webp) | ![Next Steps: Ember partly disagrees with the coach's tempo run and suggests an easy run with strides](docs/images/plan.webp) |
 | **Strength progression** | **Fitness, fatigue and form over the season** |
 | ![Deadlift top sets and estimated 1-rep max over six months](docs/images/strength.webp) | ![Performance-management chart with a cold and a training camp marked](docs/images/fitness.webp) |
-| **Health checks from lab results** | |
-| ![Reminders: a blood panel due, a vitamin D follow-up, a planned TSH re-check, a physio check-in](docs/images/health.webp) | |
+| **Health checks from lab results** | **Watch face, and its always-on mode** |
+| ![Reminders: a blood panel due, a vitamin D follow-up, a planned TSH re-check, a physio check-in](docs/images/health.webp) | ![Garmin watch face: time, Body Battery and battery arcs, readiness and phase, heart rate, steps, form and race countdown; beside it the outlined always-on time](docs/images/watchface.webp) |
 
 **Suggestions follow hard rules.** Code, not the model, checks every suggestion: no hard sessions on a red
 readiness day, the limits in your notes ("swim only on Thursday", weekly strength sessions), comeback
@@ -108,6 +109,7 @@ add your races on the Season page, and set your name, power meter and whether yo
 - [Architecture](docs/architecture.md) — how the pieces fit: sync pipeline, jobs, Ember, grading, suggestions
 - [Security & privacy](docs/security.md) — sign-in, what Claude can and can't do, what leaves your server
 - [Development](docs/development.md) — local setup, tests, project layout
+- [Watch face](hart-watchface/README.md) — building and installing the Garmin face, connecting it to hart
 
 ## Using hart from Claude Code
 
