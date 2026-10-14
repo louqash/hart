@@ -386,6 +386,7 @@ PURPOSE_LABELS = {
     "garmin_text": "Garmin text",
     "parse_plan": "Plan paste",
     "parse_labs": "Lab paste",
+    "weekly_review": "Weekly review",
 }
 
 
@@ -395,6 +396,7 @@ PURPOSE_COLORS = {  # the app's palette, one per kind of run (usage bars and tab
     "grade": "#e2a45f",
     "parse_plan": "#6fa8c9",
     "parse_labs": "#c49bd6",
+    "weekly_review": "#9cc27a",
 }
 
 

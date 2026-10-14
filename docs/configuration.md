@@ -86,6 +86,8 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Model for daily suggestions | `HART_MODEL_SUGGEST` | `claude-opus-5-5` |  |
 | Model for session grading | `HART_MODEL_GRADE` | `claude-sonnet-5` | Also converts sessions to Garmin workouts. |
 | Model for reading pasted plans and lab reports | `HART_MODEL_PARSE` | `claude-haiku-4-5` |  |
+| Model for the weekly review | `HART_MODEL_WEEKLY_REVIEW` | `claude-opus-5-5` |  |
+| Weekly review effort | `HART_WEEKLY_REVIEW_EFFORT` | `xhigh` | Nobody waits for it, so it can think longer and check more — at the cost of more of your plan. |
 
 **Schedule**
 
@@ -97,6 +99,8 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Hourly sync until (hour) | `HART_HOURLY_UNTIL` | `23` |  |
 | Tomorrow's suggestion at | `HART_PRELIMINARY_AT` | `20:00` | From this time on, the dashboard shows tomorrow instead of today. |
 | Nightly backup at | `HART_BACKUP_AT` | `03:00` |  |
+| Weekly review on | `HART_WEEKLY_REVIEW_DAY` | `mon` | Ember reviews the week against the plans: on Monday the week that just ended, on Sunday the week so far. It waits for a Garmin sync after this time, so the last sessions are in. |
+| Weekly review from | `HART_WEEKLY_REVIEW_AT` | `06:00` |  |
 
 **Notifications & integrations**
 
@@ -109,6 +113,7 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Discord message after each graded session | `HART_GRADE_MESSAGE` | `on` | The grade, its scores and what went well — not for the bulk 'grade past sessions' run. |
 | Wait for your note before grading (minutes) | `HART_GRADE_WAIT_MINUTES` | `120` | A new session without a note or RPE/feel waits up to this long so you can add them — in Garmin Connect, on the session page, or from the Discord message (which also has “Grade now”). It's graded as soon as both are in. 0 grades right away. |
 | Send accepted suggestions to Garmin | `HART_GARMIN_AUTO_SEND` | `on` | Runs and rides are scheduled on your Garmin calendar. |
+| Discord message with the weekly review | `HART_WEEKLY_REVIEW_MESSAGE` | `on` | What was done against the plan, what's missing, the season and next week's focus. |
 
 ### Advanced thresholds
 

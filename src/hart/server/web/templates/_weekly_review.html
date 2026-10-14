@@ -1,0 +1,131 @@
+{% from "_icons.html" import icon %}
+{#- Season page: Ember's weekly review — the latest in full, earlier weeks in a table that opens each one. -#}
+
+{% set VERDICT_CHIP = {"on_track": "green", "ahead": "green", "mixed": "amber", "behind": "sunset", "disrupted": "unknown"} %}
+{% set PROPOSAL_CHIP = {"pending": "amber", "applied": "green", "dismissed": "unknown", "decided": "unknown", "gone": "unknown"} %}
+
+{% macro scorecard(c) %}
+{% if c and c.sports %}
+<div class="table-wrap"><table class="scorecard">
+  <tr><th>Sport</th><th class="num" title="Planned sessions done / planned sessions due">As planned</th><th class="num">Done</th><th class="num" title="Weekly minimum from your notes">Target</th><th class="num">Time</th></tr>
+  {% for s in c.sports if s.sessions or s.planned_due or s.target %}
+  <tr><td><span class="sport {{ s.sport }}"></span>{{ s.sport|sport }}</td>
+    <td class="num">{{ '%d / %d'|format(s.done_as_planned, s.planned_due) if s.planned_due else '—' }}</td>
+    <td class="num">{{ s.sessions }}</td>
+    <td class="num {{ ('ok' if s.target_met else 'warn') if s.target }}">{% if s.target %}{{ s.target }} {{ '✓' if s.target_met else '✗' }}{% else %}—{% endif %}</td>
+    <td class="num">{{ (s.minutes * 60)|duration }}</td></tr>
+  {% endfor %}
+  <tr class="total"><td>All</td>
+    <td class="num">{% if c.planned_due %}{{ c.done_as_planned }} / {{ c.planned_due }}{% if c.completion_pct is not none %} · {{ c.completion_pct }}%{% endif %}{% else %}—{% endif %}</td>
+    <td class="num">{{ c.sports|sum(attribute='sessions') }}</td><td></td>
+    <td class="num">{{ c.hours }} h</td></tr>
+</table></div>
+<p class="small faint" style="margin:6px 0 0">Load {{ c.load }}{% if c.grade_average is not none %} · grades average {{ '%.1f'|format(c.grade_average) }}/5 over {{ c.graded }} session{{ 's' if c.graded != 1 }}{% endif %} · walks and other activities not counted</p>
+{% endif %}
+{% endmacro %}
+
+{% macro sections(r) %}
+{% set x = r.review or {} %}
+<div class="grid two review-sections">
+  <div>
+    {% if x.went_well %}<div class="eyebrow">Went well</div><ul class="hl good">{% for p in x.went_well %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+    {% if x.missing %}<div class="eyebrow">Missing</div><ul class="hl bad">{% for p in x.missing %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+  <div>
+    {% if x.season %}<div class="eyebrow">Season</div><p class="small" style="line-height:1.6; margin:6px 0 12px">{{ x.season }}</p>{% endif %}
+    {% if x.next_week %}<div class="eyebrow">Next week</div><ul class="hl next">{% for p in x.next_week %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}
+  </div>
+</div>
+{% if r.proposals %}
+<div class="eyebrow" style="margin-top:8px">Changes Ember proposed</div>
+<ul class="list">
+  {% for p in r.proposals %}
+  <li><span style="white-space:normal">{{ p.summary }}</span>
+    <span class="row" style="flex:none">
+      {% if p.status == 'pending' %}<a class="small" href="{{ '#proposals' if p.type == 'season' else '/notes' }}">{{ 'Apply or dismiss above' if p.type == 'season' else 'On the Notes page' }} →</a>{% endif %}
+      <span class="chip {{ PROPOSAL_CHIP.get(p.status, '') }}">{{ p.status }}</span>
+    </span></li>
+  {% endfor %}
+</ul>
+{% endif %}
+{% endmacro %}
+
+{% macro weekly_review_card(wr) %}
+{% set r = wr.latest %}
+<section class="card" id="weekly-review">
+  <div class="spread">
+    <h2>{{ icon("book") }}Trail Journal <span class="plain">weekly review</span></h2>
+    <div class="row">
+      {% if wr.pending %}
+        <span class="small muted"><span class="grade-chip pending"><i></i></span>&nbsp; Ember is reviewing — this takes a while; the page updates when it's done.</span>
+      {% elif not wr.claude_paused %}
+        {% set label = 'Review the season so far' if wr.next_scope == 'season' else ('Review last week' if wr.week_complete else 'Review this week so far') %}
+        <button class="small {{ 'primary' if not r else 'secondary' }}" onclick="act(this, () => api.post('/api/weekly-reviews/run', {}))">{{ label }}</button>
+        {% if wr.next_scope == 'week' %}<button class="small secondary" title="This week plus every week since the season started" onclick="act(this, () => api.post('/api/weekly-reviews/run', {scope: 'season'}))">Whole season</button>{% endif %}
+      {% endif %}
+    </div>
+  </div>
+
+  {% if r and r.status == 'ok' %}
+    <div class="row small" style="margin:6px 0 10px">
+      <span class="chip {{ VERDICT_CHIP.get(r.verdict, '') }}">{{ r.verdict_label }}</span>
+      <span class="chip">{{ r.week_start|date('%d %b') }} – {{ r.week_end|date('%d %b') }}{% if r.so_far %} · so far{% endif %}</span>
+      {% if r.scope == 'season' %}<span class="chip accent">whole season</span>{% endif %}
+      {% if r.confidence == 'low' %}<span class="chip amber" title="Too many of its numbers couldn't be found in the data">low confidence</span>{% endif %}
+    </div>
+    <p class="serif" style="font-size:20px; color:var(--cream); margin:0 0 8px; line-height:1.35">{{ r.headline }}</p>
+    <p style="line-height:1.6; margin:0 0 14px">{{ r.summary }}</p>
+    {{ scorecard(r.scorecard) }}
+    {{ sections(r) }}
+    <div class="row small faint" style="margin-top:10px">
+      {% if r.citations %}<span>{{ r.citations|selectattr('verified')|list|length }} of {{ r.citations|length }} numbers verified</span>{% endif %}
+      <span>v{{ r.version }} · {{ r.created_at|date('%a %d %b %H:%M') }}</span>
+      {% if r.discord == 'sent' %}<span>sent to Discord</span>{% elif r.discord and r.discord.startswith('failed') %}<span class="warn" title="{{ r.discord }}">Discord failed</span>{% endif %}
+    </div>
+    <details class="legend"><summary>Ember's working</summary>
+      {% if r.review.analysis %}<p class="small muted" style="white-space:pre-line; line-height:1.6">{{ r.review.analysis }}</p>{% endif %}
+      {% if r.citations %}<div class="table-wrap"><table class="cites">
+        {% for x in r.citations %}<tr><td class="{{ 'v' if x.verified else 'u' }}">{{ '✓' if x.verified else '⚠' }}</td><td>{{ x.label }}</td>
+          <td class="num">{{ x.value }}{% if x.unit %} {{ x.unit }}{% endif %}</td><td class="faint small">{{ x.source }}</td></tr>{% endfor %}
+      </table></div>{% endif %}
+      <p class="small"><a href="/api/weekly-reviews/{{ r.id }}" target="_blank">The facts it was given (JSON) →</a></p>
+    </details>
+  {% elif r %}
+    <p class="small err">The review of {{ r.week_start|date('%d %b') }} – {{ r.week_end|date('%d %b') }} failed: {{ r.error }}</p>
+  {% endif %}
+  {% if wr.claude_paused %}
+    <p class="small warn">Claude is paused until {{ wr.claude_paused[:16]|replace('T', ' ') }} (usage limit or token problem).</p>
+  {% elif not r and not wr.pending %}
+    <p class="faint small">No review yet. The first one goes over the whole season so far.
+      {% if wr.schedule %}After that, Ember reviews the week {{ wr.schedule }} (Settings → Schedule).{% else %}The weekly schedule is off (Settings → Schedule).{% endif %}</p>
+  {% endif %}
+
+  {% set earlier = wr.history[1:] if r else [] %}
+  {% if earlier %}
+  <details class="legend" style="margin-top:14px" open><summary>Earlier weeks</summary>
+    <div class="table-wrap"><table class="review-history">
+      <tr><th>Week</th><th>Verdict</th><th class="num">Plan</th><th class="num">Time</th><th class="num">Grades</th><th>Headline</th></tr>
+      {% for h in earlier %}{% set c = h.scorecard or {} %}
+      <tr class="clickable" onclick="toggleReview({{ h.id }})">
+        <td class="nowrap">{{ h.week_start|date('%d %b') }}{% if h.so_far %} <span class="faint small">so far</span>{% endif %}</td>
+        <td>{% if h.status == 'ok' %}<span class="chip {{ VERDICT_CHIP.get(h.verdict, '') }}">{{ h.verdict_label }}</span>{% else %}<span class="err small">failed</span>{% endif %}</td>
+        <td class="num">{{ c.completion_pct ~ '%' if c.completion_pct is not none else '—' }}</td>
+        <td class="num">{{ c.hours ~ ' h' if c.hours is not none else '—' }}</td>
+        <td class="num">{{ '%.1f'|format(c.grade_average) if c.grade_average is not none else '—' }}</td>
+        <td class="wrap small">{{ h.headline or h.error or '' }}</td>
+      </tr>
+      <tr id="review-{{ h.id }}" class="review-detail" hidden><td colspan="6">
+        {% if h.status == 'ok' %}<p style="line-height:1.6; margin:4px 0 12px">{{ h.summary }}</p>{{ scorecard(h.scorecard) }}{{ sections(h) }}{% endif %}
+      </td></tr>
+      {% endfor %}
+    </table></div>
+  </details>
+  {% endif %}
+</section>
+<script>
+function toggleReview(id) {
+  const row = document.getElementById(`review-${id}`);
+  row.hidden = !row.hidden;
+}
+</script>
+{% endmacro %}

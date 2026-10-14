@@ -23,7 +23,7 @@ the database, so the server owns it: the CLI and your laptop's Claude Code talk 
 | `hart.storage` | Schema and migrations, writers, read queries, the read-only SQL guard. |
 | `hart.analytics` | Pure computation: training load (CTL/ATL/TSB), recovery, efficiency and decoupling, power curve, anomalies, phases and observed state, readiness, grading features, guardrails, health-check rules, strength progression, habit summaries and next-morning comparisons. |
 | `hart.server` | The web service: routes and templates, jobs and scheduler, Claude runner, chat, grading, suggestions, plan, health, settings. |
-| `hart.mcp_server` | 48 MCP tools over the same database (stdio on its own, or mounted at `/mcp` in the server). |
+| `hart.mcp_server` | 49 MCP tools over the same database (stdio on its own, or mounted at `/mcp` in the server). |
 | `hart.interfaces.cli` | `hart` command line. |
 
 Code computes facts; Claude interprets. Anything that must be right — zones, comparisons, readiness,
@@ -48,13 +48,14 @@ Garmin auth failures pause scheduled syncs until you run `hart auth`; rate limit
 ## Jobs and schedule
 
 `JobRunner` keeps jobs in the `jobs` table and runs them in two lanes: **io** (syncs, backups, messages) and
-**claude** (grading, suggestions, Garmin workouts), so a slow Claude run never delays a sync. Duplicates are
+**claude** (grading, suggestions, Garmin workouts, the weekly review), so a slow Claude run never delays a sync. Duplicates are
 refused, not queued twice. The `Scheduler` ticks every 30 seconds; its times come from Settings → Schedule:
 
 - morning watch: light syncs until last night's sleep arrives, then a full sync;
 - hourly syncs; an hourly sweep that grades anything missed;
 - today's suggestion by the end of the morning watch at the latest; tomorrow's at the preliminary time;
-- daily health-check evaluation; nightly backup; the habit check-in; the evening message.
+- daily health-check evaluation; nightly backup; the habit check-in; the evening message;
+- the weekly review (Mondays from 06:00 by default, after the first Garmin sync from about then on).
 
 The web UI shows running jobs in a bar under the header and refreshes once when they finish.
 
@@ -102,6 +103,22 @@ no hard work; the coach's plan can be shortened or eased, not extended; note rul
 wait; comeback duration caps. A violating answer gets one repair with the violations listed, then is stored as
 failed and not shown.
 
+### Weekly review
+
+`server.weekly_review` reviews a week against the plans; `analytics.weekly_review` computes the facts: every
+session that stood in the plan (coach, athlete or an accepted suggestion) done, missed, today or upcoming,
+sessions done without a plan, the weekly minimums from the notes (`min_sessions_per_week`) with how many weeks
+in a row fell short, six weeks of trend, and a grade summary. With the week's sessions and grades, load,
+recovery, the season calendar, pending proposals, the previous review and next week's plan, they go to the
+weekly-review model (Opus at extra-high effort by default — nobody waits for it, so it may take many tool
+calls). The run may propose season changes (`propose_season_change`, including kind `phases`, which moves a
+boundary between phases in one proposal) and notes — not plan sessions. Cited numbers are checked; a review
+with too many it can't find is sent back once, then marked low-confidence. The first review (and one asked
+for as "Whole season") also covers every week since the season started and the weeks before a layoff.
+Reviews are kept per week and version (`weekly_reviews`), shown on the Season page (Trail Journal) and posted
+to Discord. The review covers the week holding yesterday: on a Monday the week that just ended, later in the
+week the week so far.
+
 ## Other features
 
 - **Season:** phases are generated backwards from the next A-race (taper, peak, build, base blocks, a comeback
@@ -144,5 +161,6 @@ Raw: `activities`, `activity_streams`, `activity_laps`, `strength_sets`, `hrv_sa
 `sleep_records`, `hrv_daily`. Computed: `activity_metrics`, `daily_training_load`, `daily_recovery`,
 `weekly_summary`, `anomaly_log`. App: `training_phases`, `races`, `annotations`, `athlete_notes`,
 `planned_sessions`, `session_feedback`, `session_grades`, `daily_suggestions`, `season_proposals`,
-`lab_results`, `health_checks`, `sauna_sessions`, `habit_log`, `chat_conversations`, `chat_messages`, `claude_runs`, `jobs`, `app_settings`.
+`lab_results`, `health_checks`, `sauna_sessions`, `habit_log`, `weekly_reviews`, `chat_conversations`,
+`chat_messages`, `claude_runs`, `jobs`, `app_settings`.
 `describe_schema` (MCP) lists every column. Migrations run on start (`storage/schema.py`).

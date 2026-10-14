@@ -39,7 +39,7 @@ OUTPUT_EXCERPT = 2000
 
 @dataclass
 class RunSpec:
-    purpose: str  # chat | grade | suggest | parse_plan
+    purpose: str  # chat | grade | suggest | parse_plan | weekly_review
     prompt: str
     model: str
     system_prompt: str
@@ -50,6 +50,7 @@ class RunSpec:
     resume: str | None = None
     background: bool = False
     output_schema: dict[str, Any] | None = None  # JSON schema → structured output
+    effort: str | None = None  # low | medium | high | xhigh | max; None = the model's default
 
 
 @dataclass
@@ -209,6 +210,7 @@ class ClaudeRunner:
             include_partial_messages=True,
             env={"DISABLE_AUTOUPDATER": "1"},
             output_format={"type": "json_schema", "schema": spec.output_schema} if spec.output_schema else None,
+            effort=spec.effort,
         )
 
     async def _drive(self, client: Any, spec: RunSpec, emit: Emit, outcome: RunOutcome, guard: WebGuard) -> None:

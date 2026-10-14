@@ -110,6 +110,16 @@ def read_only_policy() -> ToolPolicy:
     return ToolPolicy(allowed_mcp=frozenset(n for n in mcp_tool_names() if n not in WRITE_TOOLS), web=False)
 
 
+# The weekly review may propose season changes and notes (the athlete approves them) — not plan sessions:
+# day-to-day changes are the daily suggestion's job, and the coach's plan stands.
+REVIEW_WRITE_TOOLS = frozenset({"propose_season_change", "propose_athlete_note", "propose_note_change"})
+
+
+def review_policy() -> ToolPolicy:
+    read = {n for n in mcp_tool_names() if n not in WRITE_TOOLS}
+    return ToolPolicy(allowed_mcp=frozenset(read | REVIEW_WRITE_TOOLS), web=False)
+
+
 # ---------------------------------------------------------------------------
 # Web guard
 # ---------------------------------------------------------------------------

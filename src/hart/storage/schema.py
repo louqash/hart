@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 17
+CURRENT_SCHEMA_VERSION: int = 18
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -436,6 +436,30 @@ CREATE TABLE IF NOT EXISTS daily_suggestions (
     UNIQUE (for_date, version)
 );
 
+CREATE SEQUENCE IF NOT EXISTS weekly_review_id_seq START 1;
+
+CREATE TABLE IF NOT EXISTS weekly_reviews (
+    id             INTEGER PRIMARY KEY DEFAULT nextval('weekly_review_id_seq'),
+    week_start     DATE NOT NULL,          -- Monday of the reviewed week
+    version        INTEGER NOT NULL,
+    made_on        DATE NOT NULL,          -- local date (before the week ended: the week so far)
+    trigger        VARCHAR,                -- schedule | manual
+    status         VARCHAR NOT NULL,       -- ok | failed
+    verdict        VARCHAR,                -- on_track | mixed | behind | ahead | disrupted
+    headline       VARCHAR,
+    summary        VARCHAR,
+    review         JSON,                   -- Ember's sections (analysis, went_well, missing, season, next_week)
+    confidence     VARCHAR,
+    citations      JSON,
+    proposals      JSON,                   -- changes proposed during the run (season_proposals / athlete_notes)
+    context        JSON,                   -- the facts it was given, scorecard included
+    error          VARCHAR,
+    discord        VARCHAR,                -- sent | off | failed: …
+    claude_run_id  INTEGER,
+    created_at     TIMESTAMPTZ DEFAULT current_timestamp,
+    UNIQUE (week_start, version)
+);
+
 CREATE TABLE IF NOT EXISTS chat_conversations (
     id                 VARCHAR PRIMARY KEY,
     title              VARCHAR,
@@ -716,6 +740,7 @@ def _run_migrations(db: Database) -> None:
 
     # v16: sauna_sessions and habit_log — new tables only, created above.
     # v17: grade_waits — a new table only, created above.
+    # v18: weekly_reviews — a new table only, created above.
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;

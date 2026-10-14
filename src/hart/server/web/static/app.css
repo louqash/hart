@@ -422,6 +422,14 @@ details[open] > summary { margin-bottom: 8px; }
 .hl.good li::before { content: "+"; color: var(--green); } .hl.bad li::before { content: "!"; color: var(--sunset); }
 .cites { font-size: 13px; } .cites td { padding: 6px 8px; } .cites .v { color: var(--green); } .cites .u { color: var(--amber); }
 
+/* ---- weekly review (Season page) ---- */
+.hl.next li::before { content: "→"; color: var(--green); }
+.scorecard td { padding: 8px 10px; } .scorecard tr.total td { color: var(--muted); font-weight: 600; border-top: 1px solid var(--line); }
+.review-sections { margin-top: 14px; }
+.review-history td.nowrap { white-space: nowrap; }
+.review-history tr.review-detail td { white-space: normal; background: var(--soft-2); padding: 12px 14px 16px; }
+.review-history tr.review-detail:hover td { background: var(--soft-2); }
+
 /* ---- plan and suggestions ---- */
 .tabbar .more-btn:hover { background: none; color: var(--cream); }
 .sugg-grid { margin: 14px 0 0; align-items: start; }

@@ -2,6 +2,7 @@
 {% from "_proposals.html" import proposals_card %}
 {% from "_icons.html" import icon %}
 {% from "_legend.html" import load_legend, tip %}
+{% from "_weekly_review.html" import weekly_review_card %}
 {% block title %}Season{% endblock %}
 {% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>{% endblock %}
 {% block content %}
@@ -37,6 +38,8 @@
   <p class="small muted" style="margin:8px 0 0">States: building (CTL rising &gt; 2/week), maintaining, absorbing (CTL easing while fresh), detraining (CTL down &gt; 20% in 4 weeks with few sessions), overreaching risk (TSB &lt; −30 or ramp &gt; 8/week). Thresholds are provisional.</p>
   {{ load_legend() }}
 </section>
+
+{{ weekly_review_card(wr) }}
 
 <section class="card">
   <div class="spread">

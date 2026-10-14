@@ -32,6 +32,7 @@ LANES: dict[str, str] = {
     "suggest": "claude",
     "garmin_workout": "claude",
     "plan_import": "claude",
+    "weekly_review": "claude",
 }  # everything else: "io"
 
 
@@ -48,6 +49,7 @@ DEMO_BLOCKED = frozenset(
         "vo2max_backfill",
         "intervals_backfill",
         "plan_import",
+        "weekly_review",
     }
 )
 
@@ -63,6 +65,7 @@ PRIORITY: dict[str, int] = {
     "suggest": 1,
     "garmin_workout": 1,
     "grade": 2,
+    "weekly_review": 3,  # long and unhurried: suggestions and grades waiting in the lane go first
     "backup": 3,
     "housekeeping": 3,
 }

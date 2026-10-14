@@ -237,6 +237,33 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         except (plan.PlanError, season_ops.SeasonError) as exc:
             raise JobFailed(str(exc)) from exc
 
+    def weekly_review(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
+        from hart.analytics.weekly_review import review_week
+        from hart.server import weekly_review as review
+        from hart.server.data import local_today
+
+        claude = runner_ref.get("claude")
+        if claude is None:
+            raise JobFailed("Claude runner not available")
+        today = local_today(config)
+        week_start = (
+            datetime.date.fromisoformat(payload["week_start"]) if payload.get("week_start") else review_week(today)[0]
+        )
+        trigger = payload.get("trigger", "manual")
+        try:
+            result = review.generate(
+                db, week_start, claude, runner_ref["runner"].loop, config, trigger=trigger, scope=payload.get("scope")
+            )
+        except review.ReviewPaused as exc:
+            raise JobFailed(str(exc)) from exc
+        except Exception as exc:
+            # Recorded, so the schedule stops after a couple of attempts instead of retrying every tick.
+            review.store_failure(db, week_start, today, trigger, f"{type(exc).__name__}: {exc}")
+            raise
+        if result["status"] != "ok":
+            raise JobFailed(f"The weekly review failed: {result.get('error')}", result)
+        return result
+
     def evening_message(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
         from hart.server import evening
 
@@ -321,4 +348,5 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         "evening_message": evening_message,
         "habit_checkin": habit_checkin,
         "plan_import": plan_import,
+        "weekly_review": weekly_review,
     }

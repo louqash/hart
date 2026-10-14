@@ -24,6 +24,21 @@ MODELS = {
     "claude-sonnet-5": "Sonnet 5 — strong and lighter on usage",
     "claude-haiku-4-5": "Haiku 4.5 — fast and cheapest, for simple parsing",
 }
+EFFORTS = {
+    "high": "High — thorough",
+    "xhigh": "Extra high — checks more before answering",
+    "max": "Max — the most thinking, uses the most of your plan",
+}
+WEEKDAY_CHOICES = {
+    "off": "Off",
+    "mon": "Monday",
+    "tue": "Tuesday",
+    "wed": "Wednesday",
+    "thu": "Thursday",
+    "fri": "Friday",
+    "sat": "Saturday",
+    "sun": "Sunday",
+}
 
 
 @dataclass(frozen=True)
@@ -126,6 +141,25 @@ REGISTRY: tuple[Setting, ...] = (
         env="HART_MODEL_PARSE",
         choices=MODELS,
     ),
+    Setting(
+        "model_weekly_review",
+        "ember",
+        "Model for the weekly review",
+        "claude-opus-5-5",
+        "choice",
+        env="HART_MODEL_WEEKLY_REVIEW",
+        choices=MODELS,
+    ),
+    Setting(
+        "weekly_review_effort",
+        "ember",
+        "Weekly review effort",
+        "xhigh",
+        "choice",
+        env="HART_WEEKLY_REVIEW_EFFORT",
+        choices=EFFORTS,
+        help="Nobody waits for it, so it can think longer and check more — at the cost of more of your plan.",
+    ),
     # --- schedule ----------------------------------------------------------
     Setting(
         "morning_watch_start",
@@ -157,6 +191,18 @@ REGISTRY: tuple[Setting, ...] = (
         help="From this time on, the dashboard shows tomorrow instead of today.",
     ),
     Setting("backup_time", "schedule", "Nightly backup at", "03:00", "time", env="HART_BACKUP_AT"),
+    Setting(
+        "weekly_review_day",
+        "schedule",
+        "Weekly review on",
+        "mon",
+        "choice",
+        env="HART_WEEKLY_REVIEW_DAY",
+        choices=WEEKDAY_CHOICES,
+        help="Ember reviews the week against the plans: on Monday the week that just ended, on Sunday "
+        "the week so far. It waits for a Garmin sync after this time, so the last sessions are in.",
+    ),
+    Setting("weekly_review_time", "schedule", "Weekly review from", "06:00", "time", env="HART_WEEKLY_REVIEW_AT"),
     # --- notifications -----------------------------------------------------
     Setting(
         "evening_message_enabled",
@@ -219,6 +265,15 @@ REGISTRY: tuple[Setting, ...] = (
         "bool",
         env="HART_GARMIN_AUTO_SEND",
         help="Runs and rides are scheduled on your Garmin calendar.",
+    ),
+    Setting(
+        "weekly_review_message_enabled",
+        "notifications",
+        "Discord message with the weekly review",
+        True,
+        "bool",
+        env="HART_WEEKLY_REVIEW_MESSAGE",
+        help="What was done against the plan, what's missing, the season and next week's focus.",
     ),
 )
 BY_KEY = {s.key: s for s in REGISTRY}

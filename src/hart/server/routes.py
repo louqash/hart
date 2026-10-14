@@ -246,6 +246,8 @@ def fitness_page(request: Request, db: Database = Depends(get_db), config=Depend
 
 @router.get("/season", response_class=HTMLResponse, include_in_schema=False)
 def season_page(request: Request, db: Database = Depends(get_db), config=Depends(get_config)) -> HTMLResponse:
+    from hart.server import weekly_review
+
     today = data.local_today(config)
     t = state.get_thresholds(db)
     return page(
@@ -254,6 +256,7 @@ def season_page(request: Request, db: Database = Depends(get_db), config=Depends
         {
             "s": data.season(db, today),
             "ctx": data.season_context(db, today, t),
+            "wr": weekly_review.season_card(db, config),
             "nav": "season",
             "phase_types": season_ops.PHASE_TYPES,
             "annotation_kinds": season_ops.ANNOTATION_KINDS,
@@ -471,6 +474,46 @@ def api_compare(body: CompareIn) -> Any:
 def api_season(db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
     today = data.local_today(config)
     return {**data.season(db, today), "context": data.season_context(db, today, state.get_thresholds(db))}
+
+
+class WeeklyReviewIn(BaseModel):
+    week_start: datetime.date | None = None  # any day of the week; default: the week a review now covers
+    scope: Literal["week", "season"] | None = None  # default: "season" for the first review, then "week"
+
+
+@router.get("/api/weekly-reviews")
+def api_weekly_reviews(limit: int = Query(26, ge=1, le=200), db: Database = Depends(get_db)) -> dict[str, Any]:
+    from hart.server import weekly_review
+
+    return data.clean({"reviews": weekly_review.history(db, limit)})
+
+
+@router.get("/api/weekly-reviews/{review_id}")
+def api_weekly_review(review_id: int, db: Database = Depends(get_db)) -> dict[str, Any]:
+    from hart.server import weekly_review
+
+    review = weekly_review.get(db, review_id, with_context=True)
+    if review is None:
+        raise HTTPException(404, detail="review not found")
+    return data.clean(review)
+
+
+@router.post("/api/weekly-reviews/run")
+def api_run_weekly_review(
+    request: Request, body: WeeklyReviewIn | None = None, config=Depends(get_config)
+) -> dict[str, Any]:
+    from hart.analytics.weekly_review import review_week
+
+    today = data.local_today(config)
+    week = data.monday(body.week_start) if body and body.week_start else review_week(today)[0]
+    if week > today:
+        raise HTTPException(400, detail="That week hasn't started yet")
+    payload: dict[str, Any] = {"week_start": week.isoformat(), "trigger": "manual"}
+    if body and body.scope:
+        payload["scope"] = body.scope
+    return request.app.state.runner.enqueue(
+        "weekly_review", payload, trigger="manual", dedupe_key=f"weekly_review:{week}"
+    )
 
 
 @router.post("/api/phases")

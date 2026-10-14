@@ -206,6 +206,20 @@ class Scheduler:
         fired += self.grade_waits_due(now_utc)
         fired += self.suggestions_due(local)
 
+        from hart.server import weekly_review
+
+        with contextlib.closing(self._db.cursor()) as cur:
+            week = weekly_review.due(cur, local)
+        if week is not None:
+            job = self._runner.enqueue(
+                "weekly_review",
+                {"week_start": week.isoformat(), "trigger": "schedule"},
+                trigger="schedule",
+                dedupe_key=f"weekly_review:{week}",
+            )
+            if job.get("status") == "queued":
+                fired.append(f"weekly_review:{week}")
+
         if self._config is not None:
             from hart.server import evening
 

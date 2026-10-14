@@ -1574,20 +1574,25 @@ def propose_season_change(
     distance: str = "",
     priority: str = "",
     notes: str = "",
+    changes: list[dict[str, Any]] | None = None,
 ) -> str:
     """Propose a change to the season calendar or races; the athlete applies or dismisses it.
 
     Nothing changes until the athlete approves it (in the chat card or on
     the Season page). Get ids and current values from `get_training_phase`
     or `run_sql_query` on training_phases / annotations first. Phases may
-    not overlap: to move a boundary, propose updates to both neighbours.
+    not overlap: to move a boundary between phases (a longer base, a later
+    build), use kind "phases" with every change in `changes` — they are
+    checked and applied together.
 
     Parameters:
-        kind: "phase" (training_phases), "annotation" (injury, illness, travel,
+        kind: "phase" (training_phases), "phases" (several phase changes at once,
+              in `changes`), "annotation" (injury, illness, travel,
               no_device, event, race, other — dated context shown on charts) or
               "race" (races: the next A-race drives the phase plan; race days
               get no training suggestion).
-        action: "create", "update" (only the fields you pass change) or "delete".
+        action: "create", "update" (only the fields you pass change) or "delete"
+              (ignored for "phases").
         reason: Why — shown to the athlete. Required.
         target_id: Id of the phase/annotation to update or delete.
         name, phase_type, start_date, end_date, goal: Phase fields
@@ -1596,11 +1601,16 @@ def propose_season_change(
               (end_date empty = ongoing).
         name, race_date, distance, priority, notes: Race fields
               (distance: full, half, olympic, sprint, run, other; priority A, B or C).
+        changes: For kind "phases": one object per phase — {"id": 12, "end_date": "2026-12-13"}
+              changes a phase (only the fields given), {"id": 13, "delete": true} removes one, and an
+              object without id adds one (name, phase_type, start_date, end_date, goal).
     """
     try:
         from hart.server.season_ops import SeasonError, create_proposal
 
-        if kind == "phase":
+        if kind == "phases":
+            payload: dict[str, Any] = {"changes": changes or []}
+        elif kind == "phase":
             payload = {
                 "name": name,
                 "phase_type": phase_type,
@@ -1702,6 +1712,34 @@ def get_daily_suggestion(date: str = "") -> str:
             return _json({"date": d, "suggestion": None, "message": "No suggestion for this date"})
         found.pop("context", None)  # the full bundle is large; the fields above summarise it
         return _json(found)
+    except Exception as exc:
+        return _json({"error": str(exc), "traceback": traceback.format_exc()})
+
+
+@_tool()
+def get_weekly_reviews(limit: int = 4, review_id: int = 0) -> str:
+    """Get Ember's weekly reviews (the Season page's Trail Journal), newest week first.
+
+    Each has the verdict (on_track, ahead, mixed, behind, disrupted), headline, summary, what went well,
+    what was missing, the season assessment, next week's points, the plan-vs-done scorecard and the changes
+    it proposed with their status now. With ``review_id``: that review in full, including the facts it was
+    given and Ember's working.
+
+    Parameters:
+        limit: How many weeks (default 4, at most 26).
+        review_id: One review in full instead of the list.
+    """
+    try:
+        from hart.server import weekly_review
+
+        db = _get_db()
+        if review_id:
+            review = weekly_review.get(db, review_id, with_context=True)
+            return _json(review or {"error": f"No weekly review with id {review_id}"})
+        reviews = weekly_review.history(db, max(1, min(limit, 26)))
+        for r in reviews:
+            r.pop("citations", None)
+        return _json({"reviews": reviews} if reviews else {"reviews": [], "message": "No weekly review yet."})
     except Exception as exc:
         return _json({"error": str(exc), "traceback": traceback.format_exc()})
 

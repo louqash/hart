@@ -241,11 +241,122 @@ def _describe(db: Database, kind: str, action: str, target_id: int | None, recor
     return f"Change {noun} “{old_name}”: " + ("; ".join(changes) if changes else "no changes")
 
 
+PHASES = "phases"  # several phase changes applied together, e.g. a longer base and a later build
+
+
+def _phase_record(record: dict[str, Any], label: str) -> dict[str, Any]:
+    for key in ("start_date", "end_date"):
+        if isinstance(record.get(key), str):
+            try:
+                record[key] = datetime.date.fromisoformat(record[key])
+            except ValueError as exc:
+                raise SeasonError(f"{label}: {key} must be YYYY-MM-DD") from exc
+    if record.get("phase_type") not in PHASE_TYPES:
+        raise SeasonError(f"{label}: phase_type must be one of {', '.join(PHASE_TYPES)}")
+    if record["end_date"] < record["start_date"]:
+        raise SeasonError(f"{label}: end date is before start date")
+    return record
+
+
+def phase_replan(db: Database, changes: Any) -> tuple[list[tuple[str, int | None, dict[str, Any]]], list[str]]:
+    """Validate phase changes as one set: only the calendar as it would be afterwards must be free of
+    overlaps, so a boundary can move (one phase longer, its neighbour shorter) in a single proposal.
+    Returns the operations ``(create | update | delete, id, record)`` and a line per change."""
+    if not isinstance(changes, list) or not changes:
+        raise SeasonError("changes must list the phases to change")
+    current = {
+        r[0]: dict(zip(("id", *PHASE_FIELDS), r))
+        for r in db.fetchall(f"SELECT id, {', '.join(PHASE_FIELDS)} FROM training_phases")
+    }
+    after: dict[Any, dict[str, Any]] = {pid: dict(p) for pid, p in current.items()}
+    ops: list[tuple[str, int | None, dict[str, Any]]] = []
+    lines: list[str] = []
+    for i, change in enumerate(changes, 1):
+        if not isinstance(change, dict):
+            raise SeasonError(f"change {i} must be an object")
+        given = {k: v for k, v in change.items() if k in PHASE_FIELDS and v not in (None, "")}
+        pid = change.get("id") or change.get("target_id")
+        if not pid:
+            missing = [f for f in PHASE_FIELDS if f != "goal" and not given.get(f)]
+            if missing:
+                raise SeasonError(f"change {i}: a new phase needs {', '.join(missing)}")
+            record = _phase_record({"goal": None, **given}, f"change {i}")
+            after[f"new{i}"] = record
+            ops.append(("create", None, record))
+            lines.append(
+                f"add “{record['name']}” ({record['phase_type']}) {record['start_date']} → {record['end_date']}"
+            )
+            continue
+        pid = int(pid)
+        if pid not in current:
+            raise SeasonError(f"No phase with id {pid}")
+        if any(op[1] == pid for op in ops):
+            raise SeasonError(f"Phase {pid} is changed twice")
+        old = current[pid]
+        if change.get("delete"):
+            del after[pid]
+            ops.append(("delete", pid, {}))
+            lines.append(f"delete “{old['name']}” ({old['start_date']} → {old['end_date']})")
+            continue
+        record = _phase_record({**old, **given}, f"“{old['name']}”")
+        diffs = [f"{k.replace('_', ' ')} {old[k]} → {record[k]}" for k in PHASE_FIELDS if str(old[k]) != str(record[k])]
+        if not diffs:
+            raise SeasonError(f"Nothing would change for “{old['name']}”")
+        after[pid] = record
+        ops.append(("update", pid, record))
+        lines.append(f"“{old['name']}”: " + "; ".join(diffs))
+    ordered = sorted(after.values(), key=lambda p: p["start_date"])
+    for a, b in zip(ordered, ordered[1:]):
+        if b["start_date"] <= a["end_date"]:
+            raise SeasonError(
+                f"“{a['name']}” ({a['start_date']} → {a['end_date']}) and “{b['name']}” "
+                f"({b['start_date']} → {b['end_date']}) would overlap"
+            )
+    return ops, lines
+
+
+def _apply_replan(db: Database, ops: list[tuple[str, int | None, dict[str, Any]]]) -> None:
+    """Every changed phase becomes manual (regeneration never touches it again), like an edit by hand."""
+    with db.transaction():
+        for op, pid, record in ops:
+            if op == "delete":
+                db.execute("DELETE FROM training_phases WHERE id = ?", [pid])
+            elif op == "update":
+                db.execute(
+                    "UPDATE training_phases SET phase_type = ?, name = ?, start_date = ?, end_date = ?, goal = ?, "
+                    "source = 'manual', confirmed = TRUE, updated_at = current_timestamp WHERE id = ?",
+                    [*(record[k] for k in PHASE_FIELDS), pid],
+                )
+            else:
+                db.execute(
+                    "INSERT INTO training_phases (phase_type, name, start_date, end_date, goal, source, confirmed) "
+                    "VALUES (?, ?, ?, ?, ?, 'manual', TRUE)",
+                    [record[k] for k in PHASE_FIELDS],
+                )
+
+
 def create_proposal(
     db: Database, kind: str, action: str, reason: str, target_id: int | None, payload: dict[str, Any]
 ) -> dict[str, Any]:
+    if kind == PHASES:
+        if not reason.strip():
+            raise SeasonError("A reason is required")
+        _ops, lines = phase_replan(db, payload.get("changes"))
+        summary = "Re-plan phases — " + "; ".join(lines)
+        stored = {
+            "changes": [
+                {k: (v.isoformat() if isinstance(v, datetime.date) else v) for k, v in c.items()}
+                for c in payload["changes"]
+            ]
+        }
+        new_id = db.fetchone(
+            "INSERT INTO season_proposals (kind, action, target_id, payload, reason, summary, status, source) "
+            "VALUES (?, 'update', NULL, ?, ?, ?, 'pending', 'claude') RETURNING id",
+            [PHASES, json.dumps(stored), reason.strip(), summary],
+        )[0]
+        return {"id": new_id, "status": "pending", "summary": summary}
     if kind not in PROPOSAL_KINDS:
-        raise SeasonError("kind must be 'phase', 'annotation', 'race' or 'plan'")
+        raise SeasonError("kind must be 'phase', 'phases', 'annotation', 'race' or 'plan'")
     if action not in ("create", "update", "delete"):
         raise SeasonError("action must be create, update or delete")
     if not reason.strip():
@@ -330,6 +441,17 @@ def apply_proposal(db: Database, proposal_id: int) -> dict[str, Any]:
     if status != "pending":
         raise SeasonError(f"Proposal is already {status}")
     payload = json.loads(payload) if isinstance(payload, str) else (payload or {})
+    if kind == PHASES:
+        try:  # checked again: the calendar may have changed since it was proposed
+            ops, _lines = phase_replan(db, payload.get("changes"))
+        except SeasonError as exc:
+            raise SeasonError(f"This change no longer fits the season: {exc}") from exc
+        _apply_replan(db, ops)
+        db.execute(
+            "UPDATE season_proposals SET status = 'applied', decided_at = current_timestamp WHERE id = ?",
+            [proposal_id],
+        )
+        return {"id": proposal_id, "status": "applied", "phases_stale": False, "kind": kind}
     if kind == PLAN_IMPORT:
         from hart.server import plan
 
