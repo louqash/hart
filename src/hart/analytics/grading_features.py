@@ -303,6 +303,45 @@ def interval_breakdown(
     return breakdown(sport, laps, steps)
 
 
+def heat_and_habits(db: Database, start: datetime.datetime) -> dict[str, Any] | None:
+    """Sauna the day before and on the session's day (placed before / after the session when the start
+    time is known), and the habits logged for the day before. None when nothing was logged."""
+    day = start.date()
+    saunas = []
+    for s in rows(
+        db,
+        "SELECT date, start_time, duration_min, temperature_c, rounds FROM sauna_sessions "
+        "WHERE date BETWEEN ? AND ? ORDER BY date, start_time NULLS LAST",
+        [day - datetime.timedelta(days=1), day],
+    ):
+        if s["date"] < day:
+            when = "day before"
+        elif s["start_time"] is None:
+            when = "same day, time unknown"
+        else:
+            when = "before the session" if s["start_time"] < start.time() else "after the session"
+        saunas.append(
+            {
+                "when": when,
+                "start_time": s["start_time"].strftime("%H:%M") if s["start_time"] else None,
+                "duration_min": s["duration_min"],
+                "temperature_c": s["temperature_c"],
+                "rounds": s["rounds"],
+            }
+        )
+    habits_day_before = [
+        r["habit"]
+        for r in rows(
+            db,
+            "SELECT habit FROM habit_log WHERE date = ? AND done ORDER BY habit",
+            [day - datetime.timedelta(days=1)],
+        )
+    ]
+    if not saunas and not habits_day_before:
+        return None
+    return {"sauna": saunas, "habits_done_day_before": habits_day_before}
+
+
 def build_features(db: Database, activity_id: str, thresholds: dict[str, float]) -> dict[str, Any] | None:
     a = one(
         db,
@@ -426,6 +465,7 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
             if phase
             else None,
             "readiness_that_morning": {"level": readiness["level"], "reason": readiness["reason"]},
+            "heat_and_habits": heat_and_habits(db, a["start_time"]),
             "form_day_before": {k: _r(v, 1) for k, v in (load_day or {}).items()},
             "active_constraints": [{"title": n["title"], "rules": n["rules"]} for n in notes],
             "annotations": [{"kind": x["kind"], "label": x["label"]} for x in annotations],

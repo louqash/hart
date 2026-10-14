@@ -1,8 +1,10 @@
 """Evening message to Discord (time set in Settings → Notifications, 22:00 by default).
 
-Built by code from what already exists — tomorrow's suggestion (made at
-20:00, refreshed after late sessions or coach changes), the coach's plan,
-today's sessions and grades, open alerts — so it costs no Claude usage.
+Built by code from what already exists, so it costs no Claude usage. Two embeds:
+the day's summary (every session with duration, distance, heart rate, power,
+load and grade; sauna; last night's sleep and HRV, resting HR, steps; form;
+habits answered in the check-in, sent earlier — see run_checkin) and tomorrow (the suggestion — made at 20:00, refreshed after
+late sessions or coach changes — the coach's plan, open alerts).
 Sent once a day; a restart after 22:00 doesn't send it twice.
 """
 
@@ -13,7 +15,7 @@ from typing import Any
 
 from hart.config import HartSettings
 from hart.server import state
-from hart.server.data import DAY, TRAINING_SPORTS, alerts, local_today, readiness_on, recent_sessions, rows
+from hart.server.data import DAY, TRAINING_SPORTS, alerts, local_today, one, readiness_on, recent_sessions, rows
 
 SENT_KEY = "evening_message_sent_on"
 FAILED_KEY = "evening_message_failed_at"
@@ -114,8 +116,105 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+def _distance(sport: str, meters: float | None) -> str | None:
+    if not meters:
+        return None
+    return f"{meters:,.0f} m".replace(",", " ") if sport == "swim" else f"{meters / 1000:.1f} km"
+
+
+def session_line(x: dict[str, Any]) -> str:
+    """``🚴 **Endurance ride** · 1:02 h · 28.4 km · ♥ 128 · 182 W · load 54 · **B**``"""
+    parts = [f"{SPORT_ICONS.get(x['sport_type'], '•')} **{x['name'] or x['sport_type']}**", _minutes(x["duration_s"])]
+    parts.append(_distance(x["sport_type"], x.get("distance_meters")) or "")
+    if x.get("avg_hr"):
+        parts.append(f"♥ {x['avg_hr']:.0f}")
+    power = x.get("normalized_power") or x.get("avg_power")
+    if x["sport_type"] == "bike" and power:
+        parts.append(f"{power:.0f} W")
+    if x.get("load"):
+        parts.append(f"load {x['load']:.0f}")
+    grade = (x.get("grade") or {}).get("letter")
+    if grade:
+        parts.append(f"**{grade}**")
+    return " · ".join(p for p in parts if p)
+
+
+def day_summary(db: Any, config: HartSettings, day: datetime.date) -> dict[str, Any]:
+    """The day as a Discord embed: sessions, sauna, body numbers, form, habits."""
+    from hart.server import habits
+
+    readiness = readiness_on(db, day, state.get_thresholds(db))
+    sessions = sorted(
+        (x for x in recent_sessions(db, day, day) if x["sport_type"] in TRAINING_SPORTS),
+        key=lambda x: x["start_time"],
+    )
+    lines = [session_line(x) for x in sessions] or ["Rest day — no training"]
+    if len(sessions) > 1:
+        total_s = sum(x["duration_s"] or 0 for x in sessions)
+        total_load = sum(x.get("load") or 0 for x in sessions)
+        lines.append(
+            f"Σ {_plural(len(sessions), 'session')} · {_minutes(total_s)}"
+            + (f" · load {total_load:.0f}" if total_load else "")
+        )
+    saunas = habits.sauna_sessions(db, day, day)
+    if saunas:
+        lines.append("")
+        lines += [f"🧖 Sauna · {habits.describe_sauna(x)}" for x in saunas]
+
+    fields: list[dict[str, Any]] = []
+    sleep = one(db, "SELECT total_sleep_sec, sleep_score FROM sleep_records WHERE date = ?", [day]) or {}
+    hrv = one(db, "SELECT hrv_last_night_ms FROM hrv_daily WHERE date = ?", [day]) or {}
+    night = []
+    if sleep.get("total_sleep_sec"):
+        night.append(
+            _minutes(sleep["total_sleep_sec"])
+            + (f" · score {sleep['sleep_score']}" if sleep.get("sleep_score") else "")
+        )
+    if hrv.get("hrv_last_night_ms"):
+        night.append(f"HRV {hrv['hrv_last_night_ms']:.0f} ms")
+    if night:
+        fields.append({"name": "😴 Last night", "value": "\n".join(night), "inline": True})
+    health = one(db, "SELECT resting_hr, steps FROM daily_health WHERE date = ?", [day]) or {}
+    body = []
+    if health.get("resting_hr"):
+        body.append(f"Resting HR {health['resting_hr']:.0f}")
+    if health.get("steps"):
+        body.append(f"{health['steps']:,} steps".replace(",", " "))
+    if body:
+        fields.append({"name": "❤️ Body", "value": "\n".join(body), "inline": True})
+    load = one(db, "SELECT ctl, atl, tsb FROM daily_training_load WHERE sport_type = 'combined' AND date = ?", [day])
+    if load and load.get("ctl") is not None:
+        fields.append(
+            {
+                "name": "📈 Form",
+                "value": f"Fitness {load['ctl']:.0f} · Fatigue {load['atl']:.0f}\nForm {load['tsb']:+.0f}",
+                "inline": True,
+            }
+        )
+    if readiness["level"] != "unknown":
+        fields.append({"name": "Readiness this morning", "value": READINESS[readiness["level"]][1], "inline": True})
+    answers = habits.day_habits(db, day)
+    if answers:
+        done = [h["label"] for h in habits.definitions(db) if answers.get(h["key"])]
+        fields.append({"name": "✅ Habits", "value": ", ".join(done) or "None of them", "inline": True})
+    elif state.get_setting(db, CHECKIN_SENT_KEY) == day.isoformat():
+        fields.append(
+            {"name": "✅ Habits", "value": "Not answered yet — the check-in's buttons still work", "inline": True}
+        )
+
+    embed: dict[str, Any] = {
+        "title": f"📒 Today · {day:%A} {day.day} {day:%b}",
+        "description": _clip("\n".join(lines), 4000),
+        "color": READINESS.get(readiness["level"], READINESS["unknown"])[0],
+        "fields": fields[:25],
+    }
+    if config.server.public_host:
+        embed["url"] = f"https://{config.server.public_host}/sessions"
+    return embed
+
+
 def build(db: Any, config: HartSettings) -> dict[str, Any]:
-    """The evening message as a Discord embed: tomorrow's plan up top, today and alerts below."""
+    """The evening message: today's summary, then tomorrow's plan with the alerts."""
     from hart.server.suggestions import coach_plan_for, for_display, race_on
 
     today = local_today(config)
@@ -185,18 +284,6 @@ def build(db: Any, config: HartSettings) -> dict[str, Any]:
                 else "No suggestion for tomorrow yet."
             )
 
-    done = [x for x in recent_sessions(db, today, today) if x["sport_type"] in TRAINING_SPORTS]
-    today_lines = []
-    for x in sorted(done, key=lambda x: x["start_time"]):
-        grade = (x.get("grade") or {}).get("letter")
-        today_lines.append(
-            f"{SPORT_ICONS.get(x['sport_type'], '•')} {x['name'] or x['sport_type']} · {_minutes(x['duration_s'])}"
-            + (f" · **{grade}**" if grade else "")
-        )
-    fields.append({"name": "Today", "value": "\n".join(today_lines) or "Rest day", "inline": True})
-    if readiness["level"] != "unknown":
-        fields.append({"name": "Readiness today", "value": READINESS[readiness["level"]][1], "inline": True})
-
     al = alerts(db, config)
     notices = []
     if al["garmin_blocked"] == "garmin_auth":
@@ -218,7 +305,7 @@ def build(db: Any, config: HartSettings) -> dict[str, Any]:
         embed["url"] = f"{base}/plan"
     if notices:
         embed["footer"] = {"text": "🔔 " + " · ".join(notices)}
-    return {"embeds": [embed]}
+    return {"embeds": [day_summary(db, config, today), embed]}
 
 
 def due(db: Any, config: HartSettings, now_local: datetime.datetime) -> bool:
@@ -252,4 +339,48 @@ def run(db: Any, config: HartSettings, *, test: bool = False) -> dict[str, Any]:
         raise
     if not test:
         state.set_setting(db, SENT_KEY, local_today(config).isoformat())
+    return {"sent": True}
+
+
+# ---------------------------------------------------------------------------
+# Habit check-in (its own time, before the evening message so the summary includes the answers)
+# ---------------------------------------------------------------------------
+
+CHECKIN_SENT_KEY = "habit_checkin_sent_on"
+CHECKIN_FAILED_KEY = "habit_checkin_failed_at"
+
+
+def checkin_configured(config: HartSettings) -> bool:
+    """Buttons need the bot: a webhook can't carry them."""
+    return bool(config.discord.bot_token and config.discord.channel_id)
+
+
+def checkin_due(db: Any, config: HartSettings, now_local: datetime.datetime) -> bool:
+    """After the check-in time, once per day, when the bot is set up, the check-in is on and there are habits."""
+    from hart.server import habits, settings
+
+    if not checkin_configured(config) or not settings.get(db, "habit_checkin_enabled"):
+        return False
+    if now_local.time() < settings.get_time(db, "habit_checkin_time"):
+        return False
+    if state.get_setting(db, CHECKIN_SENT_KEY) == now_local.date().isoformat():
+        return False
+    failed = state.get_setting(db, CHECKIN_FAILED_KEY)
+    if failed and now_local - datetime.datetime.fromisoformat(failed) < RETRY_AFTER:
+        return False
+    return bool(habits.definitions(db))
+
+
+def run_checkin(db: Any, config: HartSettings) -> dict[str, Any]:
+    from hart.server import habits
+
+    message = habits.checkin_message(db, local_today(config))
+    if message is None:
+        return {"sent": False, "reason": "no habits set up"}
+    try:
+        send(config, message)
+    except Exception:  # retried after RETRY_AFTER
+        state.set_setting(db, CHECKIN_FAILED_KEY, datetime.datetime.now(datetime.UTC).astimezone().isoformat())
+        raise
+    state.set_setting(db, CHECKIN_SENT_KEY, local_today(config).isoformat())
     return {"sent": True}

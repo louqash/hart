@@ -76,6 +76,7 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Your name | `HART_ATHLETE_NAME` | `Athlete` | How Ember addresses you. Everything else about you lives in your notes. |
 | Single-sided power meter | `HART_POWER_SINGLE_SIDED` | `off` | Left-only pedals or cranks double one leg: Ember compares power trends, not absolute watts. |
 | I have a coach | `HART_HAS_COACH` | `off` | Paste your coach's sessions on the Plan page, from wherever they arrive (an app, email, messages). On: Ember treats them as the plan and suggests adjustments. Off: the plan is your own and suggestions plan every day freely. |
+| Habits to track | `HART_HABITS` | `💊 Supplements, 🌙 Late meal, 🍷 Alcohol, 🧘 Mobility` | Yes/no things to check off each evening; comma-separated, an emoji in front shows on the buttons. Renaming a habit starts a new history for it. Sauna isn't a habit — tell Ember about it. |
 
 **Ember (Claude)**
 
@@ -103,6 +104,8 @@ Everything below can be changed on the **Settings** page. The environment variab
 |---|---|---|---|
 | Evening Discord message | `HART_EVENING_MESSAGE` | `on` | Needs the Discord bot or HART_DISCORD_WEBHOOK_URL. |
 | Evening message at | `HART_EVENING_MESSAGE_AT` | `22:00` |  |
+| Habit check-in on Discord | `HART_HABIT_CHECKIN` | `on` | Buttons for your habits (needs the Discord bot). Write “habits” to Ember in Discord for one any time. |
+| Habit check-in at | `HART_HABIT_CHECKIN_AT` | `21:30` | Before the evening message, so its summary includes your answers. The buttons keep working afterwards for anything later in the evening. |
 | Discord message after each graded session | `HART_GRADE_MESSAGE` | `on` | The grade, its scores and what went well — not for the bulk 'grade past sessions' run. |
 | Send accepted suggestions to Garmin | `HART_GARMIN_AUTO_SEND` | `on` | Runs and rides are scheduled on your Garmin calendar. |
 

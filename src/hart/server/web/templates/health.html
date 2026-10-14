@@ -44,7 +44,7 @@
 
 {% block content %}
 <div class="spread" style="margin-top:18px">
-  <h1 style="margin:0">Vital Signs <span class="plain">health checks · blood work</span></h1>
+  <h1 style="margin:0">Vital Signs <span class="plain">health checks · blood work · habits</span></h1>
   <button class="small secondary" onclick="act(this, () => api.post('/api/health/recheck'))">Re-check rules</button>
 </div>
 <p class="small muted" style="margin:6px 0 14px">Informational only — reminders and trends to discuss with your doctor, not a diagnosis.</p>
@@ -92,6 +92,69 @@
   </div>
   <div id="trend" class="chart short"></div>
   {% if h.trends %}<ul class="hl bad">{% for t in h.trends %}<li>{{ t.text }}</li>{% endfor %}</ul>{% endif %}
+</section>
+
+<section class="card" id="habits">
+  <div class="spread">
+    <h2>{{ icon("sun") }}Heat &amp; habits <span class="plain">sauna · daily habits</span></h2>
+    {% set ss = habits.sauna_summary %}
+    <div class="row small" style="gap:8px">
+      <span class="chip small-chip">7 days: {{ ss.last_7_days.sessions }} sauna · {{ ss.last_7_days.minutes }}′</span>
+      <span class="chip small-chip">28 days: {{ ss.last_28_days.sessions }} · {{ ss.last_28_days.per_week }}/week</span>
+    </div>
+  </div>
+  <p class="small muted" style="margin:6px 0 10px">Habits: the Discord check-in after the evening message (or write “habits” to Ember), or tap a cell here — answering one habit of a day records the rest as not done. Sauna: tell Ember (“2 rounds this morning, 3 tonight”), or use the form below — one entry per visit.{% if not habits.definitions %} No habits set up yet — add them in Settings → Athlete.{% endif %}</p>
+  <div class="table-wrap"><table class="habits">
+    <tr><th>Day</th><th>🧖 Sauna</th>{% for h in habits.definitions %}<th>{{ h.label }}</th>{% endfor %}</tr>
+    {% for d in habits.days %}
+    <tr>
+      <td class="small">{{ d.date|date('%a %d %b') }}</td>
+      <td class="num">{% for s in d.sauna %}<span title="{{ s.notes or '' }}">{{ s.duration_min }}′{% if s.temperature_c %} <span class="faint">{{ '%g'|format(s.temperature_c) }}°</span>{% endif %}</span>{{ ' + ' if not loop.last }}{% else %}<span class="faint">·</span>{% endfor %}</td>
+      {% for h in habits.definitions %}{% set v = d.habits[h.key] %}
+      <td><button class="habit-cell {{ 'on' if v else ('off' if v == false else '') }}" title="{{ 'done' if v else ('not done' if v == false else 'not answered') }}"
+        onclick="cycleHabit(this, '{{ d.date }}', '{{ h.key }}', {{ 'true' if v else ('false' if v == false else 'null') }})">{{ '✓' if v else ('–' if v == false else '?') }}</button></td>
+      {% endfor %}
+    </tr>
+    {% endfor %}
+  </table></div>
+
+  {% set effects = habit_effects.items()|list %}
+  {% if effects %}
+  <details class="legend"><summary>The morning after <span class="faint">· last 180 days, an association — not a cause</span></summary>
+    <div class="table-wrap"><table class="labs">
+      <tr><th></th><th class="num">nights with / without</th>{% for m in effects[0][1].metrics.values() %}<th class="num">{{ m.label }}</th>{% endfor %}</tr>
+      {% for key, e in effects %}
+      <tr><td>{{ '🧖 Sauna' if key == 'sauna' else e.label }}</td><td class="num">{{ e.days_with }} / {{ e.days_without }}</td>
+        {% for m in e.metrics.values() %}<td class="num">{% if m.difference is not none %}<span class="{{ 'good' if (m.difference > 0) == m.higher_is_better and m.difference != 0 else 'warn' if m.difference != 0 }}">{{ '%+g'|format(m.difference) }}</span> <span class="faint small">{{ m.with.mean }} vs {{ m.without.mean }}</span>{% else %}<span class="faint small">too few nights</span>{% endif %}</td>{% endfor %}</tr>
+      {% endfor %}
+    </table></div>
+  </details>
+  {% endif %}
+
+  <details class="legend" id="sauna-form-box"><summary>Log a sauna session</summary>
+    <form class="form-grid" id="sauna-form" style="margin-top:8px" onsubmit="event.preventDefault(); saveSauna(this)">
+      <input type="hidden" name="id">
+      <div><label>Date</label><input type="date" name="date" required value="{{ habits.days[0].date }}"></div>
+      <div><label>Minutes (this visit, all rounds)</label><input type="number" name="duration_min" min="1" max="240" required></div>
+      <div><label>Temperature °C</label><input type="number" name="temperature_c" min="30" max="130" step="any"></div>
+      <div><label>Rounds</label><input type="number" name="rounds" min="1" max="20"></div>
+      <div><label>Type</label><select name="kind"><option value="">—</option><option>finnish</option><option>infrared</option><option>steam</option><option>other</option></select></div>
+      <div><label>Start</label><input type="time" name="start_time"></div>
+      <div style="grid-column:1/-1"><label>Notes</label><input name="notes" maxlength="500" style="width:100%" placeholder="e.g. cold plunge after"></div>
+      <div class="row"><button type="submit" class="primary">Save</button><button type="button" class="secondary" hidden onclick="resetSaunaForm()">Cancel</button></div>
+    </form>
+  </details>
+  {% if habits.recent_sauna %}
+  <details class="legend"><summary>Recent sessions ({{ habits.recent_sauna|length }})</summary>
+    <ul class="list">
+      {% for s in habits.recent_sauna %}
+      <li class="spread small"><span><strong>{{ s.date|date('%a %d %b') }}</strong>{% if s.start_time %} {{ s.start_time }}{% endif %} · {{ s.duration_min }}′{% if s.temperature_c %} · {{ '%g'|format(s.temperature_c) }} °C{% endif %}{% if s.rounds %} · {{ s.rounds }} rounds{% endif %}{% if s.kind %} · {{ s.kind }}{% endif %}{% if s.notes %} <span class="faint">— {{ s.notes }}</span>{% endif %} <span class="faint">· {{ s.source }}</span></span>
+        <span class="row" style="flex:none"><button class="small secondary" onclick='editSauna({{ s|tojson }})'>Edit</button>
+        <button class="small danger" title="Delete" onclick="act(this, () => api.del('/api/sauna/{{ s.id }}'), {confirmText: 'Delete this sauna session?'})">×</button></span></li>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 </section>
 
 <section class="card">

@@ -75,6 +75,12 @@ def test_catalogue_maps_polish_names() -> None:
     assert labs.marker_key("Witamina D3 metabolit 25(OH)") == "vitamin_d_25oh"
     assert labs.marker_key("Cholesterol HDL") == "hdl" and labs.marker_key("Cholesterol") == "cholesterol_total"
     assert labs.marker_key("Bazofile %") is None
+    # The parser's key fills gaps in the aliases; urine markers never get a blood key.
+    assert (
+        labs.resolve_key("Krwinki białe (WBC)", "wbc") == "wbc"
+        and labs.resolve_key("Hemoglobina", "tsh") == "hemoglobin"
+    )
+    assert labs.resolve_key("Leukocyty (mocz)", "wbc") is None and labs.resolve_key("X", "made_up") is None
     assert labs.parse_value("<8.00") == (8.0, "<") and labs.parse_range("13.5 - 18") == (13.5, 18.0)
 
 
@@ -330,6 +336,73 @@ def test_lab_paste_import(client) -> None:
         r for r in client.get("/api/health/labs?marker=tsh", headers=H).json() if str(r["test_date"]) == "2026-09-20"
     ]
     assert new and new[0]["source"] == "paste"
+
+
+def test_pick_units_prefers_catalogue_unit() -> None:
+    rows = [
+        labs.LabMarkerIn(name="Glukoza", value="4.0", unit="mmol/l", reference_range="3.9 - 5.5"),
+        labs.LabMarkerIn(name="Glukoza", value="71", unit="mg/dl", reference_range="70 - 99"),
+        labs.LabMarkerIn(name="Bazofile %", value="1.1", unit="%"),
+        labs.LabMarkerIn(name="Bazofile %", value="1.2", unit="%"),
+    ]
+    kept, notes = labs.pick_units(rows)
+    assert [(m.name, m.value) for m in kept] == [("Glukoza", "71"), ("Bazofile %", "1.1")]
+    assert "preferred unit" in notes[0] and "no preferred unit" in notes[1]
+
+
+def test_values_convert_to_the_preferred_unit(db: Database) -> None:
+    row = {"name": "Glukoza", "value": "4.0", "unit": "mmol/l", "reference_range": "3.9 - 5.5"}
+    assert labs.insert_marker(db, "2026-01-02", row, "test")
+    row = {"name": "Cholesterol", "value": "<5.0", "unit": "mmol/l", "reference_range": "<5.0"}
+    assert labs.insert_marker(db, "2026-01-02", row, "test")
+    row = {"name": "Białe X", "value": "4.0", "unit": "mmol/l", "marker_key": "glucose"}
+    assert labs.insert_marker(db, "2026-01-02", row, "test")
+    got = {r["marker_name"]: r for r in labs.results(db)}
+    glucose = got["Glukoza"]
+    assert (glucose["value_text"], glucose["value_num"], glucose["unit"]) == ("72.1", 72.1, "mg/dl")
+    assert (glucose["ref_low"], glucose["ref_high"], glucose["ref_text"]) == (70.3, 99.1, "70.3 - 99.1")
+    chol = got["Cholesterol"]
+    assert (chol["value_text"], chol["qualifier"], chol["ref_text"]) == ("<193", "<", "<193")
+    assert got["Białe X"]["unit"] == "mg/dl" and got["Białe X"]["marker_key"] == "glucose"
+
+
+def test_stored_values_convert_once(db: Database) -> None:
+    db.execute(
+        "INSERT INTO lab_results (test_date, marker_name, marker_key, value_text, value_num, unit, ref_low, "
+        "ref_high, ref_text, source) VALUES ('2020-01-01', 'Kreatynina', 'creatinine', '80', 80, 'µmol/l', 62, "
+        "106, '62 - 106', 'import'), ('2020-01-01', 'Ferrytyna', 'ferritin', '95', 95, 'ng/ml', 30, 400, "
+        "'30 - 400', 'import')"
+    )
+    assert labs.convert_units(db) == 1 and labs.convert_units(db) == 0
+    got = {r["marker_name"]: r for r in labs.results(db)}
+    assert (got["Kreatynina"]["value_num"], got["Kreatynina"]["unit"]) == (0.905, "mg/dl")
+    assert got["Kreatynina"]["ref_text"] == "0.701 - 1.20" and got["Ferrytyna"]["value_num"] == 95
+
+
+def test_lab_paste_keeps_one_row_per_marker(client) -> None:
+    FakeClient.scripts.append(
+        [
+            _result(
+                structured_output={
+                    "panels": [
+                        {
+                            "test_date": "2026-09-21",
+                            "markers": [
+                                {"name": "Glukoza", "value": "4.0", "unit": "mmol/l"},
+                                {"name": "Glukoza", "value": "71", "unit": "mg/dl"},
+                                {"name": "Przejrzystość (mocz)", "value": "przejrzysty"},
+                            ],
+                        }
+                    ],
+                    "warnings": [],
+                }
+            )
+        ]
+    )
+    out = client.post("/api/health/labs/parse", headers=W, json={"text": "Glukoza 4.0 mmol/l\nGlukoza 71 mg/dl"}).json()
+    markers = out["panels"][0]["markers"]
+    assert [(m["value"], m["marker_key"]) for m in markers] == [("71", "glucose"), ("przejrzysty", None)]
+    assert any("Glukoza: kept mg/dl" in n for n in out["notes"]) and not out["warnings"]
 
 
 def test_claude_proposed_check_needs_approval(client) -> None:

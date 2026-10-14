@@ -26,6 +26,7 @@ from collections.abc import Callable
 from typing import Any
 
 from hart.config import HartSettings
+from hart.server.data import local_today
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
@@ -316,6 +317,7 @@ def run_sync_pipeline(
                 db,
                 ctl_tc=config.analytics.ctl_time_constant,
                 atl_tc=config.analytics.atl_time_constant,
+                until=local_today(config),
             ),
             atomic=True,
         )

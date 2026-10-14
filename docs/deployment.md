@@ -185,6 +185,19 @@ on the Plan page until you apply them, exactly like a paste in the paste box. On
 the bot application, or the user IDs in `HART_DISCORD_ALLOWED_USERS` — so other members of the server can't
 read your data through it. The System page shows whether the bot is connected.
 
+The evening message opens with a **summary of the day**: every session (duration, distance, heart rate, power,
+load, grade), sauna, last night's sleep and HRV, resting HR, steps, form and the habits you logged.
+
+**Habits.** At 21:30 (Settings → Notifications), before the evening message so its summary includes your answers,
+the bot posts a check-in with buttons: tap the habits you did today (Settings → Athlete lists them), or *None of
+these*. The buttons keep working afterwards — a late meal at 23:00 can still be ticked. Write `habits` (or `habits yesterday`) to Ember for a
+check-in any time. The buttons need the bot — a webhook can't carry them — and nothing extra in the developer
+portal.
+
+**Sauna.** Tell Ember — "2 rounds this morning, 16 min; 3 more tonight at 19:00, 24 min, 90 °C" — and it logs
+each visit and replies with the day's sessions. It asks for the minutes if you leave them out. Fix or delete a
+session by telling Ember, or on the Health page.
+
 ## Backups
 
 Set `HART_BACKUP_DIR` (e.g. a NAS mount, mapped into the container as `/backups`) and create an empty marker

@@ -229,6 +229,14 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         except evening.DiscordError as exc:
             raise JobFailed(str(exc)) from exc
 
+    def habit_checkin(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
+        from hart.server import evening
+
+        try:
+            return evening.run_checkin(db, config)
+        except evening.DiscordError as exc:
+            raise JobFailed(str(exc)) from exc
+
     def garmin_workout(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
         from hart.server import garmin_workouts
         from hart.server.data import local_today
@@ -295,5 +303,6 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         "suggest": suggest,
         "garmin_workout": garmin_workout,
         "evening_message": evening_message,
+        "habit_checkin": habit_checkin,
         "plan_import": plan_import,
     }

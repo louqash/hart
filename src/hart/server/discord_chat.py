@@ -9,6 +9,9 @@ a DM continues one conversation until it has been quiet for six hours, or
 until you write "new". The conversation is an ordinary chat
 (same tools, same limits) and also appears on the Ember page.
 
+The bot also answers the habit check-in's buttons (``server.habits``), and "habits"
+(or "habits yesterday") on its own posts a check-in instead of starting a conversation.
+
 Only allowed Discord users are answered: ``HART_DISCORD_ALLOWED_USERS``, or by
 default the owner of the bot application. Everyone else, other bots and
 webhooks are ignored — the channel may have other members, and the answers
@@ -25,8 +28,9 @@ import re
 from typing import Any
 
 from hart.config import HartSettings
-from hart.server import state
+from hart.server import habits, state
 from hart.server.chat import ChatBusy, ChatService
+from hart.server.data import DAY, local_today
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
@@ -35,6 +39,7 @@ THREADS_KEY = "discord_threads"  # thread id → conversation id
 DMS_KEY = "discord_dms"  # DM channel id → the conversation it continues
 DM_IDLE = datetime.timedelta(hours=6)  # a DM after this long starts a new conversation
 NEW_COMMANDS = {"new", "/new", "reset", "new chat"}
+HABIT_COMMANDS = {"habits": 0, "/habits": 0, "habits yesterday": 1, "/habits yesterday": 1}
 MESSAGE_LIMIT = 2000
 THREAD_NAME_LEN = 60
 
@@ -127,6 +132,7 @@ class DiscordChat:
     def __init__(self, db: Database, chat: ChatService, config: HartSettings) -> None:
         self._db = db
         self._chat = chat
+        self._config = config
         self._channel_id = config.discord.channel_id
         self.allowed_users: set[int] = set(config.discord.allowed_user_ids)
         self.bot_user_id: int | None = None  # set once connected
@@ -189,6 +195,10 @@ class DiscordChat:
         text = clean_text(message.content)
         if not text:
             return
+        command = text.lower().strip(" .!")
+        if command in HABIT_COMMANDS:
+            await self.post_checkin(channel.id, local_today(self._config) - HABIT_COMMANDS[command] * DAY)
+            return
 
         if is_dm:
             fresh = text.lower().strip(" .!") in NEW_COMMANDS
@@ -232,10 +242,41 @@ class DiscordChat:
         for part in split_message(to_discord(answer)):
             await target.send(part)
 
+    async def post_checkin(self, channel_id: int, date: datetime.date) -> None:
+        from hart.server import evening
+
+        with contextlib.closing(self._db.cursor()) as cur:
+            message = habits.checkin_message(cur, date) or {
+                "content": "No habits to check in yet — add them in Settings → Athlete. "
+                "For a sauna session, just tell me about it."
+            }
+        await asyncio.to_thread(evening.send, self._config, message, channel_id=channel_id)
+
+    def handle_interaction(self, kind: int, user_id: int | None, data: dict[str, Any]) -> dict[str, Any] | None:
+        """The response to a button click on a habit check-in, or None if it isn't one."""
+        if not str(data.get("custom_id") or "").startswith(habits.PREFIX + ":"):
+            return None
+        if user_id not in self.allowed_users:
+            return habits.ephemeral("These buttons are for the athlete only.")
+        with contextlib.closing(self._db.cursor()) as cur:
+            return habits.handle_interaction(cur, kind, data)
+
 
 # ---------------------------------------------------------------------------
 # The gateway connection
 # ---------------------------------------------------------------------------
+
+
+async def respond(interaction_id: int, token: str, response: dict[str, Any]) -> None:
+    """Answer an interaction with a raw response (discord.py's helpers want View objects; ours are dicts)."""
+    import httpx
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        reply = await client.post(
+            f"https://discord.com/api/v10/interactions/{interaction_id}/{token}/callback", json=response
+        )
+    if reply.status_code not in (200, 204):
+        logger.error("Discord: interaction response failed (%s): %s", reply.status_code, reply.text[:200])
 
 
 class DiscordBot:
@@ -275,6 +316,19 @@ class DiscordBot:
                 logger.exception("Discord: handling a message failed")
                 with contextlib.suppress(Exception):
                     await message.channel.send("Something went wrong on my side — see the server log.")
+
+        @client.event
+        async def on_interaction(interaction: Any) -> None:
+            data = interaction.data or {}
+            try:
+                response = self.handler.handle_interaction(
+                    int(interaction.type.value), getattr(interaction.user, "id", None), data
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("Discord: handling a button failed")
+                response = habits.ephemeral("Something went wrong on my side — see the server log.")
+            if response is not None:
+                await respond(interaction.id, interaction.token, response)
 
         async def run() -> None:
             try:

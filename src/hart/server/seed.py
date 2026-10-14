@@ -153,7 +153,7 @@ def seed_notes(db: Database, seed_dir: Path) -> int:
 
 def seed_all(db: Database, seed_dir: Path) -> dict[str, Any]:
     from hart.server.health import sync_checks
-    from hart.server.labs import import_lab_results, remap_keys
+    from hart.server.labs import convert_units, import_lab_results, remap_keys
     from hart.server.season_ops import seed_phases
 
     labs_file = seed_dir / "lab_results.json"
@@ -166,6 +166,7 @@ def seed_all(db: Database, seed_dir: Path) -> dict[str, Any]:
         "phases": seed_phases(db, datetime.date.today()),
         "lab_results": import_lab_results(db, labs_file),
         "lab_keys_remapped": remap_keys(db),
+        "lab_units_converted": convert_units(db),
     }
     result["health_checks"] = sync_checks(db, datetime.date.today())
     logger.info("Seeding: %s", result)

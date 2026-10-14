@@ -176,6 +176,10 @@ class Scheduler:
             from hart.server import evening
 
             with contextlib.closing(self._db.cursor()) as cur:
+                if evening.checkin_due(cur, self._config, local):
+                    job = self._runner.enqueue("habit_checkin", {}, trigger="schedule", dedupe_key="habit_checkin")
+                    if job.get("status") == "queued":
+                        fired.append(f"habit_checkin:{today}")
                 if evening.due(cur, self._config, local):
                     job = self._runner.enqueue("evening_message", {}, trigger="schedule", dedupe_key="evening_message")
                     if job.get("status") == "queued":

@@ -36,12 +36,13 @@ from hart.server.data import (
     season_context,
 )
 from hart.server.grading import Citation, _structured_raw, claude_paused, pause_claude, verify_citations
+from hart.server.habits import recent_for_context
 from hart.server.plan import PlanRowIn, active_plan_for, coach_plan_for, create_row, garmin_rules
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-SUGGEST_PROMPT_VERSION = "suggest@9"
+SUGGEST_PROMPT_VERSION = "suggest@10"
 HISTORY_DAYS = 14
 WEEKLY_TOTALS_WEEKS = 4
 FINAL_CUTOFF_HOUR = 14
@@ -112,7 +113,9 @@ and observed state, `training_history` \
 their note on the session, \
 and the exercises of strength sessions), `weekly_totals` for the last 4 weeks, this week's plan, \
 `week_targets` (sessions per week the notes ask for, how many are done and still owed), active \
-athlete notes, `limits` — hard limits that code enforces after you answer — and, when regenerating, \
+athlete notes, `recovery_habits` (sauna sessions and logged habits like a late meal or alcohol over \
+the last 3 days — a late or long sauna and a late meal can explain a dip in last night's HRV or sleep), \
+`limits` — hard limits that code enforces after you answer — and, when regenerating, \
 `previous_suggestion` with `since_previous` (which inputs changed). You may call the read-only \
 hart tools for more (e.g. `get_strength_history`, `get_hrv_trend`), but keep it to a few calls.
 
@@ -542,6 +545,7 @@ def build_context(
         "athlete_notes": [
             {"category": n["category"], "title": n["title"], "body": n["body"], "rules": n.get("rules")} for n in notes
         ],
+        "recovery_habits": recent_for_context(db, for_date),
         "limits": limits(guard),
     }
     bundle["fingerprint"] = {k: _digest(bundle[k]) for k in FINGERPRINT_SECTIONS}

@@ -29,10 +29,14 @@ WRITE_TOOLS = frozenset(
         "import_coach_plan",
         "acknowledge_anomaly",
         "send_discord_message",
+        "log_sauna_session",
+        "update_sauna_session",
+        "log_habits",
     }
 )
-# Write tools chat may use: sync (idempotent, enqueues a job) and proposals
-# for notes and season changes (nothing changes until the athlete approves).
+# Write tools chat may use: sync (idempotent, enqueues a job), proposals
+# for notes and season changes (nothing changes until the athlete approves),
+# and logging what the athlete reports (sauna, habits) — their own diary.
 CHAT_WRITE_TOOLS = frozenset(
     {
         "sync_garmin",
@@ -43,6 +47,9 @@ CHAT_WRITE_TOOLS = frozenset(
         "propose_health_check",
         "propose_plan_change",
         "import_coach_plan",
+        "log_sauna_session",
+        "update_sauna_session",
+        "log_habits",
     }
 )
 

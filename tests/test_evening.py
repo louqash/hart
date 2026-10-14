@@ -97,7 +97,7 @@ def test_message_content_and_send(db: Database, monkeypatch) -> None:
     monkeypatch.setattr(httpx, "post", lambda url, **kw: sent.append({"url": url, **kw}) or Response())
     out = evening.run(db, _config())
     body = sent[0]["json"]
-    embed = body["embeds"][0]
+    summary, embed = body["embeds"]
     fields = {f["name"]: f["value"] for f in embed["fields"]}
     assert out["sent"] and sent[0]["url"] == "https://discord.example/webhook"
     assert "content" not in body  # the real message is the embed alone
@@ -107,7 +107,8 @@ def test_message_content_and_send(db: Database, monkeypatch) -> None:
     assert fields["🏃 Easy run"] == "30′ · endurance"
     assert fields["📋 Coach's plan"] == "Coach easy run · 40′"
     assert fields["⚠️ Watch out"] == "• Calf: stop if it tightens"
-    assert fields["Today"].startswith("🚴 Ride · 1:01 h")
+    assert summary["title"].startswith("📒 Today · ") and summary["url"] == "https://hart.example.ts.net/sessions"
+    assert summary["description"] == "🚴 **Ride** · 1:01 h · ♥ 130 · 150 W · load 40"
     assert body["allowed_mentions"] == {"parse": []}
     assert body["username"] == "Ember" and body["avatar_url"].endswith("/discord-avatar.png")
     assert state.get_setting(db, evening.SENT_KEY) == today.isoformat()
@@ -142,10 +143,10 @@ def test_test_message_and_alerts(db: Database, monkeypatch) -> None:
     evening.run(db, _config(), test=True)
     body = sent[0]
     assert body["content"].startswith("🧪 Test")
-    embed = body["embeds"][0]
+    summary, embed = body["embeds"]
     assert embed["description"] == "No suggestion for tomorrow yet."
+    assert summary["description"] == "Rest day — no training" and summary["fields"] == []
     assert embed["footer"]["text"] == "🔔 1 health check due · 2 notes waiting for approval"
-    assert {"name": "Today", "value": "Rest day", "inline": True} in embed["fields"]
     assert not state.get_setting(db, evening.SENT_KEY)  # a test doesn't count as tonight's message
 
 

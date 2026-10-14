@@ -1,4 +1,4 @@
-// Health page: check actions, marker trend chart, lab paste → preview → import.
+// Health page: check actions, marker trend chart, lab paste → preview → import, sauna and habits.
 
 let labPreview = [];
 const escHtml = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -87,6 +87,7 @@ function renderLabPreview(out) {
       </tr>`).join("")}
     </table></div>`).join("") +
     ((out.warnings || []).length ? `<ul class="hl bad">${out.warnings.map((w) => `<li>${escHtml(w)}</li>`).join("")}</ul>` : "") +
+    ((out.notes || []).length ? `<ul class="faint small">${out.notes.map((n) => `<li>${escHtml(n)}</li>`).join("")}</ul>` : "") +
     `<div class="row" style="margin-top:10px"><button class="primary" onclick="importLabs(this)">Save results</button>
       <button class="secondary" onclick="document.getElementById('lab-preview').hidden = true">Discard</button></div>`;
   box.hidden = false;
@@ -96,7 +97,7 @@ async function importLabs(button) {
   const panels = labPreview.map((p, pi) => ({
     test_date: p.test_date,
     markers: p.markers.filter((_, mi) => document.querySelector(`#lab-preview input[data-p="${pi}"][data-m="${mi}"]`)?.checked)
-      .map(({ name, value, unit, reference_range, flag }) => ({ name, value, unit, reference_range, flag })),
+      .map(({ name, value, unit, reference_range, flag, marker_key }) => ({ name, value, unit, reference_range, flag, marker_key })),
   })).filter((p) => p.markers.length);
   if (!panels.length) return toast("Nothing selected");
   const out = await act(button, () => api.post("/api/health/labs/import", { panels, source: "paste" }), { reload: false });
@@ -119,3 +120,57 @@ document.addEventListener("DOMContentLoaded", () => {
   const select = document.getElementById("trend-marker");
   if (select && select.value) drawTrend(select.value);
 });
+
+// ---- sauna & habits ----
+
+async function saveSauna(form) {
+  const num = (v) => (v === "" ? null : Number(v));
+  const body = {
+    date: form.date.value, duration_min: Number(form.duration_min.value), temperature_c: num(form.temperature_c.value),
+    rounds: num(form.rounds.value), kind: form.kind.value || null, start_time: form.start_time.value || null,
+    notes: form.notes.value.trim() || null,
+  };
+  const id = form.elements.id.value;
+  await act(form.querySelector("button[type=submit]"), () => (id ? api.put(`/api/sauna/${id}`, body) : api.post("/api/sauna", body)));
+}
+
+// Load a session into the form; saving then updates it instead of adding a new one.
+function editSauna(s) {
+  const form = document.getElementById("sauna-form");
+  const f = form.elements;
+  f.id.value = s.id;
+  f.date.value = s.date;
+  f.duration_min.value = s.duration_min;
+  f.temperature_c.value = s.temperature_c ?? "";
+  f.rounds.value = s.rounds ?? "";
+  f.kind.value = s.kind ?? "";
+  f.start_time.value = s.start_time ?? "";
+  f.notes.value = s.notes ?? "";
+  form.querySelector("button[type=submit]").textContent = "Save changes";
+  form.querySelector("button[type=button]").hidden = false;
+  const box = document.getElementById("sauna-form-box");
+  box.open = true;
+  box.querySelector("summary").textContent = "Edit sauna session";
+  box.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function resetSaunaForm() {
+  const form = document.getElementById("sauna-form");
+  const date = form.elements.date.value;
+  form.reset();
+  form.elements.date.value = date;
+  form.querySelector("button[type=submit]").textContent = "Save";
+  form.querySelector("button[type=button]").hidden = true;
+  document.querySelector("#sauna-form-box summary").textContent = "Log a sauna session";
+}
+
+// Done ⇄ not done. A day is answered as a whole, so "unknown" comes back only by clearing the day,
+// offered when switching off a day's last habit that is still unticked.
+async function cycleHabit(button, date, habit, value) {
+  if (value === true) return act(button, () => api.post("/api/habits", { date, habit, done: false }));
+  if (value === false) {
+    const others = [...button.closest("tr").querySelectorAll(".habit-cell")].filter((b) => b !== button && b.classList.contains("on"));
+    if (!others.length && confirm("Mark the whole day as not answered?")) return act(button, () => api.del(`/api/habits/${date}`));
+  }
+  return act(button, () => api.post("/api/habits", { date, habit, done: true }));
+}

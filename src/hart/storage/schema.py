@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 15
+CURRENT_SCHEMA_VERSION: int = 16
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -313,6 +313,7 @@ CREATE SEQUENCE IF NOT EXISTS job_id_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS lab_id_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS proposal_id_seq START 1;
 CREATE SEQUENCE IF NOT EXISTS health_check_id_seq START 1;
+CREATE SEQUENCE IF NOT EXISTS sauna_id_seq START 1;
 
 CREATE TABLE IF NOT EXISTS training_phases (
     id          INTEGER PRIMARY KEY DEFAULT nextval('phase_id_seq'),
@@ -536,6 +537,28 @@ CREATE TABLE IF NOT EXISTS season_proposals (
     decided_at  TIMESTAMPTZ
 );
 
+CREATE TABLE IF NOT EXISTS sauna_sessions (
+    id             INTEGER PRIMARY KEY DEFAULT nextval('sauna_id_seq'),
+    date           DATE NOT NULL,
+    start_time     TIME,
+    duration_min   INTEGER NOT NULL,     -- time in the heat, all rounds together
+    temperature_c  DOUBLE,
+    rounds         INTEGER,
+    kind           VARCHAR,              -- finnish | infrared | steam | other
+    notes          VARCHAR,
+    source         VARCHAR NOT NULL,     -- discord | ember | web
+    created_at     TIMESTAMPTZ DEFAULT current_timestamp
+);
+
+CREATE TABLE IF NOT EXISTS habit_log (
+    date        DATE NOT NULL,
+    habit       VARCHAR NOT NULL,        -- key from the habits setting (analytics.habits.habit_key)
+    done        BOOLEAN NOT NULL,        -- a row with FALSE: the day was answered and the habit not done
+    source      VARCHAR NOT NULL,        -- discord | ember | web
+    updated_at  TIMESTAMPTZ DEFAULT current_timestamp,
+    PRIMARY KEY (date, habit)
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
     key         VARCHAR PRIMARY KEY,
     value       JSON NOT NULL,
@@ -681,6 +704,8 @@ def _run_migrations(db: Database) -> None:
             "UPDATE activity_workout_steps SET target_low = target_low + 100, target_high = target_high + 100 "
             "WHERE target_unit = 'bpm' AND coalesce(target_high, target_low) < 80"
         )
+
+    # v16: sauna_sessions and habit_log — new tables only, created above.
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;

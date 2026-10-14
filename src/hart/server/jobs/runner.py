@@ -44,6 +44,7 @@ DEMO_BLOCKED = frozenset(
         "suggest",
         "garmin_workout",
         "evening_message",
+        "habit_checkin",
         "vo2max_backfill",
         "intervals_backfill",
         "plan_import",

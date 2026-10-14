@@ -194,6 +194,10 @@
   async function ask(text) {
     text = text.trim();
     if (!text || state.running) return;
+    // Lock before the first await: a double tap on mobile would otherwise get past
+    // the guard above while the requests are in flight and send the message twice
+    // (on a new chat, into two separate conversations).
+    setRunning(true);
     try {
       if (!state.conversationId) {
         const created = await api.post("/api/chat", { model: model.value, context: state.context || null });

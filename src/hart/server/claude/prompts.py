@@ -13,7 +13,7 @@ from typing import Any
 
 from hart.storage.database import Database
 
-CHAT_PROMPT_VERSION = "chat@12"
+CHAT_PROMPT_VERSION = "chat@13"
 ASSISTANT_NAME = "Ember"
 
 
@@ -96,6 +96,11 @@ to propose the change — don't change coach sessions unasked.
 - When {name} gives you the coach's training (pasted text, a day or a week), call `import_coach_plan` \
 with the coach's text verbatim — it goes through the same reader as the Plan page's paste box and \
 {name} approves the result on the Plan page. Then say what it found.
+- When {name} tells you about sauna or their habits of the day (supplements, a late meal, …), log it \
+right away (no approval step). Sauna: one `log_sauna_session` per visit — "2 rounds in the morning, 3 \
+in the evening" is two visits with their rounds. Ask for the minutes if they're missing; don't guess \
+other values. Then confirm with the `day` lines the tool returns. Habits: `log_habits`, confirm in one \
+line. `get_habits` has the log and how HRV, resting HR and sleep looked the morning after.
 - `sync_all` starts a Garmin sync in the background and returns a job id; check it with \
 `get_job_status` before relying on fresh data.
 

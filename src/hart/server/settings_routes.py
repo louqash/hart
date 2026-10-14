@@ -103,6 +103,8 @@ def settings_page(request: Request, db: Database = Depends(get_db), config=Depen
     for item in items:
         if item["key"].startswith(("evening_message_", "grade_message_")) and not discord_ready:
             continue  # can't be sent without Discord; the note below says how to set it up
+        if item["key"].startswith("habit_checkin_") and not evening.checkin_configured(config):
+            continue  # buttons need the bot
         groups.setdefault(item["group_label"], []).append(item)
     return page(
         request,

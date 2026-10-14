@@ -1794,6 +1794,164 @@ def get_latest_sync_status() -> str:
 
 
 # =========================================================================
+# SAUNA & HABITS
+# =========================================================================
+
+
+def _local_today() -> datetime.date:
+    from hart.server.data import local_today
+
+    return local_today(_get_config())
+
+
+@_tool()
+def get_habits(start_date: str = "", end_date: str = "") -> str:
+    """Get the sauna log and daily habits (supplements, late meals, … — the list is in Settings).
+
+    Returns the habit list, sauna sessions in the range, each day's habit answers (``null`` = the day
+    wasn't answered — unknown, not "no"), a sauna summary (last 7 / 28 days), and ``next_morning``:
+    average HRV, resting HR and sleep the morning after days with vs without each habit and sauna
+    (last 180 days; ``difference`` only when both sides have at least 4 nights). These comparisons are
+    associations — sauna and late-meal days are often training days.
+
+    Parameters:
+        start_date: ISO date (default 28 days ago).
+        end_date: ISO date (default today).
+    """
+    try:
+        from hart.server import habits
+
+        db = _get_db()
+        today = _local_today()
+        end = _parse_date(end_date) or today
+        start = _parse_date(start_date) or end - datetime.timedelta(days=27)
+        return _json(
+            {
+                "habits": habits.definitions(db),
+                "sauna_sessions": habits.sauna_sessions(db, start, end),
+                "days": [d for d in habits.days(db, start, end) if d["sauna"] or d["answered"]],
+                "sauna_summary": habits.overview(db, today)["sauna_summary"],
+                "next_morning": habits.comparisons(db, today),
+            }
+        )
+    except Exception as exc:
+        return _json({"error": str(exc), "traceback": traceback.format_exc()})
+
+
+@_tool()
+def log_sauna_session(
+    duration_min: int,
+    date: str = "",
+    temperature_c: float = 0,
+    rounds: int = 0,
+    kind: str = "",
+    start_time: str = "",
+    notes: str = "",
+) -> str:
+    """Record one sauna visit the athlete tells you about (saved right away, no approval step).
+
+    One call per visit: "2 rounds in the morning and 3 in the evening" is two visits — two calls, with
+    rounds 2 and 3. Pass start_time only when they gave a time; otherwise leave it empty and put
+    "morning" / "evening" in notes. Rounds belong to a visit; never log a session per round.
+
+    The minutes are required: if the athlete didn't say how long (in total, or per round × rounds), ask
+    before logging. Everything else is optional — don't guess values. If they might have logged it
+    already, check `get_habits`; correct a session with `update_sauna_session`.
+
+    Returns the saved session and ``day``: every session of that date, described — confirm by listing
+    those lines (e.g. "Logged 2 sessions today: 08:00 · 2 rounds · 16′; 19:00 · 3 rounds · 24′").
+
+    Parameters:
+        duration_min: Minutes in the heat during this visit, all its rounds together (1-240).
+        date: ISO date (default today).
+        temperature_c: Sauna temperature in °C, if known.
+        rounds: Number of rounds, if known.
+        kind: finnish, infrared, steam or other, if known.
+        start_time: HH:MM, if known (a late sauna can affect that night's sleep).
+        notes: Anything else (cold plunge, after a run, …).
+    """
+    try:
+        from hart.server import habits
+
+        session = habits.log_sauna(
+            _get_db(),
+            _parse_date(date) or _local_today(),
+            "ember",
+            duration_min=duration_min,
+            temperature_c=temperature_c,
+            rounds=rounds,
+            kind=kind,
+            start_time=start_time,
+            notes=notes,
+        )
+        return _json({"status": "saved", "session": session, "day": habits.day_summary(_get_db(), session["date"])})
+    except Exception as exc:
+        return _json({"error": str(exc)})
+
+
+@_tool()
+def update_sauna_session(
+    session_id: int,
+    duration_min: int,
+    temperature_c: float = 0,
+    rounds: int = 0,
+    kind: str = "",
+    start_time: str = "",
+    notes: str = "",
+    delete: bool = False,
+) -> str:
+    """Correct or delete a logged sauna session (ids from `get_habits`). Pass every value the session
+    should have — fields left empty are cleared. ``delete=True`` removes it (duration is then ignored)."""
+    try:
+        from hart.server import habits
+
+        db = _get_db()
+        if delete:
+            date = (habits.sauna_session(db, session_id) or {}).get("date")
+            habits.delete_sauna(db, session_id)
+            return _json({"status": "deleted", "id": session_id, "day": habits.day_summary(db, date) if date else None})
+        session = habits.update_sauna(
+            db,
+            session_id,
+            duration_min=duration_min,
+            temperature_c=temperature_c,
+            rounds=rounds,
+            kind=kind,
+            start_time=start_time,
+            notes=notes,
+        )
+        return _json({"status": "saved", "session": session, "day": habits.day_summary(db, session["date"])})
+    except Exception as exc:
+        return _json({"error": str(exc)})
+
+
+@_tool()
+def log_habits(done: list[str], not_done: list[str] | None = None, date: str = "") -> str:
+    """Record which habits the athlete did on a day (saved right away, no approval step).
+
+    Habits come from the list in Settings (see `get_habits`); pass their keys or labels. When the athlete
+    tells you about their day, habits they don't mention are recorded as not done — the same as answering
+    the Discord check-in. Sauna isn't a habit here: use `log_sauna_session`.
+
+    Parameters:
+        done: Habits done that day, e.g. ["supplements", "late meal"]. May be empty.
+        not_done: Habits explicitly not done (optional — the rest become "not done" anyway).
+        date: ISO date (default today).
+    """
+    try:
+        from hart.server import habits
+
+        db = _get_db()
+        day = _parse_date(date) or _local_today()
+        values = {habits.resolve_habit(db, h): False for h in not_done or []}
+        values |= {habits.resolve_habit(db, h): True for h in done}
+        saved = habits.set_habits(db, day, values, "ember")
+        return _json({"status": "saved", "date": day, "habits": saved})
+    except Exception as exc:
+        return _json({"error": str(exc)})
+
+
+# =========================================================================
 # ACTION TOOLS
 # =========================================================================
 

@@ -223,6 +223,7 @@ def update_training_load(
     start_date: datetime.date | None = None,
     ctl_tc: int = 42,
     atl_tc: int = 7,
+    until: datetime.date | None = None,
 ) -> None:
     """Read activity metrics, compute CTL/ATL/TSB, and write to the
     ``daily_training_load`` table.
@@ -239,6 +240,10 @@ def update_training_load(
         Chronic training load time constant (days).
     atl_tc:
         Acute training load time constant (days).
+    until:
+        Extend the series with zero-load days up to this date (today), so rest
+        days after the last activity get rows too: fatigue keeps decaying and the
+        latest form is current, not the form at the end of the last session day.
     """
     # 1. Load TSS from activity_metrics, falling back to garmin_training_load.
     if start_date:
@@ -316,7 +321,7 @@ def update_training_load(
             current = start_date
             first_date = start_date
 
-        while current <= last_date:
+        while current <= max(last_date, until or last_date):
             tss = daily_tss_map.get(current, 0.0)
             daily_tss_list.append((current, tss))
             current += one_day

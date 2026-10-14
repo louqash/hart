@@ -29,7 +29,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-GRADE_PROMPT_VERSION = "grade@6"
+GRADE_PROMPT_VERSION = "grade@7"
 WEIGHTS = {"execution": 0.45, "response": 0.30, "context_fit": 0.25}
 LETTERS = ((4.5, "A"), (3.75, "B"), (3.0, "C"), (2.25, "D"))
 UNVERIFIED_LIMIT = 0.30
@@ -117,6 +117,11 @@ Tiredness with a known cause — yesterday's strength session, a planned hard bl
 not a poor response: weigh it in context_fit (was an easy session the right call?), not against \
 response. A low feel or high RPE counts against response only when it's unexplained, or points to \
 pain or illness.
+- `context.heat_and_habits` (when present): sauna the day before or that day, and habits logged the \
+day before (e.g. late_meal, alcohol). A sauna shortly before a session raises heart rate and \
+dehydrates — expect higher HR at the same output and weigh that in response, not against it. A long \
+or late sauna, a late meal or alcohol the evening before can explain poor readiness or a flat session. \
+Mention it when it plausibly explains what you see; don't speculate when it doesn't.
 For `event` sessions (trips, camps and similar) set session_type "event_trip" and execution and \
 response to null — score context fit only.
 

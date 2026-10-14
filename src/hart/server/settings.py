@@ -78,6 +78,15 @@ REGISTRY: tuple[Setting, ...] = (
         "messages). On: Ember treats them as the plan and suggests adjustments. Off: the plan is your "
         "own and suggestions plan every day freely.",
     ),
+    Setting(
+        "habits",
+        "athlete",
+        "Habits to track",
+        "💊 Supplements, 🌙 Late meal, 🍷 Alcohol, 🧘 Mobility",
+        env="HART_HABITS",
+        help="Yes/no things to check off each evening; comma-separated, an emoji in front shows on the "
+        "buttons. Renaming a habit starts a new history for it. Sauna isn't a habit — tell Ember about it.",
+    ),
     # --- ember -------------------------------------------------------------
     Setting(
         "model_chat",
@@ -160,6 +169,25 @@ REGISTRY: tuple[Setting, ...] = (
     ),
     Setting(
         "evening_message_time", "notifications", "Evening message at", "22:00", "time", env="HART_EVENING_MESSAGE_AT"
+    ),
+    Setting(
+        "habit_checkin_enabled",
+        "notifications",
+        "Habit check-in on Discord",
+        True,
+        "bool",
+        env="HART_HABIT_CHECKIN",
+        help="Buttons for your habits (needs the Discord bot). Write “habits” to Ember in Discord for one any time.",
+    ),
+    Setting(
+        "habit_checkin_time",
+        "notifications",
+        "Habit check-in at",
+        "21:30",
+        "time",
+        env="HART_HABIT_CHECKIN_AT",
+        help="Before the evening message, so its summary includes your answers. The buttons keep working "
+        "afterwards for anything later in the evening.",
     ),
     Setting(
         "grade_message_enabled",

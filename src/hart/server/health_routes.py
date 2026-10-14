@@ -1,4 +1,4 @@
-"""Health page and API: checks, lab results, lab paste import."""
+"""Health page and API: checks, lab results, lab paste import, sauna and habits."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 
-from hart.server import data, health, labs, settings
+from hart.server import data, habits, health, labs, settings
 from hart.server.routes import get_config, get_db, page
 from hart.storage.database import Database
 
@@ -33,6 +33,22 @@ class LabImportIn(BaseModel):
     source: Literal["paste", "manual"] = "paste"
 
 
+class SaunaIn(BaseModel):
+    date: datetime.date
+    duration_min: int = Field(ge=1, le=240)
+    temperature_c: float | None = None
+    rounds: int | None = None
+    kind: str | None = None
+    start_time: str | None = None
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class HabitIn(BaseModel):
+    date: datetime.date
+    habit: str
+    done: bool
+
+
 def _err(exc: Exception) -> HTTPException:
     msg = str(exc)
     return HTTPException(404 if "not found" in msg else 400, detail=msg)
@@ -50,6 +66,8 @@ def health_page(request: Request, db: Database = Depends(get_db), config=Depends
             "panels": labs.panels(db),
             "trend_series": health.trend_series(db),
             "catalogue": labs.CATALOGUE,
+            "habits": habits.overview(db, today),
+            "habit_effects": habits.comparisons(db, today),
             "annotations": data.rows(
                 db,
                 "SELECT kind, label, start_date, end_date FROM annotations "
@@ -164,3 +182,53 @@ def api_labs_delete(result_id: int, db: Database = Depends(get_db), config=Depen
     db.execute("DELETE FROM lab_results WHERE id = ?", [result_id])
     health.sync_checks(db, data.local_today(config))
     return {"deleted": result_id}
+
+
+# ---------------------------------------------------------------------------
+# Sauna and habits
+# ---------------------------------------------------------------------------
+
+
+@router.get("/api/habits")
+def api_habits(db: Database = Depends(get_db), config=Depends(get_config)) -> dict[str, Any]:
+    today = data.local_today(config)
+    return habits.overview(db, today) | {"next_morning": habits.comparisons(db, today)}
+
+
+@router.post("/api/sauna")
+def api_sauna_add(body: SaunaIn, db: Database = Depends(get_db)) -> dict[str, Any]:
+    try:
+        return habits.log_sauna(db, body.date, "web", **body.model_dump(exclude={"date"}))
+    except habits.HabitError as exc:
+        raise _err(exc) from exc
+
+
+@router.put("/api/sauna/{session_id}")
+def api_sauna_update(session_id: int, body: SaunaIn, db: Database = Depends(get_db)) -> dict[str, Any]:
+    try:
+        return habits.update_sauna(db, session_id, **body.model_dump())
+    except habits.HabitError as exc:
+        raise _err(exc) from exc
+
+
+@router.delete("/api/sauna/{session_id}")
+def api_sauna_delete(session_id: int, db: Database = Depends(get_db)) -> dict[str, Any]:
+    try:
+        habits.delete_sauna(db, session_id)
+    except habits.HabitError as exc:
+        raise _err(exc) from exc
+    return {"deleted": session_id}
+
+
+@router.post("/api/habits")
+def api_habit_set(body: HabitIn, db: Database = Depends(get_db)) -> dict[str, Any]:
+    try:
+        return {"date": body.date, "habits": habits.set_habits(db, body.date, {body.habit: body.done}, "web")}
+    except habits.HabitError as exc:
+        raise _err(exc) from exc
+
+
+@router.delete("/api/habits/{day}")
+def api_habit_clear(day: datetime.date, db: Database = Depends(get_db)) -> dict[str, Any]:
+    habits.clear_day(db, day)
+    return {"cleared": day}

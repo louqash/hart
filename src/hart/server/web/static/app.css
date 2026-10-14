@@ -305,8 +305,8 @@ details[open] > summary { margin-bottom: 8px; }
 .legend .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
 /* ---- chat (Ember) ---- */
-.chat-layout { display: grid; gap: 20px; grid-template-columns: 1fr; margin-top: 18px; }
-@media (min-width: 1000px) { .chat-layout { grid-template-columns: 280px 1fr; align-items: start; } }
+.chat-layout { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr); margin-top: 18px; }
+@media (min-width: 1000px) { .chat-layout { grid-template-columns: 280px minmax(0, 1fr); align-items: start; } }
 .chat-list { background: var(--card-grad); border: 1px solid var(--card-border); border-radius: var(--leaf-alt); padding: 18px; }
 @media (max-width: 999px) { .chat-list { max-height: 190px; overflow-y: auto; } }
 @media (min-width: 1000px) { .chat-list { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; } }
@@ -342,6 +342,9 @@ details[open] > summary { margin-bottom: 8px; }
 .bubble.md ul, .bubble.md ol { margin: 6px 0 10px; padding-left: 22px; }
 .bubble.md strong { color: var(--cream); }
 .bubble.md table { font-size: 13px; margin: 8px 0; } .bubble.md th, .bubble.md td { padding: 6px 8px; }
+/* Markdown tables hold prose: wrap the cells, and scroll sideways inside the bubble if still too wide. */
+.bubble.md table, .note .body table { display: block; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.bubble.md th, .bubble.md td, .note .body th, .note .body td { white-space: normal; overflow-wrap: normal; min-width: 7em; vertical-align: top; }
 .bubble.md h1, .bubble.md h2, .bubble.md h3 { font-size: 17px; margin: 12px 0 6px; }
 .typing { display: inline-flex; gap: 6px; padding: 4px 0; }
 .typing i { width: 7px; height: 7px; border-radius: 50%; background: var(--sunset); animation: pulse 1s infinite ease-in-out; }
@@ -525,3 +528,10 @@ table.compare th a { color: var(--muted); }
   background: rgba(226, 164, 95, .08); }
 .coach-take.disagree { border-left-color: var(--sunset); background: rgba(226, 125, 96, .1); }
 .coach-take p { margin: 4px 0 0; color: var(--text); line-height: 1.55; }
+
+/* ---- habits (Health page) ---- */
+table.habits th, table.habits td { text-align: center; white-space: nowrap; }
+table.habits td:first-child, table.habits th:first-child { text-align: left; }
+.habit-cell { min-width: 34px; padding: 2px 8px; border-radius: 999px; background: transparent; border: 1px solid var(--card-border); color: var(--faint); }
+.habit-cell.on { color: var(--green); border-color: rgba(110, 184, 134, .5); background: rgba(110, 184, 134, .10); }
+.habit-cell.off { color: var(--muted); }

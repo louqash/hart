@@ -138,3 +138,33 @@ class TestNormalizedPower:
         # Shorter durations should have higher best power
         assert pdc[1] >= pdc[60], "1s power should be >= 1min power"
         assert pdc[60] >= pdc[3600] or 3600 not in pdc, "1min power should be >= 1hr power"
+
+
+def test_rest_days_after_the_last_session_get_rows(tmp_path):
+    """Form keeps moving on rest days: without rows for them the latest form was the last session day's."""
+    import datetime
+
+    from hart.analytics.training_load import update_training_load
+    from hart.storage.database import Database
+
+    db = Database(tmp_path / "t.duckdb").connect()
+    first = datetime.date(2026, 9, 1)
+    for i in range(10):  # ten days of 60, then three rest days
+        day = first + datetime.timedelta(days=i)
+        db.execute(
+            "INSERT INTO activities (activity_id, source, sport_type, start_time, elapsed_seconds) "
+            "VALUES (?, 'test', 'bike', ?, 3600)",
+            [f"a{i}", datetime.datetime.combine(day, datetime.time(9))],
+        )
+        db.execute(
+            "INSERT INTO activity_metrics (activity_id, sport_type, date, tss) VALUES (?, 'bike', ?, 60)",
+            [f"a{i}", day],
+        )
+    today = first + datetime.timedelta(days=12)
+    update_training_load(db, until=today)
+    rows = db.fetchall(
+        "SELECT date, daily_tss, tsb FROM daily_training_load WHERE sport_type = 'combined' ORDER BY date"
+    )
+    assert rows[-1][0] == today and [r[1] for r in rows[-3:]] == [0, 0, 0]
+    assert rows[-1][2] > rows[-2][2] > rows[-3][2] > rows[-4][2]  # fresher each rest day
+    db.close()

@@ -21,9 +21,9 @@ the database, so the server owns it: the CLI and your laptop's Claude Code talk 
 |---|---|
 | `hart.ingestion` | Garmin Connect client (`SyncManager`), FIT parsing, bulk import. |
 | `hart.storage` | Schema and migrations, writers, read queries, the read-only SQL guard. |
-| `hart.analytics` | Pure computation: training load (CTL/ATL/TSB), recovery, efficiency and decoupling, power curve, anomalies, phases and observed state, readiness, grading features, guardrails, health-check rules, strength progression. |
+| `hart.analytics` | Pure computation: training load (CTL/ATL/TSB), recovery, efficiency and decoupling, power curve, anomalies, phases and observed state, readiness, grading features, guardrails, health-check rules, strength progression, habit summaries and next-morning comparisons. |
 | `hart.server` | The web service: routes and templates, jobs and scheduler, Claude runner, chat, grading, suggestions, plan, health, settings. |
-| `hart.mcp_server` | 44 MCP tools over the same database (stdio on its own, or mounted at `/mcp` in the server). |
+| `hart.mcp_server` | 48 MCP tools over the same database (stdio on its own, or mounted at `/mcp` in the server). |
 | `hart.interfaces.cli` | `hart` command line. |
 
 Code computes facts; Claude interprets. Anything that must be right — zones, comparisons, readiness,
@@ -53,7 +53,7 @@ refused, not queued twice. The `Scheduler` ticks every 30 seconds; its times com
 - morning watch: light syncs until last night's sleep arrives, then a full sync;
 - hourly syncs; an hourly sweep that grades anything missed;
 - today's suggestion by the end of the morning watch at the latest; tomorrow's at the preliminary time;
-- daily health-check evaluation; nightly backup; the evening message.
+- daily health-check evaluation; nightly backup; the habit check-in; the evening message.
 
 The web UI shows running jobs in a bar under the header and refreshes once when they finish.
 
@@ -65,7 +65,8 @@ The web UI shows running jobs in a bar under the header and refreshes once when 
   Read-only runs (grading, suggestions) get read tools only. Chat additionally gets proposal tools and — when
   you enable it for a conversation — web search/fetch behind a filter.
 - **Proposals, not writes:** Ember can propose notes, plan changes, season/race changes and health checks;
-  nothing changes until you apply them.
+  nothing changes until you apply them. The one exception is your own diary: sauna sessions and habits you
+  tell Ember about are logged right away (`log_sauna_session`, `update_sauna_session`, `log_habits`).
 - **Structured output:** grading, suggestions, paste parsing and Garmin workout conversion return JSON
   validated by Pydantic, with one repair retry.
 - **Runs are recorded** in `claude_runs` (tool calls, tokens, duration); usage limits and auth failures pause
@@ -78,7 +79,8 @@ their notes, which every prompt tells Claude to read first (`get_athlete_context
 
 `grading_features.build_features` computes zones, stream-based decoupling, lap variability, a comparison with
 similar sessions (same sport and indoor/outdoor, ±25% duration; 90 days, falling back to a year), strength top
-sets, and the context of the day (readiness, phase, constraints, feedback). Claude scores execution, response
+sets, and the context of the day (readiness, phase, constraints, feedback, sauna the day before or that
+day — before or after the session — and habits logged the evening before). Claude scores execution, response
 and context fit 1–5 with a justification each; code computes the overall score and letter and checks every
 cited number against the facts and tool results — too many unverifiable numbers make the grade low-confidence.
 
@@ -103,9 +105,19 @@ failed and not shown.
 - **Health:** lab results with a marker catalogue (Polish and English names); reminder rules in
   `analytics.health_checks` (regular panels timed to the season, follow-ups on flagged or near-limit results,
   stale markers, planned re-checks from notes, pre-race medical, physio check-ins), reconciled daily.
-- **Discord:** `server.evening` builds the evening message (an embed, no Claude usage) and posts it through the
-  webhook; `server.discord_chat` runs a discord.py bot in the server's event loop that turns channel messages
+- **Discord:** `server.evening` builds the evening message (no Claude usage) — a summary of the day (sessions
+  with duration, distance, HR, power, load and grade; sauna; last night's sleep and HRV, resting HR, steps;
+  form; habits) and tomorrow's plan — and posts it as the bot or through the webhook; `server.discord_chat` runs a discord.py bot in the server's event loop that turns channel messages
   and replies into threads, each backed by an ordinary `ChatService` conversation.
+- **Sauna & habits:** `server.habits` keeps a sauna log — one row per visit (start time, minutes, rounds,
+  temperature, type), any number a day — logged by telling Ember or on the Health page. Habits are yes/no per
+  day from the list in Settings (supplements, late meal…). A day counts as answered once any habit is — the
+  rest become "not done" — so a missing day means unknown, never "no". Before the evening message (21:30 by
+  default) the bot posts a habit check-in with buttons ("habits" in Discord posts one any time); the bot answers the clicks
+  itself (`on_interaction`). `analytics.habits` compares
+  HRV, resting HR and sleep the morning after days with and without each habit (`get_habits`, Health
+  page); the daily suggestion gets the last 3 days as `recovery_habits`, grading gets
+  `context.heat_and_habits`.
 - **Intervals:** the FIT parser keeps each lap's kind and workout step and the structured workout's steps
   (`activity_workout_steps`, targets as W / bpm / pace / rpm); `analytics.intervals` lines laps up with steps,
   numbers the reps and marks each on / under / over target, plus fading and HR drift. The grade bundle, the
@@ -122,5 +134,5 @@ Raw: `activities`, `activity_streams`, `activity_laps`, `strength_sets`, `hrv_sa
 `sleep_records`, `hrv_daily`. Computed: `activity_metrics`, `daily_training_load`, `daily_recovery`,
 `weekly_summary`, `anomaly_log`. App: `training_phases`, `races`, `annotations`, `athlete_notes`,
 `planned_sessions`, `session_feedback`, `session_grades`, `daily_suggestions`, `season_proposals`,
-`lab_results`, `health_checks`, `chat_conversations`, `chat_messages`, `claude_runs`, `jobs`, `app_settings`.
+`lab_results`, `health_checks`, `sauna_sessions`, `habit_log`, `chat_conversations`, `chat_messages`, `claude_runs`, `jobs`, `app_settings`.
 `describe_schema` (MCP) lists every column. Migrations run on start (`storage/schema.py`).
