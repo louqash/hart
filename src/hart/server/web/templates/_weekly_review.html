@@ -80,6 +80,7 @@
     <div class="row small faint" style="margin-top:10px">
       {% if r.citations %}<span>{{ r.citations|selectattr('verified')|list|length }} of {{ r.citations|length }} numbers verified</span>{% endif %}
       <span>v{{ r.version }} · {{ r.created_at|date('%a %d %b %H:%M') }}</span>
+      {% if r.review.declined_by %}<span class="warn" title="{{ r.review.declined_by }}'s safety classifiers declined the request, so {{ r.review.model }} wrote this review">written by {{ r.review.model }}</span>{% endif %}
       {% if r.discord == 'sent' %}<span>sent to Discord</span>{% elif r.discord and r.discord.startswith('failed') %}<span class="warn" title="{{ r.discord }}">Discord failed</span>{% endif %}
     </div>
     <details class="legend"><summary>Ember's working</summary>

@@ -260,6 +260,8 @@ class ChatService:
             text = {
                 "usage_limited": "Claude usage limit reached — try again when the limit resets.",
                 "auth_failed": "Claude couldn't authenticate — the token may have expired (see System).",
+                "refused": "The model's safeguards declined this message — rephrase it, or switch this "
+                "conversation to another model.",
             }.get(outcome.status, f"Something went wrong: {outcome.error}")
         with contextlib.closing(self._db.cursor()) as cur:
             message_id = cur.fetchone(

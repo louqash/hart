@@ -56,7 +56,7 @@ class RunSpec:
 @dataclass
 class RunOutcome:
     run_id: int
-    status: str = "running"  # ok | error | cancelled | usage_limited | auth_failed
+    status: str = "running"  # ok | error | cancelled | usage_limited | auth_failed | refused
     text: str = ""
     session_id: str | None = None
     error: str | None = None
@@ -82,6 +82,20 @@ def _tool_output_text(content: Any) -> str:
         else:
             parts.append(json.dumps(item, default=str))
     return "\n".join(parts)
+
+
+REFUSAL_MARKERS = ("safeguards flagged", "usage policy")
+
+
+def is_refusal(text: str) -> bool:
+    """The model's safety classifiers declined the request (``stop_reason`` "refusal" or the CLI's API error).
+    Not transient: the same input is refused again, so callers may try another model instead of retrying."""
+    lowered = (text or "").lower()
+    return any(marker in lowered for marker in REFUSAL_MARKERS)
+
+
+def _detail(msg: Any) -> str:
+    return "; ".join(msg.errors or []) or (msg.result or msg.subtype)
 
 
 def _short_name(name: str) -> str:
@@ -230,6 +244,7 @@ class ClaudeRunner:
         text_parts: list[str] = []
         error_kind: str | None = None
         rate_limited = False
+        refused = False
 
         await client.connect()
         await client.query(spec.prompt)
@@ -253,6 +268,8 @@ class ClaudeRunner:
             elif isinstance(msg, AssistantMessage):
                 if msg.error:
                     error_kind = msg.error
+                if msg.stop_reason == "refusal":
+                    refused = True
                 if msg.parent_tool_use_id is not None:
                     continue
                 for block in msg.content:
@@ -312,9 +329,11 @@ class ClaudeRunner:
                     )
                 elif rate_limited or error_kind == "rate_limit" or msg.api_error_status == 429:
                     outcome.status, outcome.error = "usage_limited", "Claude usage limit reached"
+                elif refused or msg.stop_reason == "refusal" or (msg.is_error and is_refusal(_detail(msg))):
+                    outcome.status = "refused"
+                    outcome.error = _detail(msg) if msg.is_error else f"{spec.model}'s safeguards declined the request"
                 elif msg.is_error:
-                    detail = "; ".join(msg.errors or []) or (msg.result or msg.subtype)
-                    outcome.status, outcome.error = "error", detail
+                    outcome.status, outcome.error = "error", _detail(msg)
                 else:
                     outcome.status = "ok"
                 if not text_parts and msg.result and not msg.is_error:
@@ -331,6 +350,8 @@ class ClaudeRunner:
             return "auth_failed", f"Claude authentication failed: {text[:300]}"
         if "rate limit" in lowered or "usage limit" in lowered or "429" in lowered:
             return "usage_limited", "Claude usage limit reached"
+        if is_refusal(text):
+            return "refused", text[:500]
         return "error", f"{type(exc).__name__}: {text[:500]}"
 
     # ------------------------------------------------------------------

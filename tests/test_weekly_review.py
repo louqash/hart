@@ -400,6 +400,47 @@ def test_invalid_output_twice_is_stored_as_failed(client) -> None:
     assert "failed" in client.get("/season", headers=H).text
 
 
+FLAGGED = "API Error: Opus 5.5's safeguards flagged this message"
+
+
+def _refusal() -> list[Any]:
+    return [SystemMessage(subtype="init", data={"session_id": "s1"}), _result(is_error=True, errors=[FLAGGED])]
+
+
+def test_a_declined_review_is_written_by_the_fallback_model(client) -> None:
+    FakeClient.scripts.extend([_refusal(), _script(REVIEW)])
+    job = _run(client, scope="week")
+    assert job["status"] == "ok"
+    first, second = FakeClient.instances
+    assert first.options.model == "claude-opus-5-5"
+    assert (second.options.model, second.options.effort) == (
+        "claude-sonnet-5",
+        "high",
+    ) and second.options.resume is None
+    review = client.get("/api/weekly-reviews", headers=H).json()["reviews"][0]
+    assert review["review"]["model"] == "claude-sonnet-5" and review["review"]["declined_by"] == "claude-opus-5-5"
+    assert "written by claude-sonnet-5" in client.sent[0]["embeds"][0]["footer"]["text"]
+    assert "written by claude-sonnet-5" in client.get("/season", headers=H).text
+
+
+def test_declined_by_both_models_fails_with_the_reason(client) -> None:
+    FakeClient.scripts.extend([_refusal(), _refusal()])
+    job = _run(client, scope="week")
+    assert job["status"] == "error" and len(FakeClient.instances) == 2  # not repaired: it would be declined again
+    review = client.get("/api/weekly-reviews", headers=H).json()["reviews"][0]
+    assert review["error"].startswith("claude-opus-5-5 declined the review (safeguards); claude-sonnet-5 then failed")
+    assert FLAGGED in review["error"]
+
+
+def test_review_tools_leave_out_lab_results() -> None:
+    from hart.server.claude.policy import review_policy
+
+    policy = review_policy()
+    assert MCP_PREFIX + "get_lab_results" not in policy.allowed_tools
+    assert MCP_PREFIX + "get_lab_results" in policy.disallowed_tools
+    assert MCP_PREFIX + "get_session_grade" in policy.allowed_tools
+
+
 def test_mcp_tool_lists_reviews(client) -> None:
     from tests.test_season_readiness import _mcp
 

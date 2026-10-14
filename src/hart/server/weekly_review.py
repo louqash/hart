@@ -41,7 +41,10 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-REVIEW_PROMPT_VERSION = "weekly_review@1"
+REVIEW_PROMPT_VERSION = "weekly_review@2"
+# When the review model's safety classifiers decline the request, this model writes the review instead.
+FALLBACK_MODEL = "claude-sonnet-5"
+FALLBACK_EFFORT = "high"
 TREND_WEEKS = 6
 SEASON_MAX_WEEKS = 26  # a season review goes back to the comeback (or the phase start), at most this far
 SEASON_FALLBACK_WEEKS = 12
@@ -138,7 +141,7 @@ week — or no change.
 - Use the hart tools whenever the bundle doesn't settle something: `get_session_grade` for a grade's \
 details, `get_activity_detail` for a session, `get_planned_sessions`, `get_training_load`, \
 `get_hrv_trend`, `run_sql_query` (after `describe_schema`). Before you call something a pattern, look \
-at the weeks behind it.
+at the weeks behind it. Blood work and health checks are not part of this review — leave them out.
 - Every number you write must come from the bundle or a tool result in this run. List each in \
 `citations` with its exact value and source ("facts.targets…" or the tool's name). Code checks them, \
 and a review with numbers it can't find is sent back. Never estimate.
@@ -689,6 +692,16 @@ def generate(
 
     outcome = run(spec)
     sources, calls = [facts, *outcome.tool_outputs], list(outcome.tool_calls)
+    declined_by = None
+    if outcome.status == "refused" and spec.model != FALLBACK_MODEL:
+        # A safety classifier declined it (false positives on health data happen) — the same input would be
+        # declined again, so another model writes the review instead.
+        logger.warning("Weekly review: %s declined (%s); retrying with %s", spec.model, outcome.error, FALLBACK_MODEL)
+        declined_by = spec.model
+        spec = RunSpec(**{**spec.__dict__, "model": FALLBACK_MODEL, "effort": FALLBACK_EFFORT})
+        outcome = run(spec)
+        sources += outcome.tool_outputs
+        calls += outcome.tool_calls
     output, error = _parse(outcome)
     citations = verify_citations(output.citations, sources) if output else []
     unverified = _unverified(citations)
@@ -720,8 +733,11 @@ def generate(
 
     proposals = proposals_from(calls)
     if output is None:
-        review_id = store_failure(db, week_start, today, trigger, error or outcome.error or "no output", outcome.run_id)
-        return {"status": "failed", "review_id": review_id, "error": error or outcome.error}
+        error = error or outcome.error or "no output"
+        if declined_by:
+            error = f"{declined_by} declined the review (safeguards); {spec.model} then failed too: {error}"
+        review_id = store_failure(db, week_start, today, trigger, error, outcome.run_id)
+        return {"status": "failed", "review_id": review_id, "error": error}
 
     confidence = "low" if _unverified(citations) else output.confidence
     review_id = store(
@@ -740,6 +756,8 @@ def generate(
                 "missing": output.missing,
                 "season": output.season,
                 "next_week": output.next_week,
+                "model": spec.model,
+                "declined_by": declined_by,
             },
             "confidence": confidence,
             "citations": citations,
@@ -981,6 +999,8 @@ def build_message(db: Database, config: HartSettings, review: dict[str, Any]) ->
         footer.append(f"{countdown['race']} in {countdown['days'] // 7} weeks")
     if review.get("confidence") == "low":
         footer.append("low confidence")
+    if sections.get("declined_by"):
+        footer.append(f"written by {sections.get('model')}")
     if footer:
         embed["footer"] = {"text": " · ".join(footer)}
     if config.server.public_host:
