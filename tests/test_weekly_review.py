@@ -400,6 +400,18 @@ def test_invalid_output_twice_is_stored_as_failed(client) -> None:
     assert "failed" in client.get("/season", headers=H).text
 
 
+def test_season_page_with_a_failed_earlier_week(client) -> None:
+    # Last week's runs failed; this week's review then succeeded: the failure is an "earlier week" row
+    # without a scorecard.
+    db = client.app.state.db
+    weekly_review.store_failure(db, WEEK - 7 * DAY, TODAY, "schedule", "declined")
+    FakeClient.scripts.append(_script(REVIEW))
+    _run(client)
+    page = client.get("/season", headers=H)
+    assert page.status_code == 200
+    assert "The rides happened" in page.text and "declined" in page.text
+
+
 FLAGGED = "API Error: Opus 5.5's safeguards flagged this message"
 
 

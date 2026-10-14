@@ -16,11 +16,11 @@
     <td class="num">{{ (s.minutes * 60)|duration }}</td></tr>
   {% endfor %}
   <tr class="total"><td>All</td>
-    <td class="num">{% if c.planned_due %}{{ c.done_as_planned }} / {{ c.planned_due }}{% if c.completion_pct is not none %} · {{ c.completion_pct }}%{% endif %}{% else %}—{% endif %}</td>
+    <td class="num">{% if c.planned_due %}{{ c.done_as_planned }} / {{ c.planned_due }}{% if c.completion_pct is number %} · {{ c.completion_pct }}%{% endif %}{% else %}—{% endif %}</td>
     <td class="num">{{ c.sports|sum(attribute='sessions') }}</td><td></td>
     <td class="num">{{ c.hours }} h</td></tr>
 </table></div>
-<p class="small faint" style="margin:6px 0 0">Load {{ c.load }}{% if c.grade_average is not none %} · grades average {{ '%.1f'|format(c.grade_average) }}/5 over {{ c.graded }} session{{ 's' if c.graded != 1 }}{% endif %} · walks and other activities not counted</p>
+<p class="small faint" style="margin:6px 0 0">Load {{ c.load }}{% if c.grade_average is number %} · grades average {{ '%.1f'|format(c.grade_average) }}/5 over {{ c.graded }} session{{ 's' if c.graded != 1 }}{% endif %} · walks and other activities not counted</p>
 {% endif %}
 {% endmacro %}
 
@@ -110,9 +110,10 @@
       <tr class="clickable" onclick="toggleReview({{ h.id }})">
         <td class="nowrap">{{ h.week_start|date('%d %b') }}{% if h.so_far %} <span class="faint small">so far</span>{% endif %}</td>
         <td>{% if h.status == 'ok' %}<span class="chip {{ VERDICT_CHIP.get(h.verdict, '') }}">{{ h.verdict_label }}</span>{% else %}<span class="err small">failed</span>{% endif %}</td>
-        <td class="num">{{ c.completion_pct ~ '%' if c.completion_pct is not none else '—' }}</td>
-        <td class="num">{{ c.hours ~ ' h' if c.hours is not none else '—' }}</td>
-        <td class="num">{{ '%.1f'|format(c.grade_average) if c.grade_average is not none else '—' }}</td>
+        {#- A failed run has no scorecard: `is number`, since a missing key isn't none. -#}
+        <td class="num">{{ c.completion_pct ~ '%' if c.completion_pct is number else '—' }}</td>
+        <td class="num">{{ c.hours ~ ' h' if c.hours is number else '—' }}</td>
+        <td class="num">{{ '%.1f'|format(c.grade_average) if c.grade_average is number else '—' }}</td>
         <td class="wrap small">{{ h.headline or h.error or '' }}</td>
       </tr>
       <tr id="review-{{ h.id }}" class="review-detail" hidden><td colspan="6">
