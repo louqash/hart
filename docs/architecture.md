@@ -41,6 +41,7 @@ all enqueue it):
 3. Training load, recovery scores, materialised views, anomaly detection.
 4. Plan matching, then follow-up jobs: grading for new sessions (and regrading for edited ones), today's
    suggestion once last night's sleep has arrived, a refresh of tomorrow's suggestion after a late session.
+   A new session without a note or RPE/feel waits for them first (see [Session grading](#session-grading)).
 
 Garmin auth failures pause scheduled syncs until you run `hart auth`; rate limits back off exponentially.
 
@@ -84,6 +85,14 @@ day — before or after the session — and habits logged the evening before). C
 and context fit 1–5 with a justification each; code computes the overall score and letter and checks every
 cited number against the facts and tool results — too many unverifiable numbers make the grade low-confidence.
 
+The grade reads the athlete's note and RPE/feel, so `server.grade_wait` holds back a new session that arrives
+without them (Settings → Notifications, 120 minutes by default; a row in `grade_waits`). The Discord bot asks
+for them with "Add note" (a form: RPE, feel, note) and "Skip — grade now". The session is graded as soon as
+both are in — saved in the form or on the session page, or brought from Garmin by a sync — or when skipped.
+When the wait is over the scheduler starts a sync first, so a note added in Garmin in the last minutes is
+still read, and grades without it if that sync can't run. The wait is set once, by the sync that brings the
+session in: later syncs don't restart it, and the hourly sweep leaves waiting sessions alone.
+
 ### Daily suggestions
 
 `suggestions.build_context` gives Claude readiness, the coach's plan, the phase, 14 days of sessions, 4 weeks
@@ -108,7 +117,8 @@ failed and not shown.
 - **Discord:** `server.evening` builds the evening message (no Claude usage) — a summary of the day (sessions
   with duration, distance, HR, power, load and grade; sauna; last night's sleep and HRV, resting HR, steps;
   form; habits) and tomorrow's plan — and posts it as the bot or through the webhook; `server.discord_chat` runs a discord.py bot in the server's event loop that turns channel messages
-  and replies into threads, each backed by an ordinary `ChatService` conversation.
+  and replies into threads, each backed by an ordinary `ChatService` conversation. It also answers the buttons
+  of the habit check-in and of a session's note request (`on_interaction`).
 - **Sauna & habits:** `server.habits` keeps a sauna log — one row per visit (start time, minutes, rounds,
   temperature, type), any number a day — logged by telling Ember or on the Health page. Habits are yes/no per
   day from the list in Settings (supplements, late meal…). A day counts as answered once any habit is — the

@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 16
+CURRENT_SCHEMA_VERSION: int = 17
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -559,6 +559,15 @@ CREATE TABLE IF NOT EXISTS habit_log (
     PRIMARY KEY (date, habit)
 );
 
+CREATE TABLE IF NOT EXISTS grade_waits (
+    activity_id  VARCHAR PRIMARY KEY,
+    grade_at     TIMESTAMPTZ NOT NULL,   -- graded then at the latest, with or without the note
+    missing      VARCHAR NOT NULL,       -- what the sync didn't bring: note, effort or note,effort
+    message_id   VARCHAR,                -- the Discord prompt (bot only), edited when the wait ends
+    channel_id   VARCHAR,
+    created_at   TIMESTAMPTZ DEFAULT current_timestamp
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
     key         VARCHAR PRIMARY KEY,
     value       JSON NOT NULL,
@@ -706,6 +715,7 @@ def _run_migrations(db: Database) -> None:
         )
 
     # v16: sauna_sessions and habit_log — new tables only, created above.
+    # v17: grade_waits — a new table only, created above.
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;

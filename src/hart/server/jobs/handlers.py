@@ -102,6 +102,8 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
             result["suggestion_tomorrow"] = enqueue_suggestion(tomorrow, "preliminary", "sync")["status"]
 
     def sync(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
+        from hart.server import grade_wait
+
         days = payload.get("days") or (MANUAL_DAYS if payload.get("manual") else SCHEDULED_DAYS)
         days = min(int(days), MAX_SYNC_DAYS)
         result = run_sync_pipeline(db, config, health_days=days, activity_days=days)
@@ -118,7 +120,11 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
                     "SELECT 1 FROM activities WHERE activity_id = ? AND CAST(start_time AS DATE) >= ?", [a, since]
                 )
             ]
-        enqueue_grades(new_ids, "sync")
+        # Without a note or RPE/feel, a session waits for them (Settings → Notifications) — the rest now.
+        held = grade_wait.hold(db, config, new_ids)
+        enqueue_grades([a for a in new_ids if a not in held], "sync")
+        if held:
+            result["waiting_for_notes"] = held
 
         # Edited in Garmin after the session was graded: grade it again on the final data.
         # RPE/feel from Garmin only counts when there's no feedback given in the app (it wins).
@@ -149,6 +155,14 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         enqueue_grades(sets, "sets_edited")
         enqueue_grades(effort, "effort_edited")
         enqueue_grades(described, "description_edited")
+        # Waiting for a note: graded once this sync brought it (and the effort) from Garmin, or once the wait
+        # is over — on the data just fetched, so a note added in its last minutes isn't missed (the scheduler
+        # starts this sync when the wait ends).
+        notes_in = [a for a in grade_wait.completed(db) if grade_wait.release(db, config, a, grade_wait.NOTES_IN)]
+        enqueue_grades(notes_in, "notes_added")
+        now = datetime.datetime.now(tz=datetime.UTC)
+        over = [a for a in grade_wait.due(db, now) if grade_wait.release(db, config, a, grade_wait.WAIT_OVER)]
+        enqueue_grades(over, "sync")
         after_sync(db, result, days)
         return _fail_on_garmin_errors(result)
 
@@ -177,9 +191,11 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         claude = runner_ref.get("claude")
         if claude is None:
             raise JobFailed("Claude runner not available")
-        from hart.server import grade_message
+        from hart.server import grade_message, grade_wait
 
         trigger = payload.get("trigger", "manual")
+        # Graded from anywhere (the session page, the sweep…): it isn't waiting for a note any more.
+        grade_wait.release(db, config, payload["activity_id"], grade_wait.GRADING)
         try:
             result = grade_activity(
                 db,

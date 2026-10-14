@@ -2512,6 +2512,7 @@ def describe_schema(table_name: str = "") -> str:
             "planned_sessions": "Planned sessions per day (coach's plan pasted in, your own, accepted suggestions), matched to activities.",
             "session_feedback": "Athlete's own RPE (1-10), feel (1-5) and note (comment; NULL = the note is the Garmin description in activities.description) per activity.",
             "session_grades": "Session grades (A-E) with dimension scores, summary and citations; latest = max(version).",
+            "grade_waits": "New sessions held back from grading until the athlete adds a note/RPE (or grade_at passes).",
             "daily_suggestions": "Daily training suggestions with readiness; latest = max(version) per date.",
             "chat_conversations": "Web chat conversations.",
             "chat_messages": "Web chat messages.",

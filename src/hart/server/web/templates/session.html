@@ -139,6 +139,9 @@
     <button class="small secondary" onclick="act(this, () => api.post('/api/sessions/{{ s.activity_id }}/grade', {force: true}))">Grade anyway</button>
   {% elif g and g.status == 'failed' %}
     <p class="err small">The last grading attempt failed: {{ g.ungraded_reason }}</p>
+  {% elif s.grade_wait %}
+    {% set what = s.grade_wait.missing|join(' and ') or 'note' %}
+    <p class="muted">Waiting for your {{ what }} — add {{ 'it' if s.grade_wait.missing|length < 2 else 'them' }} under “How it felt” or in Garmin Connect and Ember grades with {{ 'it' if s.grade_wait.missing|length < 2 else 'them' }}; otherwise at {{ s.grade_wait.grade_at }}. “Grade now” doesn't wait.</p>
   {% else %}
     <p class="muted">Not graded yet.</p>
   {% endif %}

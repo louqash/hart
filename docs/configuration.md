@@ -107,6 +107,7 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Habit check-in on Discord | `HART_HABIT_CHECKIN` | `on` | Buttons for your habits (needs the Discord bot). Write “habits” to Ember in Discord for one any time. |
 | Habit check-in at | `HART_HABIT_CHECKIN_AT` | `21:30` | Before the evening message, so its summary includes your answers. The buttons keep working afterwards for anything later in the evening. |
 | Discord message after each graded session | `HART_GRADE_MESSAGE` | `on` | The grade, its scores and what went well — not for the bulk 'grade past sessions' run. |
+| Wait for your note before grading (minutes) | `HART_GRADE_WAIT_MINUTES` | `120` | A new session without a note or RPE/feel waits up to this long so you can add them — in Garmin Connect, on the session page, or from the Discord message (which also has “Grade now”). It's graded as soon as both are in. 0 grades right away. |
 | Send accepted suggestions to Garmin | `HART_GARMIN_AUTO_SEND` | `on` | Runs and rides are scheduled on your Garmin calendar. |
 
 ### Advanced thresholds

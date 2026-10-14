@@ -103,6 +103,21 @@ def start_thread(config: HartSettings, message_id: str, name: str) -> str:
     return str(response.json()["id"])
 
 
+def edit(config: HartSettings, channel_id: str, message_id: str, message: dict[str, Any]) -> None:
+    """Replace one of the bot's messages (bot only) — e.g. to take its buttons away once they're used up."""
+    import httpx
+
+    d = config.discord
+    response = httpx.patch(
+        f"{API}/channels/{channel_id}/messages/{message_id}",
+        headers={"Authorization": f"Bot {d.bot_token}"},
+        json={**message, "allowed_mentions": {"parse": []}},
+        timeout=10.0,
+    )
+    if response.status_code not in (200, 201):
+        raise DiscordError(f"Discord answered {response.status_code}: {response.text[:200]}")
+
+
 def _minutes(seconds: float | None) -> str:
     m = round((seconds or 0) / 60)
     return f"{m // 60}:{m % 60:02d} h" if m >= 60 else f"{m}′"

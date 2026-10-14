@@ -1,6 +1,7 @@
-{#- Grade chip for lists: letter, "grading…", "—" (not graded) or "!" (failed). -#}
+{#- Grade chip for lists: letter, "grading…", "✎" (waiting for a note), "—" (not graded) or "!" (failed). -#}
 {% macro grade_chip(g) -%}
 {%- if g and g.pending -%}<span class="grade-chip pending" title="Grading…"><i></i></span>
+{%- elif g and g.waiting -%}<span class="grade-chip none" title="Waiting for your note before grading">✎</span>
 {%- elif g and g.status == 'graded' -%}<span class="grade-chip l{{ g.letter }}" title="Grade {{ g.letter }} ({{ '%.2f'|format(g.overall_score) }}/5)">{{ g.letter }}</span>
 {%- elif g and g.status == 'ungraded' -%}<span class="grade-chip none" title="{{ g.ungraded_reason }}">—</span>
 {%- elif g and g.status == 'failed' -%}<span class="grade-chip failed" title="Grading failed">!</span>

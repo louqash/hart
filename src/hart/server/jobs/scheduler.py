@@ -26,11 +26,12 @@ MORNING_WATCH_EVERY_MIN = 15
 BACKUP_WINDOW_LENGTH = datetime.timedelta(hours=1)  # a restart inside the window still backs up
 SWEEP_DAYS = 3
 MAX_GRADE_FAILURES = 2
+WAIT_SYNC_GRACE = datetime.timedelta(minutes=10)  # a note wait's sync gets this long to grade it
 
 
 def ungraded_recent(db: Database, days: int = SWEEP_DAYS) -> list[str]:
     """Recent activities with no graded/ungraded result, fewer than 2 failed
-    attempts, and no grading job queued or running."""
+    attempts, no grading job queued or running, and not waiting for a note."""
     return [
         r[0]
         for r in db.fetchall(
@@ -39,7 +40,9 @@ def ungraded_recent(db: Database, days: int = SWEEP_DAYS) -> list[str]:
             "  AND g.status IN ('graded', 'ungraded')) "
             "AND (SELECT count(*) FROM session_grades g WHERE g.activity_id = a.activity_id AND g.status = 'failed') < ? "
             "AND NOT EXISTS (SELECT 1 FROM jobs j WHERE j.dedupe_key = 'grade:' || a.activity_id "
-            "  AND j.status IN ('queued', 'running')) ORDER BY a.start_time",
+            "  AND j.status IN ('queued', 'running')) "
+            "AND NOT EXISTS (SELECT 1 FROM grade_waits w WHERE w.activity_id = a.activity_id "
+            "  AND w.grade_at > current_timestamp) ORDER BY a.start_time",
             [days, MAX_GRADE_FAILURES],
         )
     ]
@@ -131,6 +134,36 @@ class Scheduler:
                     fired.append(slot)
         return fired
 
+    def grade_waits_due(self, now_utc: datetime.datetime) -> list[str]:
+        """Sessions that waited for a note long enough (``grade_wait``): a sync first — it grades them on
+        the latest Garmin data, a note added in the last minutes included. Graded here only when Garmin
+        is blocked or that sync hasn't done it after WAIT_SYNC_GRACE."""
+        from hart.server import grade_wait
+        from hart.server.grading import claude_paused
+
+        fired: list[str] = []
+        today = now_utc.astimezone(self._tz).date()
+        with contextlib.closing(self._db.cursor()) as cur:
+            if claude_paused(cur):
+                return fired  # the wait goes on until Claude is back
+            due = grade_wait.due(cur, now_utc)
+            late = set(grade_wait.due(cur, now_utc - WAIT_SYNC_GRACE))
+            blocked = bool(due) and garmin_blocked(cur, now_utc) is not None
+            for activity_id in due:
+                if activity_id in late or blocked:
+                    if grade_wait.release(cur, self._config, activity_id, grade_wait.WAIT_OVER):
+                        grade_wait.grade(self._runner.enqueue, activity_id, "sync", job_trigger="schedule")
+                        fired.append(f"grade_wait:{activity_id}")
+                    continue
+                slot = f"grade_wait_sync:{today}:{activity_id}"
+                if slot in self._fired:
+                    continue
+                job = self._runner.enqueue("sync", {"reason": "note wait over"}, trigger="schedule", dedupe_key="sync")
+                if job["status"] != "already_running":  # a sync already under way may have fetched too early
+                    self._fired.add(slot)
+                    fired.append(slot)
+        return fired
+
     def on_startup(self) -> None:
         now = datetime.datetime.now(tz=datetime.UTC)
         with contextlib.closing(self._db.cursor()) as cur:
@@ -170,6 +203,7 @@ class Scheduler:
                         )
                         fired.append(f"grade:{activity_id}")
 
+        fired += self.grade_waits_due(now_utc)
         fired += self.suggestions_due(local)
 
         if self._config is not None:

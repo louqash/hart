@@ -408,7 +408,7 @@ def latest_grade(db: Database, activity_id: str, version: int | None = None) -> 
 
 
 def grade_chips(db: Database, activity_ids: list[str]) -> dict[str, dict[str, Any]]:
-    """Latest grade status/letter per activity, plus queued/running grading jobs."""
+    """Latest grade status/letter per activity, plus queued/running grading jobs and note waits."""
     if not activity_ids:
         return {}
     placeholders = ", ".join("?" for _ in activity_ids)
@@ -429,4 +429,6 @@ def grade_chips(db: Database, activity_ids: list[str]) -> dict[str, dict[str, An
         [f"grade:{a}" for a in activity_ids],
     ):
         chips.setdefault(r["dedupe_key"][6:], {})["pending"] = True
+    for r in rows(db, f"SELECT activity_id FROM grade_waits WHERE activity_id IN ({placeholders})", activity_ids):
+        chips.setdefault(r["activity_id"], {})["waiting"] = True
     return chips

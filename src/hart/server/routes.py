@@ -284,6 +284,9 @@ def session_page(
     if detail is None:
         raise HTTPException(404, detail="session not found")
     detail["compare"] = data.session_compare(db, activity_id, compare)
+    from hart.server.grade_wait import waiting
+
+    detail["grade_wait"] = waiting(db, activity_id, request.app.state.config.server.tz)
     if v:
         from hart.server.grading import latest_grade
 
@@ -731,34 +734,13 @@ def api_session_note_garmin(
 def api_session_feedback(
     activity_id: str, body: FeedbackIn, request: Request, db: Database = Depends(get_db)
 ) -> dict[str, Any]:
+    from hart.server import grade_wait
+
     if db.fetchone("SELECT 1 FROM activities WHERE activity_id = ?", [activity_id]) is None:
         raise HTTPException(404, detail="session not found")
-    garmin = db.fetchone("SELECT description FROM activities WHERE activity_id = ?", [activity_id])[0] or ""
-    garmin = garmin.replace("\r\n", "\n").strip()
-    current = db.fetchone("SELECT comment, note_garmin_seen FROM session_feedback WHERE activity_id = ?", [activity_id])
-    note = (body.note or "").replace("\r\n", "\n").strip()
-    if current is None or current[0] is None:
-        # Following Garmin: an unchanged (or empty, with nothing in Garmin) note keeps following it.
-        comment, seen = (None, None) if note == garmin else (note, garmin or None)
-    else:
-        comment, seen = note, current[1]
-    db.execute(
-        "INSERT OR REPLACE INTO session_feedback (activity_id, rpe, feel, comment, note_garmin_seen, updated_at) "
-        "VALUES (?, ?, ?, ?, ?, current_timestamp)",
-        [activity_id, body.rpe, body.feel, comment, seen],
-    )
-    # Feedback after grading → one regrade with it, never more.
-    regrade = None
-    graded = db.fetchone(
-        "SELECT count(*) FROM session_grades WHERE activity_id = ? AND status = 'graded'", [activity_id]
-    )[0]
-    already = db.fetchone(
-        "SELECT count(*) FROM session_grades WHERE activity_id = ? "
-        "AND json_extract_string(features, '$.trigger') = 'feedback'",
-        [activity_id],
-    )[0]
-    if graded and not already:
-        regrade = _enqueue_grade(request, activity_id, "feedback")
+    grade_wait.save_feedback(db, activity_id, body.rpe, body.feel, body.note)
+    # Waiting for this note → graded now; already graded → one regrade with it, never more.
+    regrade = grade_wait.after_feedback(db, request.app.state.config, activity_id, request.app.state.runner.enqueue)
     return {"activity_id": activity_id, "saved": True, "regrade": regrade}
 
 

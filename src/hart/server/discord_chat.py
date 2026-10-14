@@ -9,7 +9,8 @@ a DM continues one conversation until it has been quiet for six hours, or
 until you write "new". The conversation is an ordinary chat
 (same tools, same limits) and also appears on the Ember page.
 
-The bot also answers the habit check-in's buttons (``server.habits``), and "habits"
+The bot also answers the buttons of the habit check-in (``server.habits``) and of the
+request for a session's note before grading (``server.grade_wait``), and "habits"
 (or "habits yesterday") on its own posts a check-in instead of starting a conversation.
 
 Only allowed Discord users are answered: ``HART_DISCORD_ALLOWED_USERS``, or by
@@ -25,10 +26,11 @@ import contextlib
 import datetime
 import logging
 import re
+from collections.abc import Callable
 from typing import Any
 
 from hart.config import HartSettings
-from hart.server import habits, state
+from hart.server import grade_wait, habits, state
 from hart.server.chat import ChatBusy, ChatService
 from hart.server.data import DAY, local_today
 from hart.storage.database import Database
@@ -129,10 +131,13 @@ def _embed_text(message: Any) -> str:
 
 
 class DiscordChat:
-    def __init__(self, db: Database, chat: ChatService, config: HartSettings) -> None:
+    def __init__(
+        self, db: Database, chat: ChatService, config: HartSettings, enqueue: Callable[..., Any] | None = None
+    ) -> None:
         self._db = db
         self._chat = chat
         self._config = config
+        self._enqueue = enqueue  # the job runner's, for the grade buttons
         self._channel_id = config.discord.channel_id
         self.allowed_users: set[int] = set(config.discord.allowed_user_ids)
         self.bot_user_id: int | None = None  # set once connected
@@ -253,12 +258,18 @@ class DiscordChat:
         await asyncio.to_thread(evening.send, self._config, message, channel_id=channel_id)
 
     def handle_interaction(self, kind: int, user_id: int | None, data: dict[str, Any]) -> dict[str, Any] | None:
-        """The response to a button click on a habit check-in, or None if it isn't one."""
-        if not str(data.get("custom_id") or "").startswith(habits.PREFIX + ":"):
+        """The response to a button click (or a submitted form) on a habit check-in or a note request,
+        or None if it isn't one of ours."""
+        custom_id = str(data.get("custom_id") or "")
+        if not custom_id.startswith(habits.PREFIX + ":"):
             return None
         if user_id not in self.allowed_users:
             return habits.ephemeral("These buttons are for the athlete only.")
         with contextlib.closing(self._db.cursor()) as cur:
+            if custom_id.split(":")[1] in grade_wait.ACTIONS:
+                if self._enqueue is None:
+                    return habits.ephemeral("Grading isn't running here.")
+                return grade_wait.handle_interaction(cur, self._config, kind, data, self._enqueue)
             return habits.handle_interaction(cur, kind, data)
 
 
@@ -282,8 +293,10 @@ async def respond(interaction_id: int, token: str, response: dict[str, Any]) -> 
 class DiscordBot:
     """Runs the discord.py client as a task in the server's event loop."""
 
-    def __init__(self, db: Database, chat: ChatService, config: HartSettings) -> None:
-        self.handler = DiscordChat(db, chat, config)
+    def __init__(
+        self, db: Database, chat: ChatService, config: HartSettings, enqueue: Callable[..., Any] | None = None
+    ) -> None:
+        self.handler = DiscordChat(db, chat, config, enqueue)
         self._token = config.discord.bot_token
         self._client: Any = None
         self._task: asyncio.Task[None] | None = None

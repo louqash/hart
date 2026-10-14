@@ -199,6 +199,19 @@ REGISTRY: tuple[Setting, ...] = (
         help="The grade, its scores and what went well — not for the bulk 'grade past sessions' run.",
     ),
     Setting(
+        "grade_wait_minutes",
+        "notifications",
+        "Wait for your note before grading (minutes)",
+        120,
+        "int",
+        env="HART_GRADE_WAIT_MINUTES",
+        min=0,
+        max=1440,
+        help="A new session without a note or RPE/feel waits up to this long so you can add them — in "
+        "Garmin Connect, on the session page, or from the Discord message (which also has “Grade now”). "
+        "It's graded as soon as both are in. 0 grades right away.",
+    ),
+    Setting(
         "garmin_auto_send",
         "notifications",
         "Send accepted suggestions to Garmin",

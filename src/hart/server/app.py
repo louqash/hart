@@ -326,7 +326,7 @@ def create_app(
         with contextlib.closing(db.cursor()) as cur:
             demo = state.is_demo(cur)
         if run_scheduler and discord_chat.configured(config) and not demo:
-            app.state.discord = discord_chat.DiscordBot(db, app.state.chat, config)
+            app.state.discord = discord_chat.DiscordBot(db, app.state.chat, config, runner.enqueue)
             await app.state.discord.start()
         try:
             async with mcp_server.mcp.session_manager.run():
