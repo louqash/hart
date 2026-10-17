@@ -632,3 +632,63 @@ def test_a_suggestion_already_in_the_plan_is_not_planned_twice(client) -> None:
     items = client.get(f"/api/plan?start={today}&end={today}", headers=H).json()["items"]
     standing = [(i["duration_min"], i["source"]) for i in items if not i.get("replaced_by")]
     assert standing == [(20, "suggestion_accepted")]
+
+
+# ---------------------------------------------------------------------------
+# Planned vs done
+# ---------------------------------------------------------------------------
+
+
+def test_a_swapped_session_is_compared_with_the_plan(db: Database) -> None:
+    # A 30' easy spin auto-matches the planned 90' threshold ride: the row counts as done, but the
+    # suggestion bundle and the dashboard say how it differed.
+    _activity(db, "spin", datetime.datetime.combine(TUE, datetime.time(18)), secs=30 * 60)
+    plan.create_row(
+        db,
+        plan.PlanRowIn(date=TUE, sport_type="bike", title="Threshold 3x12'", duration_min=90, intensity="threshold"),
+    )
+    config = get_config()
+    tomorrow, _ = suggestions.build_context(db, config, TUE + datetime.timedelta(days=1), "preliminary")
+    row = tomorrow["this_week"]["planned"][0]
+    assert row["done"] is True and row["intensity"] == "threshold"
+    assert row["vs_plan"]["verdict"] == "easier" and row["vs_plan"]["deviations"] == ["easier", "shorter"]
+    assert "33% of the planned time" in row["vs_plan"]["summary"]
+    spin = next(h for h in tomorrow["training_history"] if h["date"] == TUE)
+    assert spin["vs_plan"]["planned"] == "Threshold 3x12'" and spin["vs_plan"]["verdict"] == "easier"
+    same_day, _ = suggestions.build_context(db, config, TUE, "final")
+    assert same_day["done_on_target_date"][0]["vs_plan"]["verdict"] == "easier"
+    assert "still owed this week" in suggestions._SYSTEM and suggestions.SUGGEST_PROMPT_VERSION == "suggest@11"
+
+    done = suggestions.today_done(db, TUE)
+    assert done["activity_id"] == "spin" and [x["verdict"] for x in done["off_plan"]] == ["easier"]
+    assert done["off_plan"][0]["summary"].startswith("Planned bike 90 min threshold; did bike 30 min")
+
+
+def test_a_session_done_as_planned_has_no_hint(db: Database) -> None:
+    _activity(db, "ride", datetime.datetime.combine(TUE, datetime.time(7)))  # 60', 6% of HR time in Z3
+    plan.create_row(
+        db, plan.PlanRowIn(date=TUE, sport_type="bike", title="Endurance", duration_min=60, intensity="endurance")
+    )
+    assert suggestions.today_done(db, TUE)["off_plan"] == []
+    bundle, _ = suggestions.build_context(db, get_config(), TUE, "final")
+    assert bundle["this_week"]["planned"][0]["vs_plan"]["verdict"] == "as_planned"
+
+
+def test_dashboard_shows_a_session_that_differs_from_the_plan(client) -> None:
+    today = datetime.date.today()
+    with client.app.state.db.cursor() as cur:
+        _activity(cur, "spin", datetime.datetime.combine(today, datetime.time(0, 5)), secs=30 * 60)
+    client.post(
+        "/api/plan",
+        headers=W,
+        json={
+            "date": str(today),
+            "sport_type": "bike",
+            "title": "Coach threshold",
+            "duration_min": 90,
+            "intensity": "threshold",
+        },
+    )
+    client.put("/api/settings/preliminary_time", headers=W, json={"value": "23:59"})  # today's card at any hour
+    page = client.get("/", headers=H).text
+    assert "Done ✓" in page and "Not quite the plan — Planned bike 90 min threshold; did bike 30 min" in page

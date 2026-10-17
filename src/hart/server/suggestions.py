@@ -37,12 +37,22 @@ from hart.server.data import (
 )
 from hart.server.grading import Citation, _structured_raw, claude_paused, pause_claude, verify_citations
 from hart.server.habits import recent_for_context
-from hart.server.plan import PlanRowIn, active_plan_for, coach_plan_for, create_row, garmin_rules
+from hart.server.plan import (
+    PLAN_SOURCES,
+    PlanRowIn,
+    active_plan_for,
+    coach_plan_for,
+    compare_linked,
+    create_row,
+    garmin_rules,
+    plans_for_activities,
+    vs_plan_view,
+)
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-SUGGEST_PROMPT_VERSION = "suggest@10"
+SUGGEST_PROMPT_VERSION = "suggest@11"
 HISTORY_DAYS = 14
 WEEKLY_TOTALS_WEEKS = 4
 FINAL_CUTOFF_HOUR = 14
@@ -70,8 +80,8 @@ class SuggestionOutput(BaseModel):
         max_length=900,
         description=(
             "Write this first. Go through training_history and week_targets against the weekly structure in the "
-            "athlete notes: what was done, what was missed or is still owed this week, and what that means for "
-            "the target date."
+            "athlete notes: what was done, what was missed or is still owed this week (including planned work a "
+            "swapped or cut-short session left undone — see `vs_plan`), and what that means for the target date."
         ),
     )
     changed_from_previous: str | None = Field(
@@ -111,7 +121,9 @@ now — the coach's or the athlete's own sessions, and suggestions they already 
 and observed state, `training_history` \
 (every session of the last 14 days: sport, duration, load, heart-rate zones, grade, their RPE/feel and \
 their note on the session, \
-and the exercises of strength sessions), `weekly_totals` for the last 4 weeks, this week's plan, \
+the exercises of strength sessions, and `vs_plan` when it was linked to a planned session), \
+`weekly_totals` for the last 4 weeks, this week's plan (`this_week.planned`, with `vs_plan` on each \
+done row), \
 `week_targets` (sessions per week the notes ask for, how many are done and still owed), active \
 athlete notes, `recovery_habits` (sauna sessions and logged habits like a late meal or alcohol over \
 the last 3 days — a late or long sauna and a late meal can explain a dip in last night's HRV or sleep), \
@@ -124,8 +136,15 @@ hart tools for more (e.g. `get_strength_history`, `get_hrv_trend`), but keep it 
 structure in the notes (e.g. two strength sessions per week, a fixed swim day) and \
 `week_targets`. Name anything missed or still owed. A session the week still owes — above all one \
 listed in `limits.required_today` — comes before an optional extra session.
-2. Respect recovery spacing from the notes (e.g. ~48 h between a heavy leg session and a hard run).
-3. If `previous_suggestion` exists: keep it unless `since_previous.changed` lists new facts or your \
+2. A plan row with `done: true` only means an activity was linked to it. `vs_plan` is code's comparison \
+of the planned session with what was done (`verdict`: as_planned, shorter, longer, easier, harder or \
+different_sport, with every difference in `deviations`). When a session was swapped or cut short, \
+the planned work didn't happen: decide whether it is still owed this week — and fits before the next \
+hard day and the recovery spacing — or is better dropped (e.g. the swap was for readiness, pain or \
+illness), and plan the target date with that in mind, within `limits` (if the coach's plan for the \
+day leaves no room for it, say so in `coach_take`). Say which in `week_review`.
+3. Respect recovery spacing from the notes (e.g. ~48 h between a heavy leg session and a hard run).
+4. If `previous_suggestion` exists: keep it unless `since_previous.changed` lists new facts or your \
 week review shows it was wrong; if you change it, say what and why in `changed_from_previous`. \
 Don't swap sports or durations for no reason.
 
@@ -304,7 +323,9 @@ def training_history(db: Database, d: datetime.date, days: int = HISTORY_DAYS) -
     from hart.analytics.grading_features import strength_summary
 
     out = []
-    for s in recent_sessions(db, d - days * DAY, d):
+    sessions = recent_sessions(db, d - days * DAY, d)
+    plans = plans_for_activities(db, [s["activity_id"] for s in sessions])
+    for s in sessions:
         zones = s.get("hr_zone_seconds") or {}
         total = sum(v for v in zones.values() if v) if isinstance(zones, dict) else 0
         grade = s.get("grade") or {}
@@ -323,6 +344,9 @@ def training_history(db: Database, d: datetime.date, days: int = HISTORY_DAYS) -
             "my_feel": s.get("feel"),
             "note": s.get("note"),
         }
+        linked = plans.get(s["activity_id"])
+        if linked:
+            item["vs_plan"] = {"planned": linked["title"], **vs_plan_view(linked["vs_plan"])}
         if s["sport_type"] == "strength":
             summary = strength_summary(db, s) or {}
             item["exercises"] = [
@@ -375,9 +399,6 @@ def previous_for(db: Database, d: datetime.date, bundle: dict[str, Any]) -> dict
         },
         "since_previous": {"changed": changed} if changed is not None else {"changed": "unknown (older version)"},
     }
-
-
-PLAN_SOURCES = {"coach_import": "coach", "manual": "athlete", "suggestion_accepted": "accepted suggestion"}
 
 
 def standing_plan_view(standing: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -507,6 +528,12 @@ def build_context(
 
     week_start = monday(for_date)
     history = training_history(db, for_date)
+    week_plan = rows(
+        db,
+        "SELECT * FROM planned_sessions WHERE date >= ? AND date <= ? ORDER BY date",
+        [week_start, week_start + 6 * DAY],
+    )
+    week_vs_plan = compare_linked(db, week_plan)
 
     bundle = {
         "target_date": for_date,
@@ -532,13 +559,11 @@ def build_context(
                     "sport_type": r["sport_type"],
                     "title": r["title"],
                     "duration_min": r["duration_min"],
+                    "intensity": r["intensity"],
                     "done": bool(r["activity_id"]),
                 }
-                for r in rows(
-                    db,
-                    "SELECT * FROM planned_sessions WHERE date >= ? AND date <= ? ORDER BY date",
-                    [week_start, week_start + 6 * DAY],
-                )
+                | ({"vs_plan": vs_plan_view(week_vs_plan[r["id"]])} if r["id"] in week_vs_plan else {})
+                for r in week_plan
             ],
         },
         "done_on_target_date": [h for h in history if h["date"] == for_date],
@@ -841,9 +866,8 @@ def preliminary_count(db: Database, d: datetime.date) -> int:
 
 def today_done(db: Database, today: datetime.date) -> dict[str, Any] | None:
     """Today's training is done: every planned session (coach or accepted suggestion) has its activity, or —
-    with nothing planned — a training session was logged. Returns the session to show, or None."""
-    from hart.server.plan import active_plan_for
-
+    with nothing planned — a training session was logged. Returns the session to show, or None; `off_plan`
+    lists the planned sessions that what was done differs from (shorter, easier, another sport…)."""
     plan = [r for r in active_plan_for(db, today) if r["sport_type"] != "rest"]
     done = recent_sessions(db, today, today)
     done_training = [s for s in done if s["sport_type"] in TRAINING_SPORTS]
@@ -851,7 +875,18 @@ def today_done(db: Database, today: datetime.date) -> dict[str, Any] | None:
         return None
     key = plan[0]["activity_id"] if plan else done_training[0]["activity_id"]
     session = next((s for s in done if s["activity_id"] == key), done_training[0] if done_training else None)
-    return {"activity_id": key, "name": session["name"] if session else None, "grade": (session or {}).get("grade")}
+    compared = compare_linked(db, plan)
+    off_plan = [
+        {"title": r["title"], **vs_plan_view(compared[r["id"]])}
+        for r in plan
+        if r["id"] in compared and compared[r["id"]]["verdict"] != "as_planned"
+    ]
+    return {
+        "activity_id": key,
+        "name": session["name"] if session else None,
+        "grade": (session or {}).get("grade"),
+        "off_plan": off_plan,
+    }
 
 
 def dashboard_card(db: Database, config: HartSettings) -> dict[str, Any]:

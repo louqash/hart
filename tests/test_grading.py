@@ -206,6 +206,39 @@ def test_grade_end_to_end(client) -> None:
     assert "Trail Report" in client.get("/sessions/ride", headers=H).text
 
 
+def test_grading_judges_against_the_linked_plan(client) -> None:
+    ride_day = (NOW - datetime.timedelta(hours=2)).date()
+    client.post(
+        "/api/plan",
+        headers=W,
+        json={
+            "date": str(ride_day),
+            "sport_type": "bike",
+            "title": "VO2 5x3'",
+            "duration_min": 75,
+            "intensity": "vo2",
+            "description": "5x3' @ 300W, 3' easy between",
+        },
+    )
+    FakeClient.scripts.append([_result(structured_output=GRADE)])
+    _grade(client, "ride")
+    g = client.get("/api/sessions/ride/grade", headers=H).json()
+    p = g["features"]["plan"]
+    assert g["intent_source"] == "plan" and p["title"] == "VO2 5x3'" and p["from"] == "athlete"
+    assert p["description"].startswith("5x3'") and p["linked"].startswith("automatically")
+    # 60' of 75' (80%: within tolerance), 6% of HR time in Z3 and none in Z4+: easier than planned.
+    assert p["vs_plan"]["verdict"] == "easier" and p["vs_plan"]["duration_ratio"] == 0.8
+    assert '"verdict": "easier"' in FakeClient.instances[0].prompt
+    assert "When `plan` is present" in FakeClient.instances[0].options.system_prompt
+
+
+def test_grading_without_a_plan_infers_the_intent(client) -> None:
+    FakeClient.scripts.append([_result(structured_output=GRADE)])
+    _grade(client, "ride")
+    g = client.get("/api/sessions/ride/grade", headers=H).json()
+    assert g["intent_source"] == "inferred" and g["features"]["plan"] is None
+
+
 def test_invalid_output_is_repaired_once(client) -> None:
     FakeClient.scripts.append([_result(structured_output={"session_type": "nonsense"})])
     FakeClient.scripts.append([_result(structured_output=GRADE)])

@@ -126,6 +126,7 @@
     <div class="callout" style="margin-bottom:14px">{{ icon("flag") }}<div><strong>Done ✓</strong> —
       <a href="/sessions/{{ c.done.activity_id }}">{{ c.done.name or 'today\'s session' }}</a>
       {% if c.done.grade and c.done.grade.status == 'graded' %}graded {{ grade_chip(c.done.grade) }}{% elif c.done.grade and c.done.grade.pending %}being graded…{% endif %}
+      {% for x in c.done.off_plan or [] %}<p class="muted small" style="margin:6px 0 0">Not quite the plan — {{ x.summary }}</p>{% endfor %}
     </div></div>
     {% set t = c.tomorrow %}
     <div class="eyebrow" style="margin:0 0 8px">Tomorrow · {{ t.date|date('%a %d %b') }}</div>

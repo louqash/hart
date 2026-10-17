@@ -29,7 +29,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-GRADE_PROMPT_VERSION = "grade@7"
+GRADE_PROMPT_VERSION = "grade@8"
 WEIGHTS = {"execution": 0.45, "response": 0.30, "context_fit": 0.25}
 LETTERS = ((4.5, "A"), (3.75, "B"), (3.0, "C"), (2.25, "D"))
 UNVERIFIED_LIMIT = 0.30
@@ -90,8 +90,17 @@ tools for more (e.g. `get_activity_streams`, `get_strength_history`, `get_athlet
 but the bundle is usually enough — keep it to a few calls.
 
 # Rubric — score each dimension 1–5 (5 = excellent) with one sentence of justification
-- execution: did the session hit its intent? No coach plan is linked yet, so infer the intent \
-(session_type) from the facts and judge zones, duration, pacing/power steadiness, structure.
+- execution: did the session hit its intent? When `plan` is present the session was linked to a \
+planned one (the coach's, the athlete's own or an accepted suggestion): that is the intent. Judge \
+against it — `plan.description` is the workout as written, and `plan.vs_plan` is code's comparison \
+(sport, duration ratio, heart-rate zones vs the planned intensity; `verdict` and every difference in \
+`deviations`). A session that is shorter, easier, harder or a different sport than planned didn't \
+execute the plan: say so plainly, with the numbers. If the note, readiness or pain shows the change \
+was deliberate and sound, judge execution against what they set out to do instead and credit the \
+decision in context_fit; an unexplained shortfall counts against execution. A plan linked \
+automatically may not have been what they meant to do that day — the note decides. When `plan` is \
+null, no plan is linked: infer the intent (session_type) from the facts and judge zones, duration, \
+pacing/power steadiness, structure.
 - response: how did the body respond vs their own comparable sessions (efficiency, HR at output, \
 decoupling, HR drift)? Calibrate: 4 = their usual response — differences within about ±3% of the \
 comparison (±5% with a single-sided power meter) are noise, not a worse response; 3 = a clear \
@@ -336,7 +345,7 @@ def grade_activity(
         activity_id,
         {
             "status": "graded",
-            "intent_source": "inferred",
+            "intent_source": "plan" if features.get("plan") else "inferred",
             "session_type": output.session_type,
             "score_execution": output.scores.execution,
             "score_response": output.scores.response,

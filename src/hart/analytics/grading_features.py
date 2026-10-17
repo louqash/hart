@@ -342,6 +342,25 @@ def heat_and_habits(db: Database, start: datetime.datetime) -> dict[str, Any] | 
     return {"sauna": saunas, "habits_done_day_before": habits_day_before}
 
 
+def linked_plan(db: Database, activity_id: str) -> dict[str, Any] | None:
+    """The planned session this one is linked to, with code's comparison (``analytics.plan_compare``)."""
+    from hart.server.plan import PLAN_SOURCES, plans_for_activities
+
+    p = plans_for_activities(db, [activity_id]).get(activity_id)
+    if p is None:
+        return None
+    return {
+        "title": p["title"],
+        "sport": p["sport_type"],
+        "duration_min": p["duration_min"],
+        "intensity": p["intensity"],
+        "description": p["description"],
+        "from": PLAN_SOURCES.get(p["source"], p["source"]),
+        "linked": "by the athlete" if p["match_method"] == "manual" else "automatically (same day and sport)",
+        "vs_plan": {k: v for k, v in p["vs_plan"].items() if k != "planned"},
+    }
+
+
 def build_features(db: Database, activity_id: str, thresholds: dict[str, float]) -> dict[str, Any] | None:
     a = one(
         db,
@@ -448,7 +467,7 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
         else None,
         "comparison": comparable_sessions(db, a, injury) if a["sport_type"] in ("bike", "run", "swim") else None,
         "strength": strength_summary(db, a),
-        "plan": None,  # the plan row this session matched (not linked into grading yet)
+        "plan": linked_plan(db, activity_id),  # the planned session it was linked to, if any
         # The athlete's note on the session: written in hart, or the Garmin description until they do.
         "feedback": {
             "rpe": rpe,

@@ -9,6 +9,7 @@ the athlete checks a preview, and only then are rows saved.
 from __future__ import annotations
 
 import datetime
+import json
 import re
 from pathlib import Path
 from typing import Any, Literal
@@ -268,6 +269,75 @@ def auto_match(db: Database, dates: list[datetime.date]) -> int:
             acts.remove(best)
             linked += 1
     return linked
+
+
+# ---------------------------------------------------------------------------
+# Planned vs done
+# ---------------------------------------------------------------------------
+
+PLAN_SOURCES = {"coach_import": "coach", "manual": "athlete", "suggestion_accepted": "accepted suggestion"}
+
+
+def compare_linked(db: Database, plan: list[dict[str, Any]]) -> dict[int, dict[str, Any]]:
+    """``analytics.plan_compare`` for every plan row linked to an activity, by plan row id."""
+    from hart.analytics.plan_compare import compare_to_plan
+
+    linked = [r for r in plan if r.get("activity_id")]
+    if not linked:
+        return {}
+    ids = sorted({r["activity_id"] for r in linked})
+    acts = {
+        a["activity_id"]: a
+        for a in rows(
+            db,
+            "SELECT a.activity_id, a.sport_type, coalesce(a.moving_seconds, a.elapsed_seconds) AS seconds, "
+            "m.hr_zone_seconds FROM activities a LEFT JOIN activity_metrics m USING (activity_id) "
+            f"WHERE a.activity_id IN ({', '.join('?' for _ in ids)})",
+            ids,
+        )
+    }
+    out = {}
+    for r in linked:
+        a = acts.get(r["activity_id"])
+        if a is None:
+            continue
+        zones = a["hr_zone_seconds"]
+        out[r["id"]] = compare_to_plan(
+            planned_sport=r["sport_type"],
+            planned_minutes=r["duration_min"],
+            planned_intensity=r["intensity"],
+            done_sport=a["sport_type"],
+            done_seconds=a["seconds"],
+            hr_zone_seconds=json.loads(zones) if isinstance(zones, str) else zones,
+        )
+    return out
+
+
+def plans_for_activities(db: Database, activity_ids: list[str]) -> dict[str, dict[str, Any]]:
+    """The plan row each activity is linked to — the one that stands, if a replaced row is linked
+    too — with its comparison in ``vs_plan``, by activity id."""
+    if not activity_ids:
+        return {}
+    found = rows(
+        db,
+        "SELECT p.id, p.date, p.sport_type, p.title, p.description, p.duration_min, p.intensity, p.source, "
+        "p.activity_id, p.match_method, "
+        "EXISTS (SELECT 1 FROM planned_sessions r WHERE r.replaces_id = p.id) AS replaced "
+        f"FROM planned_sessions p WHERE p.activity_id IN ({', '.join('?' for _ in activity_ids)}) "
+        "ORDER BY replaced, p.id",
+        list(activity_ids),
+    )
+    comparisons = compare_linked(db, found)
+    out: dict[str, dict[str, Any]] = {}
+    for r in found:
+        if r["activity_id"] not in out and r["id"] in comparisons:
+            out[r["activity_id"]] = {**r, "vs_plan": comparisons[r["id"]]}
+    return out
+
+
+def vs_plan_view(comparison: dict[str, Any]) -> dict[str, Any]:
+    """The part of a comparison the suggestion prompt and the dashboard need."""
+    return {k: comparison[k] for k in ("verdict", "deviations", "summary")}
 
 
 # ---------------------------------------------------------------------------

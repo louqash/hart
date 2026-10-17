@@ -21,7 +21,7 @@ the database, so the server owns it: the CLI and your laptop's Claude Code talk 
 |---|---|
 | `hart.ingestion` | Garmin Connect client (`SyncManager`), FIT parsing, bulk import. |
 | `hart.storage` | Schema and migrations, writers, read queries, the read-only SQL guard. |
-| `hart.analytics` | Pure computation: training load (CTL/ATL/TSB), recovery, efficiency and decoupling, power curve, anomalies, phases and observed state, readiness, grading features, guardrails, health-check rules, strength progression, habit summaries and next-morning comparisons. |
+| `hart.analytics` | Pure computation: training load (CTL/ATL/TSB), recovery, efficiency and decoupling, power curve, anomalies, phases and observed state, readiness, grading features, planned vs done, guardrails, health-check rules, strength progression, habit summaries and next-morning comparisons. |
 | `hart.server` | The web service: routes and templates, jobs and scheduler, Claude runner, chat, grading, suggestions, plan, health, settings. |
 | `hart.mcp_server` | 49 MCP tools over the same database (stdio on its own, or mounted at `/mcp` in the server). |
 | `hart.interfaces.cli` | `hart` command line. |
@@ -81,8 +81,10 @@ their notes, which every prompt tells Claude to read first (`get_athlete_context
 
 `grading_features.build_features` computes zones, stream-based decoupling, lap variability, a comparison with
 similar sessions (same sport and indoor/outdoor, ±25% duration; 90 days, falling back to a year), strength top
-sets, and the context of the day (readiness, phase, constraints, feedback, sauna the day before or that
-day — before or after the session — and habits logged the evening before). Claude scores execution, response
+sets, the planned session it was linked to (with `analytics.plan_compare`'s comparison), and the context of
+the day (readiness, phase, constraints, feedback, sauna the day before or that day — before or after the
+session — and habits logged the evening before). Execution is judged against the linked plan, or against the
+intent Claude infers when no plan is linked. Claude scores execution, response
 and context fit 1–5 with a justification each; code computes the overall score and letter and checks every
 cited number against the facts and tool results — too many unverifiable numbers make the grade low-confidence.
 
@@ -98,7 +100,9 @@ session in: later syncs don't restart it, and the hourly sweep leaves waiting se
 
 `suggestions.build_context` gives Claude readiness, the coach's plan, the phase, 14 days of sessions, 4 weeks
 of totals, weekly targets from the notes, the notes themselves, the hard limits, and — when regenerating — the
-previous suggestion and what changed since. `analytics.guardrails` then checks the answer: red readiness →
+previous suggestion and what changed since. Every session linked to a plan row carries `vs_plan`, so a swapped
+or cut-short session reads as "planned X, did Y" and Claude decides whether the missed work is still owed.
+`analytics.guardrails` then checks the answer: red readiness →
 no hard work; the coach's plan can be shortened or eased, not extended; note rules; weekly minimums that can't
 wait; comeback duration caps. A violating answer gets one repair with the violations listed, then is stored as
 failed and not shown.
@@ -125,7 +129,10 @@ week the week so far.
   phase after a detected layoff) and are yours to edit; the observed state (building, maintaining, absorbing,
   detraining, overreaching risk) comes from the load curve.
 - **Plan:** pasted coach text → preview → sessions (from Ember, `import_coach_plan` runs the same reader as a
-  `plan_import` job and leaves a proposal to apply on the Plan page); activities are matched by date, sport and duration;
+  `plan_import` job and leaves a proposal to apply on the Plan page); activities are matched by date, sport and duration,
+  and `analytics.plan_compare` says how a matched one differs (`as_planned`, `shorter`, `longer`, `easier`,
+  `harder`, `different_sport`, from the duration ratio and the heart-rate zones vs the planned intensity; the
+  dashboard's "Done ✓" shows it when they differ);
   accepted suggestions replace coach sessions without deleting them; runs and rides go to Garmin as structured
   workouts (`garmin_workouts`).
 - **Health:** lab results with a marker catalogue (Polish and English names); reminder rules in
