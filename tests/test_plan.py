@@ -151,13 +151,17 @@ PASTE = "Monday, September 28\nBike 1:00:00\n15'- progresja do 170W, kadencja >8
 
 
 def test_parse_and_import(client) -> None:
+    # Next week's Wednesday: always on the Plan page, which shows this week and the two after it.
+    day = (
+        datetime.date.today() - datetime.timedelta(days=datetime.date.today().weekday()) + datetime.timedelta(days=9)
+    ).isoformat()
     FakeClient.scripts.append(
         [
             _result(
                 structured_output={
                     "sessions": [
                         {
-                            "date": "2026-09-28",
+                            "date": day,
                             "sport_type": "bike",
                             "title": "Progression + 3x5'",
                             "duration_min": 60,
@@ -177,7 +181,7 @@ def test_parse_and_import(client) -> None:
     assert "Reference date" in FakeClient.instances[0].prompt
     saved = client.post("/api/plan/import", headers=W, json={"sessions": out["sessions"]}).json()
     assert saved["created"] == 1
-    items = client.get("/api/plan?start=2026-09-28&end=2026-09-28", headers=H).json()["items"]
+    items = client.get(f"/api/plan?start={day}&end={day}", headers=H).json()["items"]
     assert items[0]["source"] == "coach_import" and "progresja" in items[0]["description"]
     assert "Progression + 3x5" in client.get("/plan", headers=H).text
 
