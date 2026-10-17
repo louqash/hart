@@ -6,7 +6,8 @@ through :func:`run_sync_pipeline`, so no trigger can skip a step.
 
 Steps:
     1. Garmin health (daily health, sleep, HRV)
-    2. Garmin activities (FIT streams, laps, strength sets, metrics; ones deleted in Garmin are removed)
+    2. Garmin activities (FIT streams, laps, strength sets, metrics; ones deleted in Garmin are removed;
+       recordings of one session, stopped and started again, are joined)
     3. Training load (CTL/ATL/TSB)
     4. Recovery scores for every date touched in step 1
     5. Materialised views
@@ -222,6 +223,7 @@ def run_sync_pipeline(
         "strength_edited_ids": [],
         "effort_edited_ids": [],
         "description_edited_ids": [],
+        "joined": [],
     }
 
     def step(name: str, fn: Callable[[], Any], *, atomic: bool = False) -> Any:
@@ -312,6 +314,16 @@ def run_sync_pipeline(
             if isinstance(effort, list):
                 result["effort_edited_ids"] = effort
                 result["steps"]["effort_edits"]["out"] = {"updated": len(effort)}
+            # Stopped and started again: one session, joined before anything grades or counts its parts.
+            from hart.server.joins import auto_join
+
+            joined = step("joins", lambda: auto_join(db, config, since))
+            if isinstance(joined, list):
+                result["joined"] = joined
+                result["steps"]["joins"]["out"] = {"joined": len(joined)}
+                gone = {part for j in joined for part in j["parts"]}
+                for key in ("new_activity_ids", "description_edited_ids", "strength_edited_ids", "effort_edited_ids"):
+                    result[key] = [a for a in result[key] if a not in gone]
 
     # ---- 3-6. Derived tables ----
     if not light:

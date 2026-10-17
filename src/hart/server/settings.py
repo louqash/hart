@@ -102,6 +102,20 @@ REGISTRY: tuple[Setting, ...] = (
         help="Yes/no things to check off each evening; comma-separated, an emoji in front shows on the "
         "buttons. Renaming a habit starts a new history for it. Sauna isn't a habit — tell Ember about it.",
     ),
+    Setting(
+        "join_gap_minutes",
+        "athlete",
+        "Join a session recorded in two parts (gap up to, minutes)",
+        10,
+        "int",
+        env="HART_JOIN_GAP_MINUTES",
+        min=0,
+        max=120,
+        help="Stopped the watch by mistake and started again: two recordings of the same sport (both indoor "
+        "or both outdoor) with at most this gap become one session when they sync, before grading. The session "
+        "page joins one by hand (“Join them”, up to 3 hours apart) and undoes a join (“Split back”). "
+        "0 turns automatic joining off.",
+    ),
     # --- ember -------------------------------------------------------------
     Setting(
         "model_chat",

@@ -143,10 +143,12 @@ def import_garmin_export(
 
             # Check for duplicates.  Start time also matches rows whose ID
             # predates a sport remap (e.g. strength once stored as "_other").
+            # A recording joined into another activity is part of that one.
             if (
                 db.fetchone(
-                    "SELECT 1 FROM activities WHERE activity_id = ? OR start_time = ?",
-                    [parsed.activity.activity_id, parsed.activity.start_time],
+                    "SELECT 1 FROM activities WHERE activity_id = ? OR start_time = ? UNION ALL "
+                    "SELECT 1 FROM activity_joins WHERE activity_id = ? AND joined_into IS NOT NULL",
+                    [parsed.activity.activity_id, parsed.activity.start_time, parsed.activity.activity_id],
                 )
                 is not None
             ):

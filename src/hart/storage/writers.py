@@ -177,14 +177,21 @@ def delete_activity(db: Database, activity_id: str) -> None:
     """Remove an activity and every row that belongs to it, in one transaction.
 
     A planned session it was matched to shows as not done again (and can be matched to another activity).
+    Recordings that were joined into it are released, so a sync brings them back if Garmin still has them.
     """
     with db.transaction():
-        for table in _ACTIVITY_CHILD_TABLES:
-            db.execute(f"DELETE FROM {table} WHERE activity_id = ?", [activity_id])
-        db.execute(
-            "UPDATE planned_sessions SET activity_id = NULL, match_method = NULL WHERE activity_id = ?", [activity_id]
-        )
-        db.execute("DELETE FROM activities WHERE activity_id = ?", [activity_id])
+        delete_activity_rows(db, activity_id)
+
+
+def delete_activity_rows(db: Database, activity_id: str) -> None:
+    """:func:`delete_activity` inside the caller's transaction."""
+    for table in _ACTIVITY_CHILD_TABLES:
+        db.execute(f"DELETE FROM {table} WHERE activity_id = ?", [activity_id])
+    db.execute(
+        "UPDATE planned_sessions SET activity_id = NULL, match_method = NULL WHERE activity_id = ?", [activity_id]
+    )
+    db.execute("DELETE FROM activity_joins WHERE activity_id = ? OR joined_into = ?", [activity_id, activity_id])
+    db.execute("DELETE FROM activities WHERE activity_id = ?", [activity_id])
 
 
 # ---------------------------------------------------------------------------

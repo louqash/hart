@@ -77,6 +77,7 @@ Everything below can be changed on the **Settings** page. The environment variab
 | Single-sided power meter | `HART_POWER_SINGLE_SIDED` | `off` | Left-only pedals or cranks double one leg: Ember compares power trends, not absolute watts. |
 | I have a coach | `HART_HAS_COACH` | `off` | Paste your coach's sessions on the Plan page, from wherever they arrive (an app, email, messages). On: Ember treats them as the plan and suggests adjustments. Off: the plan is your own and suggestions plan every day freely. |
 | Habits to track | `HART_HABITS` | `💊 Supplements, 🌙 Late meal, 🍷 Alcohol, 🧘 Mobility` | Yes/no things to check off each evening; comma-separated, an emoji in front shows on the buttons. Renaming a habit starts a new history for it. Sauna isn't a habit — tell Ember about it. |
+| Join a session recorded in two parts (gap up to, minutes) | `HART_JOIN_GAP_MINUTES` | `10` | Stopped the watch by mistake and started again: two recordings of the same sport (both indoor or both outdoor) with at most this gap become one session when they sync, before grading. The session page joins one by hand (“Join them”, up to 3 hours apart) and undoes a join (“Split back”). 0 turns automatic joining off. |
 
 **Ember (Claude)**
 

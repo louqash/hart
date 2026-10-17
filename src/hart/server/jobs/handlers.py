@@ -163,8 +163,50 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         now = datetime.datetime.now(tz=datetime.UTC)
         over = [a for a in grade_wait.due(db, now) if grade_wait.release(db, config, a, grade_wait.WAIT_OVER)]
         enqueue_grades(over, "sync")
+        # Recordings joined into a session synced before: graded again as one (new ones were handled above).
+        from hart.server.joins import grade_after
+
+        for joined in result.get("joined") or []:
+            grade_after(db, config, joined, runner_ref["runner"].enqueue, result.get("new_activity_ids") or [])
         after_sync(db, result, days)
         return _fail_on_garmin_errors(result)
+
+    def activity_join(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
+        """Join recordings of one session by hand (the session page)."""
+        from hart.ingestion.joins import JoinError
+        from hart.server import joins
+
+        try:
+            result = joins.join(db, config, list(payload["activity_ids"]), "manual")
+        except JoinError as exc:
+            raise JobFailed(str(exc)) from exc
+        day = db.fetchone(
+            "SELECT CAST(start_time AS DATE) FROM activities WHERE activity_id = ?", [result["activity_id"]]
+        )
+        joins.refresh_derived(db, config, [day[0]])
+        result["grade"] = joins.grade_after(db, config, result, runner_ref["runner"].enqueue)
+        return result
+
+    def activity_split(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
+        """Undo a join: the recordings are downloaded from Garmin again and graded on their own."""
+        from hart.ingestion.joins import JoinError
+        from hart.ingestion.sync_manager import SyncManager
+        from hart.server import joins
+
+        if not config.garmin.email:
+            raise JobFailed("Garmin credentials missing (GARMIN_EMAIL) — the recordings can't be downloaded")
+        try:
+            result = SyncManager(db, config).split_back(payload["activity_id"])
+        except JoinError as exc:
+            raise JobFailed(str(exc)) from exc
+        days = {
+            r[0]
+            for a in result["activity_ids"]
+            for r in db.fetchall("SELECT CAST(start_time AS DATE) FROM activities WHERE activity_id = ?", [a])
+        }
+        joins.refresh_derived(db, config, sorted(days))
+        enqueue_grades(result["activity_ids"], "split")
+        return result
 
     def suggest(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
         from hart.server.suggestions import SuggestionsPaused, generate
@@ -342,6 +384,8 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
         "vo2max_backfill": vo2max_backfill,
         "decoupling_backfill": decoupling_backfill,
         "intervals_backfill": intervals_backfill,
+        "activity_join": activity_join,
+        "activity_split": activity_split,
         "grade": grade,
         "suggest": suggest,
         "garmin_workout": garmin_workout,

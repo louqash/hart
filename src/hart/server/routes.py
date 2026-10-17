@@ -290,6 +290,9 @@ def session_page(
     from hart.server.grade_wait import waiting
 
     detail["grade_wait"] = waiting(db, activity_id, request.app.state.config.server.tz)
+    from hart.server.joins import session_info
+
+    detail["joins"] = session_info(db, activity_id)
     if v:
         from hart.server.grading import latest_grade
 
@@ -785,6 +788,42 @@ def api_session_feedback(
     # Waiting for this note → graded now; already graded → one regrade with it, never more.
     regrade = grade_wait.after_feedback(db, request.app.state.config, activity_id, request.app.state.runner.enqueue)
     return {"activity_id": activity_id, "saved": True, "regrade": regrade}
+
+
+class JoinIn(BaseModel):
+    other: str  # the recording to join this one with
+
+
+@router.post("/api/sessions/{activity_id}/join")
+def api_session_join(
+    activity_id: str, body: JoinIn, request: Request, db: Database = Depends(get_db)
+) -> dict[str, Any]:
+    """Join two recordings of one session (stopped and started again) into the earlier one — a job, so it never
+    runs alongside a sync. Returns the job and the id the joined session keeps."""
+    from hart.ingestion.joins import JoinError, load_parts
+
+    try:
+        parts = [p["activity_id"] for p in load_parts(db, [activity_id, body.other])]
+    except JoinError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    job = request.app.state.runner.enqueue(
+        "activity_join", {"activity_ids": parts}, trigger="manual", dedupe_key=f"join:{':'.join(parts)}"
+    )
+    return {**job, "activity_id": parts[0]}
+
+
+@router.post("/api/sessions/{activity_id}/split")
+def api_session_split(activity_id: str, request: Request, db: Database = Depends(get_db)) -> dict[str, Any]:
+    """Split a joined session back into its recordings (downloaded from Garmin again)."""
+    from hart.ingestion.joins import JoinError, split_parts
+
+    try:
+        split_parts(db, activity_id)
+    except JoinError as exc:
+        raise HTTPException(400, detail=str(exc)) from exc
+    return request.app.state.runner.enqueue(
+        "activity_split", {"activity_id": activity_id}, trigger="manual", dedupe_key=f"split:{activity_id}"
+    )
 
 
 # ---------------------------------------------------------------------------

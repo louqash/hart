@@ -48,6 +48,7 @@ DEMO_BLOCKED = frozenset(
         "habit_checkin",
         "vo2max_backfill",
         "intervals_backfill",
+        "activity_split",
         "plan_import",
         "weekly_review",
     }
@@ -61,6 +62,8 @@ def lane_of(job_type: str) -> str:
 PRIORITY: dict[str, int] = {
     "sync": 0,
     "sync_light": 0,
+    "activity_join": 1,  # you're on the session page, waiting for it
+    "activity_split": 1,
     "plan_import": 0,  # Ember is waiting for it in a chat
     "suggest": 1,
     "garmin_workout": 1,

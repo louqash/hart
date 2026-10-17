@@ -163,6 +163,9 @@ def job_details(job: dict[str, Any]) -> str:
             renamed = out("garmin_activities").get("renamed")
             if renamed:
                 parts.append(f"{renamed} renamed")
+        if out("joins").get("joined"):
+            n = out("joins")["joined"]
+            parts.append(f"{n} session{'s' if n != 1 else ''} recorded in parts joined")
         if out("strength_edits").get("updated"):
             n = out("strength_edits")["updated"]
             parts.append(f"gym sets updated for {n} session{'s' if n != 1 else ''}")
@@ -181,6 +184,11 @@ def job_details(job: dict[str, Any]) -> str:
         errors = result.get("errors") or []
         if errors:
             parts.append(f"{len(errors)} error(s): {errors[0]}")
+    elif job["type"] == "activity_join" and "parts" in result:
+        n = len(result["parts"]) + 1
+        parts.append(f"{n} recordings joined into one session")
+    elif job["type"] == "activity_split" and "activity_ids" in result:
+        parts.append(f"split back into {len(result['activity_ids'])} sessions")
     elif job["type"] == "vo2max_backfill" and "updated" in result:
         parts.append(f"VO2max set on {result['updated']} days ({result['from']} → {result['to']})")
         if result.get("no_health_row"):

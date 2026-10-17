@@ -23,6 +23,7 @@ from typing import Any
 from hart.config import HartSettings
 from hart.ingestion.decoupling import decoupling_from_points
 from hart.ingestion.fit_parser import FitParser
+from hart.ingestion.joins import joined_garmin_ids
 from hart.models.activity import SportType, StreamPoint, StrengthSet
 from hart.models.health import HealthDay, HRVDaily, SleepRecord
 from hart.storage.database import Database
@@ -172,10 +173,6 @@ class SyncManager:
 
         garmin = self.get_garmin_client()
 
-        from garminconnect import Garmin as _Garmin  # type: ignore[import-untyped]
-
-        DL_FMT = _Garmin.ActivityDownloadFormat
-
         today = datetime.date.today()
         start_date = today - datetime.timedelta(days=days_back)
 
@@ -195,13 +192,13 @@ class SyncManager:
         # first, so a merged upload that gets the id of its first part is stored as new.
         self._remove_deleted(garmin, activities_list, start_date, today, result)
 
-        # Skip activities already in the database
+        # Skip activities already in the database, and recordings joined into one of them.
         existing_ids: set[str] = {
             str(r[0])
             for r in self._db.fetchall(
                 "SELECT external_id FROM activities WHERE source = 'garmin' AND external_id IS NOT NULL"
             )
-        }
+        } | joined_garmin_ids(self._db)
         new_activities = [a for a in activities_list if str(a.get("activityId", "")) not in existing_ids]
         # Activities we already have may have been renamed (or described) in
         # Garmin Connect since; the list carries the current values, so update
@@ -219,42 +216,12 @@ class SyncManager:
                 continue
 
             try:
-                zip_bytes = garmin.download_activity(act_id, dl_fmt=DL_FMT.ORIGINAL)
-                fit_data = _extract_fit(zip_bytes)
+                fit_data = _download_fit(garmin, act_id)
                 if fit_data is None:
                     logger.debug("No .fit in download for activity %s", act_id)
                     result.errors += 1
                     continue
-
-                with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as tmp:
-                    tmp.write(fit_data)
-                    tmp_path = Path(tmp.name)
-
-                try:
-                    parsed = parser.parse_file(tmp_path)
-                finally:
-                    tmp_path.unlink(missing_ok=True)
-
-                parsed.activity.source = "garmin"
-                parsed.activity.external_id = act_id
-                # The name set in Garmin Connect wins over the one in the FIT file.
-                if act.get("activityName") or not parsed.activity.name:
-                    parsed.activity.name = act_name
-                if act.get("description"):
-                    parsed.activity.description = act["description"]
-
-                summary = _enrich_from_summary_dto(garmin, act_id, parsed.activity)
-                parsed.activity.gear_id = _fetch_gear_id(garmin, act_id)
-
-                upsert_activity(self._db, parsed.activity)
-                upsert_stream_points(self._db, parsed.activity.activity_id, parsed.stream_points)
-                upsert_laps(self._db, parsed.activity.activity_id, parsed.laps)
-                replace_workout_steps(self._db, parsed.activity.activity_id, parsed.workout_steps)
-                upsert_hrv_samples(self._db, parsed.activity.activity_id, parsed.hrv_rr_intervals)
-                if parsed.activity.sport_type == SportType.strength:
-                    sets = _fetch_strength_sets(garmin, act_id) or parsed.strength_sets
-                    replace_strength_sets(self._db, parsed.activity.activity_id, sets)
-                self._sync_activity_metrics(garmin, act_id, parsed.activity, summary, parsed.stream_points)
+                self._import_activity(garmin, parser, act, fit_data)
                 result.new_activities += 1
 
             except Exception as exc:
@@ -309,9 +276,65 @@ class SyncManager:
             logger.info("Activity %s was deleted in Garmin Connect (%s) — removed", activity_id, external_id)
             result.deleted_ids.append(activity_id)
 
+    def _import_activity(self, garmin: Any, parser: FitParser, act: dict[str, Any], fit_data: bytes) -> str:
+        """Store one Garmin activity — *act* as Garmin's activity list has it — from its original FIT file,
+        with Garmin's summary fields, gear, strength sets and metrics. Returns its activity_id."""
+        act_id = str(act["activityId"])
+        parsed = _parse_fit(parser, fit_data)
+        parsed.activity.source = "garmin"
+        parsed.activity.external_id = act_id
+        # The name set in Garmin Connect wins over the one in the FIT file.
+        if act.get("activityName") or not parsed.activity.name:
+            parsed.activity.name = act.get("activityName") or "Activity"
+        if act.get("description"):
+            parsed.activity.description = act["description"]
+
+        summary = _enrich_from_summary_dto(garmin, act_id, parsed.activity)
+        parsed.activity.gear_id = _fetch_gear_id(garmin, act_id)
+
+        upsert_activity(self._db, parsed.activity)
+        upsert_stream_points(self._db, parsed.activity.activity_id, parsed.stream_points)
+        upsert_laps(self._db, parsed.activity.activity_id, parsed.laps)
+        replace_workout_steps(self._db, parsed.activity.activity_id, parsed.workout_steps)
+        upsert_hrv_samples(self._db, parsed.activity.activity_id, parsed.hrv_rr_intervals)
+        if parsed.activity.sport_type == SportType.strength:
+            sets = _fetch_strength_sets(garmin, act_id) or parsed.strength_sets
+            replace_strength_sets(self._db, parsed.activity.activity_id, sets)
+        self._sync_activity_metrics(garmin, act_id, parsed.activity, summary, parsed.stream_points)
+        return parsed.activity.activity_id
+
+    def split_back(self, activity_id: str) -> dict[str, Any]:
+        """Undo a join: download every recording of the joined activity again and store them separately.
+        They are never joined automatically again. Nothing changes unless every download works."""
+        from hart.ingestion.joins import clear_joined, split_parts
+
+        parts = split_parts(self._db, activity_id)
+        garmin = self.get_garmin_client()
+        parser = FitParser()
+        files: list[tuple[dict[str, Any], bytes]] = []
+        for part in parts:
+            detail = _safe_call(garmin.get_activity, part["external_id"]) or {}
+            fit_data = _download_fit(garmin, part["external_id"])
+            if fit_data is None:
+                raise RuntimeError(f"Garmin has no original file for activity {part['external_id']} any more")
+            _parse_fit(parser, fit_data)  # a file that doesn't parse stops the split before anything changes
+            act = {"activityId": part["external_id"], "activityName": detail.get("activityName")}
+            if detail.get("description"):
+                act["description"] = detail["description"]
+            files.append((act, fit_data))
+        with self._db.transaction():
+            clear_joined(self._db, activity_id, parts)
+        ids = [self._import_activity(garmin, parser, act, fit_data) for act, fit_data in files]
+        logger.info("Split %s back into %s", activity_id, ids)
+        return {"activity_id": activity_id, "activity_ids": ids}
+
     def _refresh_edited(self, listed: list[dict[str, Any]], described: list[str] | None = None) -> int:
         """Apply names/descriptions edited in Garmin Connect to stored activities; ids whose description
         changed go to *described* (a description is part of what the session is graded on)."""
+        from hart.analytics.joins import joined_description
+        from hart.ingestion.joins import garmin_ids
+
+        by_id = {str(a.get("activityId")): a for a in listed}
         changed = 0
         for act in listed:
             name = act.get("activityName")
@@ -322,7 +345,14 @@ class SyncManager:
                 "SELECT activity_id, name, description FROM activities WHERE source = 'garmin' AND external_id = ?",
                 [str(act["activityId"])],
             )
-            if row is None or (row[1] == name and (description is None or row[2] == description)):
+            if row is None:
+                continue
+            ids = garmin_ids(self._db, row[0])
+            if len(ids) > 1:
+                # Joined: the description is every recording's — known only when all of them are listed.
+                listed_parts = [by_id[i] for i in ids if i in by_id]
+                description = joined_description(listed_parts) if len(listed_parts) == len(ids) else None
+            if row[1] == name and (description is None or row[2] == description):
                 continue
             self._db.execute(
                 "UPDATE activities SET name = ?, description = coalesce(?, description) WHERE activity_id = ?",
@@ -341,6 +371,8 @@ class SyncManager:
         first synced (reps, weights, exercise names), so the first download
         is often not the final version.  Returns the ids whose sets changed.
         """
+        from hart.ingestion.joins import garmin_ids
+
         if not self._config.garmin.email:
             return []
         rows = self._db.fetchall(
@@ -353,8 +385,8 @@ class SyncManager:
             return []
         garmin = self.get_garmin_client()
         changed = []
-        for activity_id, external_id in rows:
-            sets = _fetch_strength_sets(garmin, str(external_id))
+        for activity_id, _external_id in rows:
+            sets = _fetch_session_sets(garmin, garmin_ids(self._db, activity_id))
             if not sets:
                 continue
             stored = self._db.fetchall(
@@ -377,6 +409,8 @@ class SyncManager:
         """Re-read RPE and feel of recent activities (edited in Garmin Connect
         after the first sync).  One Garmin call per activity in the window;
         returns the ids whose values changed."""
+        from hart.ingestion.joins import garmin_ids
+
         if not self._config.garmin.email:
             return []
         rows = self._db.fetchall(
@@ -389,12 +423,18 @@ class SyncManager:
             return []
         garmin = self.get_garmin_client()
         changed = []
-        for activity_id, external_id, rpe, feel in rows:
-            detail = _safe_call(garmin.get_activity, str(external_id))
-            summary = (detail or {}).get("summaryDTO")
-            if not summary:
+        for activity_id, _external_id, rpe, feel in rows:
+            summaries = [
+                (_safe_call(garmin.get_activity, part) or {}).get("summaryDTO")
+                for part in garmin_ids(self._db, activity_id)
+            ]
+            if not summaries or not all(summaries):
                 continue  # no answer: keep what we have rather than erase it
-            new = (summary.get("directWorkoutRpe"), summary.get("directWorkoutFeel"))
+            # Joined from recordings: the effort given last (one recording: just its own).
+            new = tuple(
+                next((s[key] for s in reversed(summaries) if s.get(key) is not None), None)
+                for key in ("directWorkoutRpe", "directWorkoutFeel")
+            )
             if new == (rpe, feel):
                 continue
             self._db.execute("UPDATE activities SET rpe = ?, feel = ? WHERE activity_id = ?", [*new, activity_id])
@@ -457,6 +497,8 @@ class SyncManager:
             logger.warning("Garmin credentials not configured, skipping strength backfill")
             return result
 
+        from hart.ingestion.joins import garmin_ids
+
         garmin = self.get_garmin_client()
 
         missing_only = "" if refresh else ("AND activity_id NOT IN (SELECT DISTINCT activity_id FROM strength_sets) ")
@@ -470,7 +512,7 @@ class SyncManager:
 
         for activity_id, external_id in rows:
             try:
-                sets = _fetch_strength_sets(garmin, str(external_id))
+                sets = _fetch_session_sets(garmin, garmin_ids(self._db, activity_id))
                 if sets:
                     replace_strength_sets(self._db, activity_id, sets)
                     result.updated_activities += 1
@@ -489,33 +531,24 @@ class SyncManager:
         New syncs store both; older sessions were synced before lap kinds and workout steps were read.
         One download per session, so it takes a while for long ranges.
         """
-        from garminconnect import Garmin as _Garmin  # type: ignore[import-untyped]
-
-        from hart.ingestion.fit_parser import FitParser
-
-        DL_FMT = _Garmin.ActivityDownloadFormat  # noqa: N806
         garmin = self.get_garmin_client()
         since = datetime.date.today() - datetime.timedelta(days=days)
+        # A joined session's laps come from several recordings: re-reading the first one would cut them.
         targets = self._db.fetchall(
             "SELECT activity_id, external_id FROM activities WHERE source = 'garmin' AND external_id IS NOT NULL "
-            "AND sport_type IN ('bike', 'run', 'swim') AND start_time >= ? ORDER BY start_time",
+            "AND sport_type IN ('bike', 'run', 'swim') AND start_time >= ? AND activity_id NOT IN "
+            "(SELECT joined_into FROM activity_joins WHERE joined_into IS NOT NULL) ORDER BY start_time",
             [since],
         )
         parser = FitParser()
         out = {"sessions": len(targets), "updated": 0, "with_workout": 0, "errors": 0}
         for activity_id, external_id in targets:
             try:
-                fit_data = _extract_fit(garmin.download_activity(external_id, dl_fmt=DL_FMT.ORIGINAL))
+                fit_data = _download_fit(garmin, external_id)
                 if fit_data is None:
                     out["errors"] += 1
                     continue
-                with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as tmp:
-                    tmp.write(fit_data)
-                    tmp_path = Path(tmp.name)
-                try:
-                    parsed = parser.parse_file(tmp_path)
-                finally:
-                    tmp_path.unlink(missing_ok=True)
+                parsed = _parse_fit(parser, fit_data)
                 upsert_laps(self._db, activity_id, parsed.laps)
                 replace_workout_steps(self._db, activity_id, parsed.workout_steps)
                 out["updated"] += 1
@@ -941,6 +974,23 @@ def _fetch_hr_percentiles(garmin: Any, date_str: str) -> dict[str, Any]:
     return result
 
 
+def _download_fit(garmin: Any, act_id: str) -> bytes | None:
+    """The original FIT file of a Garmin activity, or None when the download has none."""
+    from garminconnect import Garmin as _Garmin  # type: ignore[import-untyped]
+
+    return _extract_fit(garmin.download_activity(act_id, dl_fmt=_Garmin.ActivityDownloadFormat.ORIGINAL))
+
+
+def _parse_fit(parser: FitParser, fit_data: bytes) -> Any:
+    with tempfile.NamedTemporaryFile(suffix=".fit", delete=False) as tmp:
+        tmp.write(fit_data)
+        tmp_path = Path(tmp.name)
+    try:
+        return parser.parse_file(tmp_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
+
+
 def _extract_fit(data: bytes) -> bytes | None:
     """Extract a .fit file from a Garmin ORIGINAL download (ZIP or raw bytes)."""
     try:
@@ -991,6 +1041,19 @@ def _fetch_strength_sets(garmin: Any, act_id: str) -> list[StrengthSet]:
     from hart.analytics.strength import parse_garmin_exercise_sets
 
     return parse_garmin_exercise_sets(_safe_call(garmin.get_activity_exercise_sets, act_id))
+
+
+def _fetch_session_sets(garmin: Any, act_ids: list[str]) -> list[StrengthSet]:
+    """The sets of a session — of every recording, in order, when it was joined from several. Empty when any
+    of them doesn't answer, so a partial answer never replaces what is stored."""
+    sets: list[StrengthSet] = []
+    for act_id in act_ids:
+        part = _fetch_strength_sets(garmin, act_id)
+        if not part:
+            return []
+        offset = max((s.set_index for s in sets), default=-1) + 1
+        sets.extend(s.model_copy(update={"set_index": s.set_index + offset}) for s in part)
+    return sets
 
 
 def _fetch_gear_id(garmin: Any, act_id: str) -> str | None:

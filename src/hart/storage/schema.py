@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from hart.storage.database import Database
 
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 18
+CURRENT_SCHEMA_VERSION: int = 19
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -592,6 +592,18 @@ CREATE TABLE IF NOT EXISTS grade_waits (
     created_at   TIMESTAMPTZ DEFAULT current_timestamp
 );
 
+-- Recordings of one session joined into one activity (stopped by mistake and restarted). The first
+-- recording keeps its activity_id and holds the joined data, the others are removed and listed here.
+CREATE TABLE IF NOT EXISTS activity_joins (
+    activity_id  VARCHAR PRIMARY KEY,   -- a recording that was joined (or split back)
+    source       VARCHAR NOT NULL,
+    external_id  VARCHAR,               -- its Garmin id, so a sync doesn't bring it back
+    start_time   TIMESTAMP NOT NULL,
+    joined_into  VARCHAR,               -- the activity holding it now (NULL: split back, never auto-joined again)
+    method       VARCHAR NOT NULL,      -- auto | manual | split
+    created_at   TIMESTAMPTZ DEFAULT current_timestamp
+);
+
 CREATE TABLE IF NOT EXISTS app_settings (
     key         VARCHAR PRIMARY KEY,
     value       JSON NOT NULL,
@@ -741,6 +753,7 @@ def _run_migrations(db: Database) -> None:
     # v16: sauna_sessions and habit_log — new tables only, created above.
     # v17: grade_waits — a new table only, created above.
     # v18: weekly_reviews — a new table only, created above.
+    # v19: activity_joins — a new table only, created above.
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;

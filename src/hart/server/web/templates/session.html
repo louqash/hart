@@ -27,6 +27,15 @@
     {% if s.training_effect_aerobic %}<div class="stat"><div class="label">Training effect{{ tip("training_effect") }}</div><div class="value" style="font-size:18px">{{ s.training_effect_aerobic|num(1) }} / {{ s.training_effect_anaerobic|num(1) }}</div><div class="delta">{{ (s.training_effect_label or 'aerobic / anaerobic')|replace('_', ' ')|lower }}</div></div>{% endif %}
   </div>
   {% if s.sport_type == 'bike' and s.avg_power and prefs.power_single_sided %}<p class="small muted" style="margin:8px 0 0">Power from a single-sided meter — compare trends, not absolute watts.</p>{% endif %}
+  {% set j = s.joins %}
+  {% if j.part_starts %}
+  <p class="small muted" style="margin:8px 0 0">One session from {{ j.part_starts|length }} recordings (started {% for t in j.part_starts %}{{ t|date('%H:%M') }}{{ ', ' if not loop.last }}{% endfor %}){% if j.auto %}, joined because the watch was stopped and started again{% endif %}.
+    {% if j.can_split %}<button class="small secondary" onclick="act(this, () => api.post('/api/sessions/{{ s.activity_id }}/split', {}), {confirmText: 'Split this session back into its recordings? They are downloaded from Garmin again, graded on their own, and never joined automatically again.'})">Split back</button>{% endif %}</p>
+  {% endif %}
+  {% for other, when in ((j.join_before, 'ended {} min before this one started'), (j.join_after, 'started {} min after this one ended')) if other %}
+  <p class="small muted" style="margin:8px 0 0">{{ other.name or 'Another recording' }} ({{ other.start_time|date('%H:%M') }}, {{ other.seconds|duration }}) {{ when.format(other.gap_min) }}. One session, stopped and started again?
+    <button class="small secondary" onclick="act(this, () => api.post('/api/sessions/{{ s.activity_id }}/join', {other: '{{ other.activity_id }}'}), {reload: false}).then((r) => r && (location.href = '/sessions/' + r.activity_id))">Join them</button></p>
+  {% endfor %}
 </section>
 
 {% set g = s.grade %}

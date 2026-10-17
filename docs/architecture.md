@@ -39,6 +39,8 @@ all enqueue it):
 2. Garmin activities: new ones with FIT streams, laps, strength sets and metrics; renamed ones get their new
    name; recent gym sessions get their edited sets; recent RPE/feel edits are picked up.
    Ones deleted in Garmin Connect (gone from the list, confirmed "not found") are removed with all their rows.
+   Recordings of one session — the watch stopped and started again — are joined (see
+   [Sessions recorded in parts](#sessions-recorded-in-parts)).
 3. Training load, recovery scores, materialised views, anomaly detection.
 4. Plan matching, then follow-up jobs: grading for new sessions (and regrading for edited ones), today's
    suggestion once last night's sleep has arrived, a refresh of tomorrow's suggestion after a late session.
@@ -158,6 +160,16 @@ just ended, later in the week the week so far.
   (`activity_workout_steps`, targets as W / bpm / pace / rpm); `analytics.intervals` lines laps up with steps,
   numbers the reps and marks each on / under / over target, plus fading and HR drift. The grade bundle, the
   session page and `get_activity_detail` use it.
+- **Sessions recorded in parts:** two recordings of the same sport (both indoor or both outdoor) with at most
+  `join_gap_minutes` between them (Settings → Athlete, 10 by default) are joined by the sync before anything
+  grades them; the session page joins one by hand and splits a join back. The first recording keeps its id —
+  ids come from the start time — so its note, grade and plan link carry over; the others' streams, laps, R-R
+  intervals, workout steps and sets move to it (`ingestion.joins`), and `analytics.joins` adds up the totals,
+  time-weights the averages and combines normalized power from the parts' fourth powers (training effect
+  doesn't add up: the higher part's stands in). `activity_joins` lists the joined recordings' Garmin ids, so a
+  sync doesn't bring them back, and makes re-reads from Garmin (RPE/feel, gym sets, descriptions) cover every
+  part; the intervals backfill skips joined sessions. hart keeps no FIT files — Garmin keeps the originals,
+  which is how "Split back" works: it downloads them again, and they're never joined automatically again.
 - **Strength:** `analytics.strength_progress` — top sets, estimated 1-rep max, weekly sessions. Lifts are
   merged at read time by `exercise_key` (the name without a `BARBELL_` prefix that matches the category, then
   the athlete's aliases from the `exercise_aliases` app setting); `strength_sets` keeps Garmin's names. See
@@ -169,7 +181,7 @@ just ended, later in the week the week so far.
 Raw: `activities`, `activity_streams`, `activity_laps`, `strength_sets`, `hrv_samples`, `daily_health`,
 `sleep_records`, `hrv_daily`. Computed: `activity_metrics`, `daily_training_load`, `daily_recovery`,
 `weekly_summary`, `anomaly_log`. App: `training_phases`, `races`, `annotations`, `athlete_notes`,
-`planned_sessions`, `session_feedback`, `session_grades`, `daily_suggestions`, `season_proposals`,
+`planned_sessions`, `session_feedback`, `session_grades`, `daily_suggestions`, `season_proposals`, `activity_joins`,
 `lab_results`, `health_checks`, `sauna_sessions`, `habit_log`, `weekly_reviews`, `chat_conversations`,
 `chat_messages`, `claude_runs`, `jobs`, `app_settings`.
 `describe_schema` (MCP) lists every column. Migrations run on start (`storage/schema.py`).

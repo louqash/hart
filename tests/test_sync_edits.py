@@ -277,8 +277,9 @@ def test_delete_activity_covers_every_table_keyed_by_activity(db: Database) -> N
         )
         if not r[0].startswith("mv_")  # materialised views are rebuilt from the tables
     }
-    # A new table with an activity_id column belongs in delete_activity too.
-    assert tables == {*_ACTIVITY_CHILD_TABLES, "activities", "planned_sessions"}
+    # A new table with an activity_id column belongs in delete_activity too. (activity_joins: its own rows and
+    # the recordings joined into it, see test_joins.)
+    assert tables == {*_ACTIVITY_CHILD_TABLES, "activities", "planned_sessions", "activity_joins"}
 
 
 def test_activities_deleted_in_garmin_are_removed(db: Database, monkeypatch) -> None:

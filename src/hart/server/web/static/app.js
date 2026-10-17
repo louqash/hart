@@ -137,7 +137,8 @@ const activity = (() => {
     sync: "Syncing with Garmin", sync_light: "Checking for last night's sleep", grade: "Grading",
     suggest: "Writing a suggestion", garmin_workout: "Updating your Garmin calendar", backup: "Backing up",
     vo2max_backfill: "Backfilling VO2max", decoupling_backfill: "Recomputing decoupling",
-    weekly_review: "Ember is reviewing the week",
+    weekly_review: "Ember is reviewing the week", activity_join: "Joining the recordings",
+    activity_split: "Splitting the session back",
   };
   const NOUNS = { grade: ["session", "sessions"], garmin_workout: ["workout", "workouts"] };
   const SCROLL_KEY = `scroll:${location.pathname}${location.search}`;
