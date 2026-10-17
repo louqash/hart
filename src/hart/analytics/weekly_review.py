@@ -3,7 +3,8 @@
 Pure functions over plain rows (``server.weekly_review`` queries them):
 
 * which week a review covers;
-* plan adherence — every session that stood in the plan, done or missed, and sessions done without one;
+* plan adherence — every session that stood in the plan, done (as planned or not, by
+  ``analytics.plan_compare``) or missed, and sessions done without one;
 * weekly session targets from the athlete's notes against the counts, with how many weeks in a row fell
   short, so a one-off and a pattern look different;
 * the week's volume against the weeks before it, and a summary of its grades.
@@ -12,6 +13,7 @@ Pure functions over plain rows (``server.weekly_review`` queries them):
 from __future__ import annotations
 
 import datetime
+from collections.abc import Mapping
 from typing import Any
 
 # Sports that count towards plans and targets; walks, hikes and the like are "other".
@@ -42,17 +44,30 @@ def days_left(week_end: datetime.date, today: datetime.date) -> int:
     return max(0, (week_end - today).days + 1)
 
 
+def off_plan(comparison: Mapping[str, Any] | None) -> bool:
+    """Whether a linked session differs from its plan row (``analytics.plan_compare``'s verdict). Without a
+    comparison the link is all there is, and it counts as done as planned."""
+    return bool(comparison) and comparison["verdict"] != "as_planned"
+
+
 def plan_adherence(
-    planned: list[dict[str, Any]], sessions: list[dict[str, Any]], today: datetime.date
+    planned: list[dict[str, Any]],
+    sessions: list[dict[str, Any]],
+    today: datetime.date,
+    comparisons: Mapping[int, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """What stood in the plan, day by day, against what was done.
 
     *planned*: the plan that stood — coach or athlete rows not replaced, plus accepted suggestions — with
-    ``date, sport_type, title, duration_min, intensity, source, activity_id`` (the matched session).
+    ``id, date, sport_type, title, duration_min, intensity, source, activity_id`` (the matched session).
     *sessions*: every session of the week with ``activity_id, date, sport_type, minutes``.
-    A planned session without a match is missed when its day has passed, ``today`` on the day itself and
-    ``upcoming`` after it.
+    *comparisons*: ``analytics.plan_compare.compare_to_plan`` for the linked plan rows, by plan row id.
+    A planned session with a match is done, and ``vs_plan`` says whether it went as planned or was swapped,
+    cut short, eased…: only one done as planned counts in ``done_as_planned`` (and ``completion_pct``), the
+    rest in ``done_off_plan``. Without a match it is missed when its day has passed, ``today`` on the day
+    itself and ``upcoming`` after it.
     """
+    comparisons = comparisons or {}
     by_id = {s["activity_id"]: s for s in sessions}
     items = []
     for p in sorted(planned, key=lambda r: (r["date"], r.get("id") or 0)):
@@ -80,6 +95,9 @@ def plan_adherence(
             item["activity_id"] = done["activity_id"]
             if p.get("duration_min"):
                 item["done_vs_planned_pct"] = round(100 * done["minutes"] / p["duration_min"])
+            comparison = comparisons.get(p.get("id"))
+            if comparison:
+                item["vs_plan"] = {k: comparison[k] for k in ("verdict", "deviations", "summary")}
         items.append(item)
 
     matched = {i["activity_id"] for i in items if i.get("activity_id")}
@@ -95,10 +113,12 @@ def plan_adherence(
         mine = [i for i in items if i["sport"] == sport]
         done_sessions = [s for s in sessions if s["sport_type"] == sport]
         due = [i for i in mine if i["status"] in ("done", "missed")]
+        done_items = [i for i in mine if i["status"] == "done"]
         row = {
             "planned": len(mine),
             "planned_due": len(due),
-            "done_as_planned": sum(1 for i in mine if i["status"] == "done"),
+            "done_as_planned": sum(1 for i in done_items if not off_plan(i.get("vs_plan"))),
+            "done_off_plan": sum(1 for i in done_items if off_plan(i.get("vs_plan"))),
             "missed": sum(1 for i in mine if i["status"] == "missed"),
             "unplanned": sum(1 for u in unplanned if u["sport"] == sport),
             "sessions": len(done_sessions),
@@ -118,6 +138,7 @@ def plan_adherence(
             "planned": sum(r["planned"] for r in by_sport.values()),
             "planned_due": due_total,
             "done_as_planned": done_total,
+            "done_off_plan": sum(r["done_off_plan"] for r in by_sport.values()),
             "missed": sum(r["missed"] for r in by_sport.values()),
             "unplanned": len(unplanned),
             "completion_pct": round(100 * done_total / due_total) if due_total else None,

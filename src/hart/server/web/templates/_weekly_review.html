@@ -7,7 +7,7 @@
 {% macro scorecard(c) %}
 {% if c and c.sports %}
 <div class="table-wrap"><table class="scorecard">
-  <tr><th>Sport</th><th class="num" title="Planned sessions done / planned sessions due">As planned</th><th class="num">Done</th><th class="num" title="Weekly minimum from your notes">Target</th><th class="num">Time</th></tr>
+  <tr><th>Sport</th><th class="num" title="Planned sessions done as planned / planned sessions due">As planned</th><th class="num">Done</th><th class="num" title="Weekly minimum from your notes">Target</th><th class="num">Time</th></tr>
   {% for s in c.sports if s.sessions or s.planned_due or s.target %}
   <tr><td><span class="sport {{ s.sport }}"></span>{{ s.sport|sport }}</td>
     <td class="num">{{ '%d / %d'|format(s.done_as_planned, s.planned_due) if s.planned_due else '—' }}</td>

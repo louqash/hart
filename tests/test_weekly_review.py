@@ -13,6 +13,7 @@ import pytest
 from claude_agent_sdk import AssistantMessage, SystemMessage, ToolResultBlock, ToolUseBlock, UserMessage
 
 from hart.analytics import weekly_review as wr
+from hart.analytics.plan_compare import compare_to_plan
 from hart.config import ServerSettings, get_config
 from hart.server import season_ops, settings, weekly_review
 from hart.server.claude.policy import MCP_PREFIX
@@ -84,10 +85,57 @@ def test_plan_adherence() -> None:
         "planned": 4,
         "planned_due": 2,
         "done_as_planned": 1,
+        "done_off_plan": 0,
         "missed": 1,
         "unplanned": 1,
         "completion_pct": 50,
     }
+    assert "vs_plan" not in out["sessions"][0]  # no comparison: the link is all there is
+
+
+def test_a_swapped_session_is_done_but_not_as_planned() -> None:
+    mon = D(2026, 10, 12)
+    planned = [
+        {**_plan(mon, "run", 40, "r1"), "id": 1},
+        {**_plan(mon + DAY, "bike", 90, "b1"), "id": 2, "title": "Threshold 3x12", "intensity": "threshold"},
+    ]
+    sessions = [
+        {"activity_id": "r1", "date": mon, "sport_type": "run", "minutes": 42},
+        {"activity_id": "b1", "date": mon + DAY, "sport_type": "bike", "minutes": 30},  # an easy spin instead
+    ]
+    comparisons = {
+        1: compare_to_plan(planned_sport="run", planned_minutes=40, planned_intensity="endurance", done_sport="run",
+                           done_seconds=42 * 60, hr_zone_seconds={"Z1": 600, "Z2": 1800, "Z3": 120}),
+        2: compare_to_plan(planned_sport="bike", planned_minutes=90, planned_intensity="threshold", done_sport="bike",
+                           done_seconds=30 * 60, hr_zone_seconds={"Z1": 900, "Z2": 900}),
+    }  # fmt: skip
+    out = wr.plan_adherence(planned, sessions, mon + 2 * DAY, comparisons)
+
+    run, bike = out["sessions"]
+    assert run["status"] == bike["status"] == "done"
+    assert run["vs_plan"]["verdict"] == "as_planned" and run["vs_plan"]["deviations"] == []
+    assert bike["vs_plan"] == {
+        "verdict": "easier",
+        "deviations": ["easier", "shorter"],
+        "summary": comparisons[2]["summary"],
+    }
+    assert bike["vs_plan"]["summary"].startswith("Planned bike 90 min threshold; did bike 30 min")
+    b = out["by_sport"]["bike"]
+    assert (b["planned_due"], b["done_as_planned"], b["done_off_plan"], b["missed"], b["sessions"]) == (1, 0, 1, 0, 1)
+    assert out["totals"] == {
+        "planned": 2,
+        "planned_due": 2,
+        "done_as_planned": 1,
+        "done_off_plan": 1,
+        "missed": 0,
+        "unplanned": 0,  # the spin is linked to the plan, not a session without one
+        "completion_pct": 50,
+    }
+
+    card = wr.scorecard(out, [], {"graded": 0})
+    assert card["done_as_planned"] == 1 and card["completion_pct"] == 50
+    assert "🚴 Bike · 0/1 planned · 1 done" in weekly_review.scorecard_lines(card)
+    assert wr.off_plan(comparisons[2]) and not wr.off_plan(comparisons[1]) and not wr.off_plan(None)
 
 
 def test_target_status_tells_a_pattern_from_a_one_off() -> None:
@@ -120,6 +168,38 @@ def test_volume_change_and_grades() -> None:
     )
     assert grades["graded"] == 2 and grades["average_score"] == 3.3 and grades["low_confidence"] == 1
     assert grades["lowest"]["activity_id"] == "b" and wr.grade_summary([]) == {"graded": 0}
+
+
+def test_review_facts_compare_each_linked_session_with_its_plan(db: Database) -> None:
+    mon = D(2026, 10, 12)
+    seven = datetime.time(7)
+    _activity(db, "ride", datetime.datetime.combine(mon, seven), secs=1800)  # Z1–Z3 only, half an hour
+    _activity(db, "run", datetime.datetime.combine(mon + DAY, seven), sport="run", sub="road_running", secs=2400,
+              power=None)  # fmt: skip
+    _activity(db, "old", datetime.datetime.combine(mon - 7 * DAY, seven), secs=5400)
+    db.execute(
+        "INSERT INTO planned_sessions (date, sport_type, title, duration_min, intensity, source, activity_id) VALUES "
+        "(?, 'bike', 'Threshold 3x12', 90, 'threshold', 'coach_import', 'ride'), "
+        "(?, 'run', 'Easy run', 40, 'endurance', 'coach_import', 'run'), "
+        "(?, 'bike', 'Long ride', 90, 'endurance', 'coach_import', 'old')",
+        [mon, mon + DAY, mon - 7 * DAY],
+    )
+    facts = weekly_review.build_context(db, mon, mon + 7 * DAY)
+
+    adherence = facts["plan_adherence"]
+    ride, run = adherence["sessions"]
+    assert ride["status"] == "done" and ride["vs_plan"]["verdict"] == "easier"
+    assert ride["vs_plan"]["deviations"] == ["easier", "shorter"]
+    assert "Planned bike 90 min threshold; did bike 30 min" in ride["vs_plan"]["summary"]
+    assert run["vs_plan"]["verdict"] == "as_planned"
+    assert adherence["totals"]["done_as_planned"] == 1 and adherence["totals"]["done_off_plan"] == 1
+    assert adherence["by_sport"]["bike"]["done_off_plan"] == 1 and adherence["totals"]["completion_pct"] == 50
+    assert facts["scorecard"]["done_as_planned"] == 1
+
+    *_, before, this = facts["trend"]["weeks"]
+    assert (this["plan_due"], this["plan_done_as_planned"], this["plan_done_off_plan"]) == (2, 1, 1)
+    assert this["plan_completion_pct"] == 50
+    assert (before["plan_done_as_planned"], before["plan_done_off_plan"]) == (1, 0)
 
 
 # ---------------------------------------------------------------------------

@@ -111,18 +111,19 @@ failed and not shown.
 ### Weekly review
 
 `server.weekly_review` reviews a week against the plans; `analytics.weekly_review` computes the facts: every
-session that stood in the plan (coach, athlete or an accepted suggestion) done, missed, today or upcoming,
-sessions done without a plan, the weekly minimums from the notes (`min_sessions_per_week`) with how many weeks
-in a row fell short, six weeks of trend, and a grade summary. With the week's sessions and grades, load,
-recovery, the season calendar, pending proposals, the previous review and next week's plan, they go to the
-weekly-review model (Opus at extra-high effort by default — nobody waits for it, so it may take many tool
-calls). The run may propose season changes (`propose_season_change`, including kind `phases`, which moves a
-boundary between phases in one proposal) and notes — not plan sessions. Cited numbers are checked; a review
-with too many it can't find is sent back once, then marked low-confidence. The first review (and one asked
-for as "Whole season") also covers every week since the season started and the weeks before a layoff.
-Reviews are kept per week and version (`weekly_reviews`), shown on the Season page (Trail Journal) and posted
-to Discord. The review covers the week holding yesterday: on a Monday the week that just ended, later in the
-week the week so far.
+session that stood in the plan (coach, athlete or an accepted suggestion) done, missed, today or upcoming — a
+done one with `analytics.plan_compare`'s comparison, so a swapped or cut-short session counts as done off
+plan, not as planned — sessions done without a plan, the weekly minimums from the notes
+(`min_sessions_per_week`) with how many weeks in a row fell short, six weeks of trend, and a grade summary.
+With the week's sessions and grades, load, recovery, the season calendar, pending proposals, the previous
+review and next week's plan, they go to the weekly-review model (Opus at extra-high effort by default — nobody
+waits for it, so it may take many tool calls). The run may propose season changes (`propose_season_change`,
+including kind `phases`, which moves a boundary between phases in one proposal) and notes — not plan sessions.
+Cited numbers are checked; a review with too many it can't find is sent back once, then marked low-confidence.
+The first review (and one asked for as "Whole season") also covers every week since the season started and the
+weeks before a layoff. Reviews are kept per week and version (`weekly_reviews`), shown on the Season page
+(Trail Journal) and posted to Discord. The review covers the week holding yesterday: on a Monday the week that
+just ended, later in the week the week so far.
 
 ## Other features
 

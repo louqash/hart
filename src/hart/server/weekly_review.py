@@ -41,7 +41,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-REVIEW_PROMPT_VERSION = "weekly_review@2"
+REVIEW_PROMPT_VERSION = "weekly_review@3"
 # When the review model's safety classifiers decline the request, this model writes the review instead.
 FALLBACK_MODEL = "claude-sonnet-5"
 FALLBACK_EFFORT = "high"
@@ -97,12 +97,14 @@ judge it so far, and never call a session missed before its day.
 - `plan_adherence`: every session that stood in the plan (from the coach, the athlete or an accepted \
 suggestion) with `status` done / missed / today / upcoming, sessions done without a plan \
 (`unplanned`), and counts per sport and in total. Code matched sessions to the plan by date and sport; \
-trust its counts.
+trust its counts. `done` only means a session was linked: `vs_plan` is code's comparison with the plan \
+(verdict as_planned, shorter, longer, easier, harder or different_sport, and a summary). \
+`done_as_planned` counts only as_planned; the rest are `done_off_plan`.
 - `targets`: weekly minimums from the notes (`min_sessions_per_week`): done, `short_by`, \
 `short_streak_weeks` (weeks in a row short) and how many recent weeks fell short. One short week is not \
 a pattern; three in a row is.
-- `trend`: the last {weeks} weeks — sessions, minutes and load per sport, plan completion, grade \
-average — and `volume_change` (this week against the weeks before).
+- `trend`: the last {weeks} weeks — sessions, minutes and load per sport, plan completion (done as \
+planned), grade average — and `volume_change` (this week against the weeks before).
 - `sessions`: every session of the week with its grade (summary, concerns), RPE, feel and the \
 athlete's note.
 - `grades`; `load` (CTL/ATL/TSB going into the week and at its end, four weeks earlier, per sport); \
@@ -123,9 +125,10 @@ calendar still fits the A-race. `analysis` and `season` are fuller; the rest sta
 
 # How to review
 1. Read the notes first: goals, injuries, constraints and the weekly structure they set.
-2. Plan vs done: what was done as planned, what was missed, what was done instead. Missed because of \
-illness, injury, travel or a deliberate easy week (annotations, notes, the athlete's comments) is not \
-the same as missed for no reason — say which.
+2. Plan vs done: what was done as planned, what was missed, what was done instead. Name each session \
+that was swapped, cut short or eased (`vs_plan` not as_planned) — what was planned, what was done — and \
+never call it done as planned. Missed because of illness, injury, travel or a deliberate easy week \
+(annotations, notes, the athlete's comments) is not the same as missed for no reason — say which.
 3. Targets and patterns: is anything short again and again (e.g. too few runs)? Is the target \
 realistic for the phase and the notes?
 4. Quality: what the grades, RPE, feel and notes say about execution, how the body responded, and \
@@ -246,7 +249,9 @@ def weekly_rows(
     db: Database, week_start: datetime.date, today: datetime.date, weeks: int = TREND_WEEKS
 ) -> list[dict[str, Any]]:
     """*weeks* weeks ending with *week_start*'s (oldest first): training sessions, minutes and load per sport,
-    plan completion and the grade average. Walks and other activities are left out."""
+    plan completion (sessions done as planned) and the grade average. Walks and other activities are left out."""
+    from hart.server.plan import compare_linked
+
     first = week_start - (weeks - 1) * 7 * DAY
     end = week_start + 6 * DAY
     acts = rows(
@@ -258,6 +263,7 @@ def weekly_rows(
         [first, end + DAY, *TRAINING_SPORTS],
     )
     plan = standing_plan(db, first, end)
+    compared = compare_linked(db, plan)
     grades = _latest_grades(db, [a["activity_id"] for a in acts])
     out = []
     for i in range(weeks):
@@ -270,7 +276,9 @@ def weekly_rows(
             sport["minutes"] += round((a["secs"] or 0) / 60)
             sport["load"] += round(a["load"] or 0)
         due = [p for p in plan if ws <= p["date"] <= ws + 6 * DAY and (p["date"] < today or p["activity_id"])]
-        done = sum(1 for p in due if p["activity_id"])
+        linked = [p for p in due if p["activity_id"]]
+        off_plan = sum(1 for p in linked if wr.off_plan(compared.get(p["id"])))
+        done = len(linked) - off_plan
         scores = [grades[a["activity_id"]]["overall_score"] for a in mine if a["activity_id"] in grades]
         out.append(
             {
@@ -280,7 +288,8 @@ def weekly_rows(
                 "load": sum(s["load"] for s in by_sport.values()),
                 "by_sport": by_sport,
                 "plan_due": len(due),
-                "plan_done": done,
+                "plan_done_as_planned": done,
+                "plan_done_off_plan": off_plan,
                 "plan_completion_pct": round(100 * done / len(due)) if due else None,
                 "grade_average": round(sum(scores) / len(scores), 2) if scores else None,
             }
@@ -459,6 +468,7 @@ def season_so_far(
 
 def build_context(db: Database, week_start: datetime.date, today: datetime.date, scope: str = "week") -> dict[str, Any]:
     from hart.server.jobs.scheduler import last_successful_sync
+    from hart.server.plan import compare_linked
     from hart.server.suggestions import _merged_rule, active_notes
 
     t = state.get_thresholds(db)
@@ -466,13 +476,15 @@ def build_context(db: Database, week_start: datetime.date, today: datetime.date,
     through = min(week_end, today)
     left = wr.days_left(week_end, today)
     sessions = week_sessions(db, week_start, week_end)
+    plan = standing_plan(db, week_start, week_end)
     adherence = wr.plan_adherence(
-        standing_plan(db, week_start, week_end),
+        plan,
         [
             {"activity_id": s["activity_id"], "date": s["date"], "sport_type": s["sport"], "minutes": s["minutes"]}
             for s in sessions
         ],
         today,
+        compare_linked(db, plan),
     )
     trend = weekly_rows(db, week_start, today)
     notes = active_notes(db, through)
