@@ -158,6 +158,35 @@ def upsert_activities(db: Database, activities: list[Activity]) -> None:
     db.executemany(_ACTIVITY_SQL, [_activity_values(a) for a in activities])
 
 
+# Every table with rows that belong to one activity (keyed by its activity_id).
+_ACTIVITY_CHILD_TABLES: tuple[str, ...] = (
+    "activity_streams",
+    "activity_laps",
+    "activity_workout_steps",
+    "strength_sets",
+    "hrv_samples",
+    "activity_metrics",
+    "session_feedback",
+    "session_grades",
+    "grade_waits",
+    "anomaly_log",
+)
+
+
+def delete_activity(db: Database, activity_id: str) -> None:
+    """Remove an activity and every row that belongs to it, in one transaction.
+
+    A planned session it was matched to shows as not done again (and can be matched to another activity).
+    """
+    with db.transaction():
+        for table in _ACTIVITY_CHILD_TABLES:
+            db.execute(f"DELETE FROM {table} WHERE activity_id = ?", [activity_id])
+        db.execute(
+            "UPDATE planned_sessions SET activity_id = NULL, match_method = NULL WHERE activity_id = ?", [activity_id]
+        )
+        db.execute("DELETE FROM activities WHERE activity_id = ?", [activity_id])
+
+
 # ---------------------------------------------------------------------------
 # Activity streams
 # ---------------------------------------------------------------------------

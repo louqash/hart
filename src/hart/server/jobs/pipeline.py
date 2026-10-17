@@ -6,7 +6,7 @@ through :func:`run_sync_pipeline`, so no trigger can skip a step.
 
 Steps:
     1. Garmin health (daily health, sleep, HRV)
-    2. Garmin activities (FIT streams, laps, strength sets, metrics)
+    2. Garmin activities (FIT streams, laps, strength sets, metrics; ones deleted in Garmin are removed)
     3. Training load (CTL/ATL/TSB)
     4. Recovery scores for every date touched in step 1
     5. Materialised views
@@ -217,6 +217,7 @@ def run_sync_pipeline(
         "error_code": None,
         "partial": False,
         "new_activity_ids": [],
+        "deleted_activity_ids": [],
         "sleep_today": False,
         "strength_edited_ids": [],
         "effort_edited_ids": [],
@@ -285,10 +286,13 @@ def run_sync_pipeline(
             result["steps"]["garmin_activities"]["out"] = {
                 "new": acts.new_activities,
                 "renamed": acts.updated_activities,
+                "deleted": acts.deleted_activities,
                 "errors": acts.errors,
             }
+            result["deleted_activity_ids"] = acts.deleted_ids
             after = {r[0] for r in db.fetchall("SELECT activity_id FROM activities WHERE start_time >= ?", [since])}
-            result["new_activity_ids"] = sorted(after - before)
+            # A merged upload can get the id of a part it replaced (removed in the same sync): new all the same.
+            result["new_activity_ids"] = sorted(after - (before - set(acts.deleted_ids)))
             result["description_edited_ids"] = [a for a in acts.described_ids if a not in result["new_activity_ids"]]
             # Gym sets are usually corrected in Garmin Connect after the first sync.
             edited = step(

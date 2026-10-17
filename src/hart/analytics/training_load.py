@@ -266,6 +266,8 @@ def update_training_load(
         )
 
     if not rows:
+        if start_date is None:
+            db.execute("DELETE FROM daily_training_load")
         logger.info("No activity metrics found; nothing to update.")
         return
 
@@ -361,11 +363,15 @@ def update_training_load(
         return
 
     # 5. Upsert into daily_training_load.
-    #    DuckDB supports INSERT OR REPLACE via DELETE + INSERT pattern.
-    db.executemany(
-        "DELETE FROM daily_training_load WHERE date = ? AND sport_type = ?",
-        [[d, sport] for d, sport, *_ in all_results],
-    )
+    #    DuckDB supports INSERT OR REPLACE via DELETE + INSERT pattern.  A full recompute replaces the
+    #    table, so no series outlives the activities it came from (a removed one was its sport's only one).
+    if start_date is None:
+        db.execute("DELETE FROM daily_training_load")
+    else:
+        db.executemany(
+            "DELETE FROM daily_training_load WHERE date = ? AND sport_type = ?",
+            [[d, sport] for d, sport, *_ in all_results],
+        )
 
     db.executemany(
         "INSERT INTO daily_training_load "

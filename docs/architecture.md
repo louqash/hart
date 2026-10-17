@@ -38,6 +38,7 @@ all enqueue it):
 1. Garmin health: daily summary, sleep, HRV (merge-upsert — a missing value never erases a stored one).
 2. Garmin activities: new ones with FIT streams, laps, strength sets and metrics; renamed ones get their new
    name; recent gym sessions get their edited sets; recent RPE/feel edits are picked up.
+   Ones deleted in Garmin Connect (gone from the list, confirmed "not found") are removed with all their rows.
 3. Training load, recovery scores, materialised views, anomaly detection.
 4. Plan matching, then follow-up jobs: grading for new sessions (and regrading for edited ones), today's
    suggestion once last night's sleep has arrived, a refresh of tomorrow's suggestion after a late session.

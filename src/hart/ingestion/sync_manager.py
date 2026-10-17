@@ -13,6 +13,7 @@ import datetime
 import io
 import json
 import logging
+import re
 import tempfile
 import zipfile
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from hart.models.activity import SportType, StreamPoint, StrengthSet
 from hart.models.health import HealthDay, HRVDaily, SleepRecord
 from hart.storage.database import Database
 from hart.storage.writers import (
+    delete_activity,
     replace_strength_sets,
     replace_workout_steps,
     update_sync_state,
@@ -53,15 +55,21 @@ class SyncResult:
     new_activities: int = 0
     updated_activities: int = 0
     described_ids: list[str] = field(default_factory=list)  # description edited in Garmin (re-grade)
+    deleted_ids: list[str] = field(default_factory=list)  # deleted in Garmin Connect, removed here
     new_health_days: int = 0
     errors: int = 0
     error_details: list[str] = field(default_factory=list)
     sync_time: datetime.datetime = field(default_factory=lambda: datetime.datetime.now(tz=datetime.UTC))
 
+    @property
+    def deleted_activities(self) -> int:
+        return len(self.deleted_ids)
+
     def __str__(self) -> str:
         return (
             f"SyncResult(new={self.new_activities}, "
             f"updated={self.updated_activities}, "
+            f"deleted={self.deleted_activities}, "
             f"health={self.new_health_days}, "
             f"errors={self.errors})"
         )
@@ -183,6 +191,10 @@ class SyncManager:
             update_sync_state(self._db, "garmin_activities", last_sync_at=result.sync_time)
             return result
 
+        # Deleted in Garmin Connect (a mistaken start, the parts of a session uploaded again as one): removed
+        # first, so a merged upload that gets the id of its first part is stored as new.
+        self._remove_deleted(garmin, activities_list, start_date, today, result)
+
         # Skip activities already in the database
         existing_ids: set[str] = {
             str(r[0])
@@ -253,6 +265,49 @@ class SyncManager:
         update_sync_state(self._db, "garmin_activities", last_sync_at=result.sync_time)
         logger.info("Garmin activity sync complete: %s", result)
         return result
+
+    def _remove_deleted(
+        self,
+        garmin: Any,
+        listed: list[dict[str, Any]],
+        start: datetime.date,
+        end: datetime.date,
+        result: SyncResult,
+    ) -> None:
+        """Remove stored Garmin activities from *start* to *end* that the (non-empty) list for those dates no
+        longer has — each only once Garmin confirms it is gone.  An answer that isn't a clear "not found" keeps
+        it, and so does a lookup that doesn't recognise an activity the list has (the check itself is broken)."""
+        listed_ids = {str(a["activityId"]) for a in listed if a.get("activityId")}
+        if not listed_ids:
+            return
+        missing = [
+            (activity_id, str(external_id))
+            for activity_id, external_id in self._db.fetchall(
+                "SELECT activity_id, external_id FROM activities WHERE source = 'garmin' "
+                "AND external_id IS NOT NULL AND CAST(start_time AS DATE) BETWEEN ? AND ? ORDER BY start_time",
+                [start, end],
+            )
+            if str(external_id) not in listed_ids
+        ]
+        if not missing:
+            return
+        if _deleted_in_garmin(garmin, next(iter(listed_ids))) is not False:
+            logger.warning(
+                "Garmin's activity lookup isn't answering reliably — %d unlisted activities kept", len(missing)
+            )
+            return
+        for activity_id, external_id in missing:
+            if not _deleted_in_garmin(garmin, external_id):
+                continue
+            try:
+                delete_activity(self._db, activity_id)
+            except Exception as exc:
+                logger.error("Removing deleted activity %s failed: %s", activity_id, exc)
+                result.errors += 1
+                result.error_details.append(f"delete:{activity_id}: {exc}")
+                continue
+            logger.info("Activity %s was deleted in Garmin Connect (%s) — removed", activity_id, external_id)
+            result.deleted_ids.append(activity_id)
 
     def _refresh_edited(self, listed: list[dict[str, Any]], described: list[str] | None = None) -> int:
         """Apply names/descriptions edited in Garmin Connect to stored activities; ids whose description
@@ -802,6 +857,31 @@ def _safe_call(method: Any, *args: Any) -> Any:
     except Exception as exc:
         logger.debug("API call %s failed: %s", getattr(method, "__name__", method), exc)
         return None
+
+
+def _deleted_in_garmin(garmin: Any, act_id: str) -> bool | None:
+    """Whether Garmin says *act_id* no longer exists: True for "not found" (or an empty answer), False when it
+    returns the activity, None when the lookup failed some other way (network, rate limit, auth) — unknown."""
+    try:
+        detail = garmin.get_activity(act_id)
+    except Exception as exc:
+        if _is_not_found(exc):
+            return True
+        logger.warning("Couldn't check whether Garmin activity %s still exists: %s", act_id, exc)
+        return None
+    return not detail
+
+
+def _is_not_found(exc: BaseException) -> bool:
+    """A 404 anywhere in the exception chain (garminconnect re-wraps errors, sometimes keeping only the text)."""
+    chain: list[BaseException] = []
+    while exc is not None and exc not in chain:
+        chain.append(exc)
+        exc = exc.__cause__ or exc.__context__
+    return any(
+        getattr(getattr(e, "response", None), "status_code", None) == 404 or re.search(r"\b404\b", str(e))
+        for e in chain
+    )
 
 
 def _safe_int(val: Any) -> int | None:
