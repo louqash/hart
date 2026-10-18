@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import math
 from pathlib import Path
@@ -299,3 +300,75 @@ def test_indoor_run_is_untouched(db: Database) -> None:
     assert "pace_judged_on" not in f["intervals"]["summary"]
     assert f["durability"]["stream_decoupling"]["basis"] == "speed/HR"
     assert f["durability"]["lap_variability"]["metric"] == "avg_pace_sec_km"
+
+
+# ---------------------------------------------------------------------------
+# Session page and side-by-side compare
+# ---------------------------------------------------------------------------
+
+H = {"Tailscale-User-Login": "me@example.com"}
+
+
+@pytest.fixture
+def client(tmp_path: Path):
+    from fastapi.testclient import TestClient
+
+    from hart.config import ServerSettings
+    from hart.server.app import create_app
+    from tests.test_chat import FakeClient
+
+    db_path = tmp_path / "app.duckdb"
+    seed = Database(db_path).connect()
+    _insert_run(seed, "flat", DAY - datetime.timedelta(days=7), _course(0))
+    _insert_run(seed, "hilly", DAY, _course(15))
+    _insert_run(seed, "hilly_free", DAY - datetime.timedelta(days=1), _course(15))  # no structured workout
+    seed.execute("DELETE FROM activity_workout_steps WHERE activity_id = 'hilly_free'")
+    seed.execute("UPDATE activity_laps SET wkt_step_index = NULL, intensity = NULL WHERE activity_id = 'hilly_free'")
+    _insert_run(seed, "tm_old", DAY - datetime.timedelta(days=7), _course(0), sub="treadmill")
+    _insert_run(seed, "tm", DAY, _course(15), sub="treadmill")
+    backfill_grade_adjusted(seed)
+    seed.close()
+    config = dataclasses.replace(
+        get_config(), db_path=db_path, server=ServerSettings(env="production", seed_dir=tmp_path / "seed")
+    )
+    app = create_app(config, run_scheduler=False, claude_client_factory=FakeClient)
+    with TestClient(app, base_url="https://hart.example.ts.net") as c:
+        yield c
+
+
+def test_session_page_shows_grade_adjusted_pace(client) -> None:
+    page = client.get("/sessions/hilly", headers=H).text
+    assert "Grade-adjusted pace" in page and "NGP 5:" in page  # stats: GAP and NGP
+    assert "grade-adjusted" in page.split("Efficiency (EF)")[1][:600]  # EF with its grade-adjusted value
+    intervals = page.split("Intervals")[1]
+    assert ">GAP<" in intervals and "↑30 ↓0" in intervals and "↑0 ↓30" in intervals  # per-lap GAP and climb
+    assert "Pace targets are judged on grade-adjusted pace" in intervals
+
+    splits = client.get("/sessions/hilly_free", headers=H).text.split("Splits")[1]
+    assert ">GAP<" in splits and "↑30 ↓0" in splits
+
+
+def test_session_page_of_indoor_run_is_unchanged(client) -> None:
+    page = client.get("/sessions/tm", headers=H).text
+    assert "Grade-adjusted pace" not in page and ">GAP<" not in page and "↑" not in page
+    assert "Pace targets are judged on grade-adjusted pace" not in page
+
+
+def test_compare_judges_outdoor_runs_on_grade_adjusted_values(client) -> None:
+    out = client.get("/api/sessions/hilly/compare?other=flat", headers=H).json()
+    rows = {r["label"]: r for r in out["rows"]}
+    assert out["grade_adjusted"] is True
+    # Raw pace and EF look worse on the hillier route, but aren't marked down…
+    assert rows["Pace"]["delta_pct"] > 4 and rows["Pace"]["verdict"] is None
+    assert rows["Efficiency factor"]["delta_pct"] < -4 and rows["Efficiency factor"]["verdict"] is None
+    # …the grade-adjusted ones show it was the same effort.
+    assert abs(rows["Grade-adjusted pace"]["delta_pct"]) < 1.5 and abs(rows["Grade-adjusted EF"]["delta_pct"]) < 1.5
+    assert "Normalized graded pace" in rows
+    page = client.get("/sessions/hilly?compare=flat", headers=H).text
+    assert "compared grade-adjusted" in page
+
+    indoor = client.get("/api/sessions/tm/compare?other=tm_old", headers=H).json()
+    labels = {r["label"]: r for r in indoor["rows"]}
+    assert indoor["grade_adjusted"] is False
+    assert not any("rade" in label for label in labels)  # no grade-adjusted rows on a treadmill
+    assert labels["Pace"]["verdict"] == "bad"  # judged on pace, as before

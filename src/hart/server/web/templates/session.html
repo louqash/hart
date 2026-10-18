@@ -4,6 +4,9 @@
 {% block title %}{{ s.name or 'Session' }}{% endblock %}
 {% block head %}<script src="{{ static('vendor/echarts.min.js') }}"></script><script src="{{ static('charts.js') }}"></script>{% endblock %}
 {% block content %}
+{% macro climb(gain, loss) -%}
+  {%- if gain is none and loss is none %}—{% else %}↑{{ gain|num }} ↓{{ loss|num }}<small class="faint"> m</small>{% endif -%}
+{%- endmacro %}
 <a class="small" href="/sessions">← Sessions</a>
 <div class="spread">
   <h1><span class="sport {{ s.sport_type }}"></span>{{ s.name or (s.sport_type|sport(s.sub_type)) }}</h1>
@@ -20,9 +23,10 @@
     <div class="stat"><div class="label">Avg / NP power{{ tip("np") }}</div><div class="value">{{ s.avg_power|num }}<small> / {{ s.normalized_power|num }} W</small></div></div>
     {% endif %}
     {% if s.sport_type == 'run' and s.avg_pace_sec_km %}<div class="stat"><div class="label">Pace</div><div class="value" style="font-size:19px">{{ s.avg_pace_sec_km|pace }}</div></div>{% endif %}
+    {% if s.gap_pace_sec_km %}<div class="stat"><div class="label">Grade-adjusted pace{{ tip("gap") }}</div><div class="value" style="font-size:19px">{{ s.gap_pace_sec_km|pace }}</div>{% if s.ngp_sec_km %}<div class="delta">NGP {{ s.ngp_sec_km|pace }}</div>{% endif %}</div>{% endif %}
     {% if s.avg_cadence %}<div class="stat"><div class="label">Cadence{{ tip("cadence") }}</div><div class="value">{{ s.avg_cadence|num }}</div></div>{% endif %}
     {% if s.total_elevation_m %}<div class="stat"><div class="label">Elevation</div><div class="value">{{ s.total_elevation_m|num }}<small> m</small></div></div>{% endif %}
-    {% if s.efficiency_factor %}<div class="stat"><div class="label">Efficiency (EF){{ tip("ef") }}</div><div class="value">{{ s.efficiency_factor|num(2) }}</div></div>{% endif %}
+    {% if s.efficiency_factor %}<div class="stat"><div class="label">Efficiency (EF){{ tip("ef") }}</div><div class="value">{{ s.efficiency_factor|num(2) }}</div>{% if s.gap_efficiency_factor %}<div class="delta">{{ s.gap_efficiency_factor|num(2) }} grade-adjusted{{ tip("gap_ef") }}</div>{% endif %}</div>{% endif %}
     {% if s.aerobic_decoupling_pct is not none %}<div class="stat"><div class="label">Decoupling{{ tip("decoupling") }}</div><div class="value">{{ s.aerobic_decoupling_pct|num(1) }}<small> %</small></div></div>{% endif %}
     {% if s.training_effect_aerobic %}<div class="stat"><div class="label">Training effect{{ tip("training_effect") }}</div><div class="value" style="font-size:18px">{{ s.training_effect_aerobic|num(1) }} / {{ s.training_effect_anaerobic|num(1) }}</div><div class="delta">{{ (s.training_effect_label or 'aerobic / anaerobic')|replace('_', ' ')|lower }}</div></div>{% endif %}
   </div>
@@ -196,7 +200,7 @@
     {% endfor %}
   </table></div>
   {% endif %}
-  <p class="small faint" style="margin:8px 0 0">Similar = {{ c.similar_rule }}. Green/amber only where better is clear (efficiency up, decoupling down, faster pace).{% if prefs.power_single_sided %} Power is single-sided — compare trends.{% endif %}</p>
+  <p class="small faint" style="margin:8px 0 0">Similar = {{ c.similar_rule }}. Green/amber only where better is clear (efficiency up, decoupling down, faster pace).{% if c.grade_adjusted %} Outdoor runs: pace and efficiency are compared grade-adjusted, so a hillier route doesn't count against you.{% endif %}{% if prefs.power_single_sided %} Power is single-sided — compare trends.{% endif %}</p>
   {% endif %}
 </section>
 {% endif %}
@@ -274,7 +278,8 @@
     {%- if sm.avg_recovery_seconds %} · recoveries {{ sm.avg_recovery_seconds|duration }}{% endif %}</p>
   <div class="table-wrap"><table>
     <tr><th>Lap</th><th>Step</th><th class="num">Time</th><th class="num">Target</th>
-      <th class="num">{{ 'Power' if s.sport_type == 'bike' else 'Pace' }}</th><th class="num">Avg HR</th><th class="num">Cadence</th><th></th></tr>
+      <th class="num">{{ 'Power' if s.sport_type == 'bike' else 'Pace' }}</th>
+      {%- if s.laps_graded %}<th class="num">GAP{{ tip("gap") }}</th><th class="num">Climb</th>{% endif %}<th class="num">Avg HR</th><th class="num">Cadence</th><th></th></tr>
     {% for r in iv.laps %}
     <tr class="{{ 'faint' if r.kind in ('recovery', 'warmup', 'cooldown') }}">
       <td>{{ r.lap }}</td>
@@ -282,25 +287,28 @@
       <td class="num">{{ r.get('seconds')|minsec }}</td>
       <td class="num small">{{ target(r.get('target')) }}</td>
       <td class="num">{% if s.sport_type == 'bike' %}{{ r.get('power')|num(0, 'W') }}{% else %}{{ r.get('pace_sec_km')|pace }}{% endif %}</td>
+      {%- if s.laps_graded %}<td class="num">{{ r.get('gap_pace_sec_km')|pace }}</td><td class="num small">{{ climb(r.get('gain_m'), r.get('loss_m')) }}</td>{% endif %}
       <td class="num">{{ r.get('hr')|num }}</td><td class="num">{{ r.get('cadence')|num }}</td>
       <td>{% if r.verdict == 'on' %}<span class="chip green small-chip">on target</span>
         {% elif r.verdict %}<span class="chip {{ 'amber' if r.verdict == 'under' else 'sunset' }} small-chip">{{ r.verdict }} {{ r.off_pct }}%</span>{% endif %}</td>
     </tr>
     {% endfor %}
   </table></div>
-  <p class="small faint" style="margin:8px 0 0">From the structured workout on your watch. Within 2% of the target range counts as on target.</p>
+  <p class="small faint" style="margin:8px 0 0">From the structured workout on your watch. Within 2% of the target range counts as on target.{% if sm.pace_judged_on %} Pace targets are judged on grade-adjusted pace (GAP): a rep run uphill at the right effort is on target.{% endif %}</p>
 </section>
 {% elif s.laps|length > 1 %}
 <section class="card">
   <h2>{{ icon("footprints") }}Splits <span class="plain">laps</span></h2>
   <div class="table-wrap"><table>
     <tr><th>#</th><th class="num">Time</th><th class="num">Distance</th><th class="num">Avg HR</th><th class="num">Max HR</th>
-      <th class="num">{{ 'Power' if s.sport_type == 'bike' else 'Pace' }}</th><th class="num">Cadence</th></tr>
+      <th class="num">{{ 'Power' if s.sport_type == 'bike' else 'Pace' }}</th>
+      {%- if s.laps_graded %}<th class="num">GAP{{ tip("gap") }}</th><th class="num">Climb</th>{% endif %}<th class="num">Cadence</th></tr>
     {% for lap in s.laps %}
     <tr><td>{{ lap.lap_index + 1 }}</td><td class="num">{{ lap.elapsed_seconds|minsec }}</td>
       <td class="num">{{ (lap.distance_meters / 1000)|num(2, 'km') if lap.distance_meters else '—' }}</td>
       <td class="num">{{ lap.avg_hr|num }}</td><td class="num">{{ lap.max_hr|num }}</td>
       <td class="num">{% if s.sport_type == 'bike' %}{{ lap.avg_power|num(0, 'W') }}{% else %}{{ lap.avg_pace_sec_km|pace }}{% endif %}</td>
+      {%- if s.laps_graded %}<td class="num">{{ lap.get('gap_pace_sec_km')|pace }}</td><td class="num small">{{ climb(lap.get('elevation_gain_m'), lap.get('elevation_loss_m')) }}</td>{% endif %}
       <td class="num">{{ lap.avg_cadence|num }}</td></tr>
     {% endfor %}
   </table></div>

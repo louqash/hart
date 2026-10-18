@@ -249,6 +249,7 @@ SESSION_COLUMNS = (
     "a.avg_cadence, a.avg_pace_sec_km, a.avg_speed_kmh, a.training_effect_aerobic, "
     "a.training_effect_anaerobic, a.training_effect_label, a.rpe AS garmin_rpe, a.feel AS garmin_feel, "
     "m.tss AS load, m.efficiency_factor, m.aerobic_decoupling_pct, m.hr_zone_seconds, "
+    "m.gap_pace_sec_km, m.ngp_sec_km, m.gap_efficiency_factor, "
     "f.rpe, f.feel, f.comment, a.description, f.note_garmin_seen, "
     # The session note: the athlete's text in hart, or — until they write one — the Garmin description.
     "coalesce(f.comment, a.description) AS note, f.comment IS NOT NULL AS note_edited"
@@ -955,13 +956,19 @@ def session_detail(db: Database, activity_id: str) -> dict[str, Any] | None:
     row = one(db, f"SELECT {SESSION_COLUMNS} {SESSION_FROM} WHERE a.activity_id = ?", [activity_id])
     if row is None:
         return None
+    from hart.analytics.grading_features import interval_breakdown, is_outdoor_run, with_lap_grades
+
     detail = _session_row(row)
     detail["laps"] = rows(
         db,
         "SELECT lap_index, elapsed_seconds, moving_seconds, distance_meters, avg_hr, max_hr, avg_power, "
-        "avg_cadence, avg_pace_sec_km, total_elevation_m FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
+        "avg_cadence, avg_pace_sec_km, total_elevation_m, intensity, wkt_step_index FROM activity_laps "
+        "WHERE activity_id = ? ORDER BY lap_index",
         [activity_id],
     )
+    if is_outdoor_run(detail):  # each lap's grade-adjusted pace, climb and descent
+        detail["laps"] = with_lap_grades(db, activity_id, detail["laps"])
+    detail["laps_graded"] = any(lap.get("gap_pace_sec_km") for lap in detail["laps"])
     detail["strength_sets"] = rows(
         db,
         "SELECT set_index, set_type, exercise_name, exercise_category, repetitions, weight_kg, duration_sec "
@@ -1007,10 +1014,8 @@ def session_detail(db: Database, activity_id: str) -> dict[str, Any] | None:
     detail["workout_steps"] = rows(
         db, "SELECT * FROM activity_workout_steps WHERE activity_id = ? ORDER BY step_index", [activity_id]
     )
-    from hart.analytics.grading_features import interval_breakdown
-
     detail["intervals"] = (
-        interval_breakdown(db, activity_id, detail["sport_type"])
+        interval_breakdown(db, activity_id, detail["sport_type"], detail["laps"])
         if detail["sport_type"] in ("bike", "run", "swim")
         else None
     )
@@ -1135,6 +1140,10 @@ def session_compare(db: Database, activity_id: str, other_id: str | None = None)
         ("Avg HR", "avg_hr", "bpm", 0, None),
         ("Max HR", "max_hr", "bpm", 0, None),
     ]
+    outdoor_run = this["sport_type"] == "run" and not this["indoor"]
+    # Outdoor runs with grade-adjusted values on both sides are judged on those: a hillier route reads slower
+    # and less efficient on the plain pace and EF, so those aren't coloured.
+    graded = outdoor_run and all(x.get("gap_pace_sec_km") for x in (this, other))
     if this["sport_type"] == "bike":
         metrics += [
             ("Avg power", "avg_power", "W", 0, None),
@@ -1142,14 +1151,20 @@ def session_compare(db: Database, activity_id: str, other_id: str | None = None)
             ("Cadence", "avg_cadence", "rpm", 0, None),
         ]
     elif this["sport_type"] == "run":
-        metrics += [("Pace", "avg_pace_sec_km", "pace", 0, "down"), ("Cadence", "avg_cadence", "spm", 0, None)]
+        metrics += [("Pace", "avg_pace_sec_km", "pace", 0, None if graded else "down")]
+        if outdoor_run:
+            metrics += [
+                ("Grade-adjusted pace", "gap_pace_sec_km", "pace", 0, "down" if graded else None),
+                ("Normalized graded pace", "ngp_sec_km", "pace", 0, None),
+            ]
+        metrics += [("Cadence", "avg_cadence", "spm", 0, None)]
     elif this["sport_type"] == "swim":
         metrics += [("Speed", "avg_speed_kmh", "km/h", 2, "up")]
     if this["sport_type"] != "strength":
-        metrics += [
-            ("Efficiency factor", "efficiency_factor", "", 2, "up"),
-            ("Decoupling", "aerobic_decoupling_pct", "%", 1, "down"),
-        ]
+        metrics += [("Efficiency factor", "efficiency_factor", "", 2, None if graded else "up")]
+        if outdoor_run:
+            metrics += [("Grade-adjusted EF", "gap_efficiency_factor", "", 2, "up" if graded else None)]
+        metrics += [("Decoupling", "aerobic_decoupling_pct", "%", 1, "down")]
     metrics += [
         ("Load", "load", "", 0, None),
         ("Aerobic TE", "training_effect_aerobic", "", 1, None),
@@ -1191,6 +1206,7 @@ def session_compare(db: Database, activity_id: str, other_id: str | None = None)
         "rows": out_rows,
         "zones": zones if zones["this"] or zones["other"] else None,
         "exercises": exercises,
+        "grade_adjusted": graded,
         "similar_rule": "same sport and indoor/outdoor"
         + ("" if this["sport_type"] == "strength" else ", duration ±25%")
         + f", last {COMPARE_DAYS} days",

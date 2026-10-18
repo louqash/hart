@@ -34,6 +34,8 @@ GLOSSARY: dict[str, str] = {
     "np": "Normalized power: what a ride cost physiologically. Weights surges more than steady riding, so it's higher than average power on variable rides.",
     "ef": "Efficiency factor: bike = normalized power ÷ average HR; run = speed (m/min) ÷ average HR. Higher at the same kind of session = fitter aerobic engine.",
     "decoupling": "Aerobic decoupling: drop in efficiency from the first to the second half of a steady session. Below 5% = your endurance holds for that duration.",
+    "gap": "Grade-adjusted pace (outdoor runs): the pace the same effort would give on the flat, from the altitude and distance recorded (Minetti's cost of running on a slope). Faster than your pace uphill, slower downhill. NGP is its normalized version — surges count more, like normalized power.",
+    "gap_ef": "Efficiency with the hills taken out: grade-adjusted speed (m/min) ÷ average HR. Compare outdoor runs on this — a hillier route lowers the plain EF.",
     "training_effect": "Garmin Training Effect 0–5 (aerobic / anaerobic): impact on fitness. 2–3 maintaining, 3–4 improving, 4–5 highly improving, 5 overreaching.",
     "cadence": "Pedalling rpm on the bike; steps per minute when running.",
     "hr_zones": "Time in each heart-rate zone, using the zones set on your Garmin when the session was recorded.",
