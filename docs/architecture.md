@@ -87,7 +87,12 @@ similar sessions (same sport and indoor/outdoor, ±25% duration; 90 days, fallin
 sets, the planned session it was linked to (with `analytics.plan_compare`'s comparison), and the context of
 the day (readiness, phase, constraints, feedback, sauna the day before or that day — before or after the
 session — and habits logged the evening before). Execution is judged against the linked plan, or against the
-intent Claude infers when no plan is linked. Claude scores execution, response
+intent Claude infers when no plan is linked. Outdoor runs are judged on grade-adjusted pace (Minetti cost of
+running on a grade, from the altitude and distance streams): the run's GAP, NGP and GAP efficiency factor are
+stored in `activity_metrics` by the sync (`ingestion.grade_adjusted`), and the comparison, the main block, the
+lap breakdown (each lap's GAP, climb and descent; pace targets judged on GAP), lap variability and decoupling
+all use them, so a hilly route doesn't read as slow or inefficient. Indoor runs and other sports are
+unchanged. Claude scores execution, response
 and context fit 1–5 with a justification each; code computes the overall score and letter and checks every
 cited number against the facts and tool results — too many unverifiable numbers make the grade low-confidence.
 

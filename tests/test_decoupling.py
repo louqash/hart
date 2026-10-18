@@ -261,5 +261,14 @@ def test_backfill_job_via_server(tmp_path: Path) -> None:
             time.sleep(0.05)
 
     assert status["status"] == "ok", status
-    assert status["result"] == {"checked": 2, "computed": 1, "not_eligible": 1, "errors": 0}
-    assert job_details(status) == "decoupling computed for 1 of 2 bike/run sessions"
+    assert status["result"] == {
+        "checked": 2,
+        "computed": 1,
+        "not_eligible": 1,
+        "errors": 0,
+        # The run has no altitude stream: no grade-adjusted pace.
+        "grade_adjusted": {"checked": 1, "computed": 0, "no_altitude": 1, "errors": 0},
+    }
+    assert job_details(status) == (
+        "decoupling computed for 1 of 2 bike/run sessions · grade-adjusted pace for 0 of 1 outdoor runs"
+    )

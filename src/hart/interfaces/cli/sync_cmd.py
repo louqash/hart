@@ -363,6 +363,11 @@ def backfill_metrics() -> None:
                 logger.debug("Failed to backfill metrics for %s: %s", ext_id, exc)
                 errors += 1
 
+    if metrics_inserted:
+        from hart.ingestion.grade_adjusted import backfill_grade_adjusted
+
+        backfill_grade_adjusted(db)  # GAP and grade-adjusted decoupling for outdoor runs, from the streams
+
     table = Table(title="Metrics Backfill Summary", show_header=False)
     table.add_column("Metric", style="cyan", width=25)
     table.add_column("Value", justify="right")

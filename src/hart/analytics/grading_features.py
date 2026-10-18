@@ -13,6 +13,7 @@ import math
 from statistics import mean, median, pstdev
 from typing import Any
 
+from hart.analytics.pace import grade_adjusted_speeds, run_grades
 from hart.server.data import (
     DAY,
     INDOOR_SUBTYPES,
@@ -64,30 +65,37 @@ def eligibility(activity: dict[str, Any], in_event: bool) -> tuple[bool, str | N
 # ---------------------------------------------------------------------------
 
 
-def stream_durability(db: Database, activity_id: str, sport: str) -> dict[str, Any] | None:
+def stream_durability(db: Database, activity_id: str, sport: str, grade_adjust: bool = False) -> dict[str, Any] | None:
     """First-half vs second-half efficiency and HR drift from the streams.
 
-    Bike uses power ÷ HR, run uses speed ÷ HR; only moving samples (power or
-    speed > 0) with a heart rate count.  Decoupling > 5% on a steady session
-    means endurance didn't hold for that duration.
+    Bike uses power ÷ HR, run uses speed ÷ HR — grade-adjusted speed with
+    *grade_adjust* (outdoor runs), so a hilly second half isn't mistaken for
+    drift; only moving samples (power or speed > 0) with a heart rate count.
+    Decoupling > 5% on a steady session means endurance didn't hold for that
+    duration.
     """
     output = "power" if sport == "bike" else "speed"
     if sport not in ("bike", "run"):
         return None
     samples = db.fetchall(
-        f"SELECT heart_rate, {output} FROM activity_streams WHERE activity_id = ? "
+        f"SELECT heart_rate, {output}, distance, altitude FROM activity_streams WHERE activity_id = ? "
         f"AND heart_rate > 40 AND {output} > 0 ORDER BY timestamp_sec",
         [activity_id],
     )
     if len(samples) < STREAM_MIN_S:
         return None
+    graded = False
+    if grade_adjust:
+        speeds = grade_adjusted_speeds([s[2] for s in samples], [s[3] for s in samples], [s[1] for s in samples])
+        graded = speeds != [s[1] for s in samples]
+        samples = [(s[0], v) for s, v in zip(samples, speeds, strict=True)]
     half = len(samples) // 2
     first, second = samples[:half], samples[half:]
     hr1, hr2 = mean(s[0] for s in first), mean(s[0] for s in second)
     out1, out2 = mean(s[1] for s in first), mean(s[1] for s in second)
     ef1, ef2 = out1 / hr1, out2 / hr2
     return {
-        "basis": "power/HR" if sport == "bike" else "speed/HR",
+        "basis": "power/HR" if sport == "bike" else ("grade-adjusted speed/HR" if graded else "speed/HR"),
         "decoupling_pct": _r((ef1 - ef2) / ef1 * 100, 1),
         "hr_first_half": _r(hr1, 0),
         "hr_second_half": _r(hr2, 0),
@@ -100,10 +108,44 @@ def stream_durability(db: Database, activity_id: str, sport: str) -> dict[str, A
 
 def lap_variability(laps: list[dict[str, Any]], sport: str) -> dict[str, Any] | None:
     key = "avg_power" if sport == "bike" else "avg_pace_sec_km"
+    if sport == "run" and any(lap.get("gap_pace_sec_km") for lap in laps):
+        key = "gap_pace_sec_km"  # an even effort over hills is steady even though the pace isn't
     values = [lap[key] for lap in laps if lap.get(key) and (lap.get("elapsed_seconds") or 0) >= 60]
     if len(values) < 3:
         return None
     return {"laps": len(values), "metric": key, "cv_pct": _r(pstdev(values) / mean(values) * 100, 1)}
+
+
+def is_outdoor_run(activity: dict[str, Any]) -> bool:
+    return activity.get("sport_type") == "run" and not is_indoor(activity.get("sub_type"))
+
+
+def with_lap_grades(db: Database, activity_id: str, laps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """An outdoor run's laps with each lap's grade-adjusted pace and its climb and descent (m), from the
+    altitude and distance streams. Laps come back unchanged without those streams."""
+    samples = db.fetchall(
+        "SELECT distance, altitude FROM activity_streams WHERE activity_id = ? "
+        "AND distance IS NOT NULL AND altitude IS NOT NULL ORDER BY timestamp_sec",
+        [activity_id],
+    )
+    grades = run_grades([r[0] for r in samples], [r[1] for r in samples]) if samples else None
+    if grades is None or not laps:
+        return laps
+    out = []
+    for lap, grade in zip(laps, grades.laps([lap.get("distance_meters") for lap in laps]), strict=True):
+        if grade is None:
+            out.append(lap)
+            continue
+        pace = lap.get("avg_pace_sec_km")
+        out.append(
+            {
+                **lap,
+                "gap_pace_sec_km": pace / grade["effort_factor"] if pace else None,
+                "elevation_gain_m": _r(grade["gain_m"], 0),
+                "elevation_loss_m": _r(grade["loss_m"], 0),
+            }
+        )
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -123,7 +165,8 @@ def comparable_sessions(db: Database, activity: dict[str, Any], injury: dict[str
             db,
             "SELECT a.activity_id, CAST(a.start_time AS DATE) AS date, a.avg_hr, a.avg_power, a.normalized_power, "
             "a.avg_pace_sec_km, coalesce(a.moving_seconds, a.elapsed_seconds) AS secs, m.tss AS load, "
-            "m.efficiency_factor AS ef FROM activities a LEFT JOIN activity_metrics m USING (activity_id) "
+            "m.efficiency_factor AS ef, m.gap_pace_sec_km, m.ngp_sec_km, m.gap_efficiency_factor AS gap_ef "
+            "FROM activities a LEFT JOIN activity_metrics m USING (activity_id) "
             f"WHERE a.sport_type = ? AND {indoor_clause} AND a.start_time < ? AND a.start_time >= ? "
             "AND coalesce(a.moving_seconds, a.elapsed_seconds) BETWEEN ? AND ? ORDER BY a.start_time DESC",
             [
@@ -155,33 +198,50 @@ def comparable_sessions(db: Database, activity: dict[str, Any], injury: dict[str
         "load": activity.get("load"),
         "ef": activity.get("efficiency_factor"),
     }
-    medians = {k: _r(med(k), 3 if k == "ef" else 1) for k in this}
+    graded = is_outdoor_run(activity)
+    if graded:  # outdoor runs: pace and efficiency with the hills taken out
+        this["gap_pace_sec_km"] = activity.get("gap_pace_sec_km")
+        this["ngp_sec_km"] = activity.get("ngp_sec_km")
+        this["gap_ef"] = activity.get("gap_efficiency_factor")
+    medians = {k: _r(med(k), 3 if k.endswith("ef") else 1) for k in this}
     deltas = {
         k: _r(((this[k] - medians[k]) / medians[k]) * 100, 1)
         for k in this
         if this[k] not in (None, 0) and medians.get(k)
     }
     main = _main_block_comparison(db, activity, similar)
-    return {
+    notes = (
+        "this_vs_median_pct: + means higher than the median. avg_pace_sec_km is seconds per km, "
+        "so + means SLOWER. For avg_hr at similar output, lower is better."
+    )
+    out = {
         "count": len(similar),
         "window_days": window,
         "indoor": indoor,
         "main_block": main,
         "pre_injury_baseline": pre_injury,
         "criteria": f"same sport, {'indoor' if indoor else 'outdoor'}, duration ±25%, last {window} days",
-        "notes": "this_vs_median_pct: + means higher than the median. avg_pace_sec_km is seconds per km, "
-        "so + means SLOWER. For avg_hr at similar output, lower is better.",
+        "notes": notes,
         "medians": {k: v for k, v in medians.items() if v is not None},
         "this_vs_median_pct": deltas,
         "recent": [{"date": s["date"], "avg_hr": _r(s["avg_hr"], 0), "load": _r(s["load"], 0)} for s in similar[:5]],
     }
+    if graded:
+        out["grade_adjusted_count"] = sum(1 for s in similar if s.get("gap_pace_sec_km"))
+        out["notes"] = notes + (
+            " Outdoor run: gap_pace_sec_km, ngp_sec_km and gap_ef are grade-adjusted (the hills taken out) — "
+            "judge pace and efficiency on them; avg_pace_sec_km and ef include the hills, so a hillier route "
+            "than usual reads slower and less efficient on those. grade_adjusted_count = similar sessions that "
+            "have grade-adjusted values (the gap medians use only those)."
+        )
+    return out
 
 
 def _laps(db: Database, activity_id: str) -> list[dict[str, Any]]:
     return rows(
         db,
-        "SELECT lap_index, elapsed_seconds, moving_seconds, avg_hr, avg_power, avg_pace_sec_km, intensity "
-        "FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
+        "SELECT lap_index, elapsed_seconds, moving_seconds, distance_meters, avg_hr, avg_power, avg_pace_sec_km, "
+        "intensity FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
         [activity_id],
     )
 
@@ -193,10 +253,16 @@ def _main_block_comparison(
     from hart.analytics.intervals import main_block
 
     sport = activity["sport_type"]
-    this = main_block(_laps(db, activity["activity_id"]), sport)
+    graded = is_outdoor_run(activity)
+
+    def laps(activity_id: str) -> list[dict[str, Any]]:
+        found = _laps(db, activity_id)
+        return with_lap_grades(db, activity_id, found) if graded else found
+
+    this = main_block(laps(activity["activity_id"]), sport)
     if this is None:
         return None
-    others = [m for m in (main_block(_laps(db, s["activity_id"]), sport) for s in similar) if m]
+    others = [m for m in (main_block(laps(s["activity_id"]), sport) for s in similar) if m]
     out: dict[str, Any] = {
         "this": this,
         "notes": "The work laps only (no warm-up, cool-down or recoveries). Prefer this over whole-session "
@@ -205,8 +271,8 @@ def _main_block_comparison(
     }
     if others:
         medians = {
-            k: _r(median([o[k] for o in others if o.get(k)]), 3 if k == "ef" else 1)
-            for k in ("avg_power", "avg_hr", "pace_sec_km", "ef")
+            k: _r(median([o[k] for o in others if o.get(k)]), 3 if k.endswith("ef") else 1)
+            for k in ("avg_power", "avg_hr", "pace_sec_km", "ef", "gap_pace_sec_km", "gap_ef")
             if any(o.get(k) for o in others)
         }
         out["similar_median"] = medians
@@ -365,6 +431,7 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
     a = one(
         db,
         "SELECT a.*, m.tss AS load, m.tss_method, m.hr_zone_seconds, m.efficiency_factor, m.aerobic_decoupling_pct, "
+        "m.gap_pace_sec_km, m.ngp_sec_km, m.gap_efficiency_factor, "
         "f.rpe AS my_rpe, f.feel AS my_feel, f.comment AS my_comment "
         "FROM activities a LEFT JOIN activity_metrics m USING (activity_id) "
         "LEFT JOIN session_feedback f USING (activity_id) WHERE a.activity_id = ?",
@@ -403,6 +470,9 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
         "FROM activity_laps WHERE activity_id = ? ORDER BY lap_index",
         [activity_id],
     )
+    outdoor_run = is_outdoor_run(a)
+    if outdoor_run:
+        laps = with_lap_grades(db, activity_id, laps)
     streams = db.fetchone(
         "SELECT count(*), count(heart_rate), count(power) FROM activity_streams WHERE activity_id = ?", [activity_id]
     )
@@ -424,41 +494,54 @@ def build_features(db: Database, activity_id: str, thresholds: dict[str, float])
         else (round(a["feel"] / 25) + 1 if a.get("feel") is not None else None)
     )
     duration = a.get("moving_seconds") or a.get("elapsed_seconds")
+    basics = {
+        "sport": a["sport_type"],
+        "sub_type": a.get("sub_type"),
+        "indoor": is_indoor(a.get("sub_type")),
+        "name": a.get("name"),
+        "date": day,
+        "start": a["start_time"],
+        "duration_min": _r(duration / 60, 0) if duration else None,
+        "distance_km": _r((a.get("distance_meters") or 0) / 1000, 2) or None,
+        "elevation_m": _r(a.get("total_elevation_m"), 0),
+        "load": _r(a.get("load"), 0),
+        "load_method": a.get("tss_method"),
+        "avg_hr": _r(a.get("avg_hr"), 0),
+        "max_hr": _r(a.get("max_hr"), 0),
+        "avg_power_w": _r(a.get("avg_power"), 0),
+        "normalized_power_w": _r(a.get("normalized_power"), 0),
+        "avg_pace_min_km": _r(a["avg_pace_sec_km"] / 60, 2) if a.get("avg_pace_sec_km") else None,
+        "avg_cadence": _r(a.get("avg_cadence"), 0),
+        "training_effect_aerobic": _r(a.get("training_effect_aerobic"), 1),
+        "training_effect_anaerobic": _r(a.get("training_effect_anaerobic"), 1),
+        "training_effect_label": a.get("training_effect_label"),
+    }
+    if outdoor_run:
+        gap, raw = a.get("gap_pace_sec_km"), a.get("avg_pace_sec_km")
+        basics |= {
+            # Grade-adjusted: the pace / efficiency of the same effort on the flat (Minetti).
+            "gap_pace_min_km": _r(gap / 60, 2) if gap else None,
+            "ngp_min_km": _r(a["ngp_sec_km"] / 60, 2) if a.get("ngp_sec_km") else None,
+            "gap_efficiency_factor": _r(a.get("gap_efficiency_factor"), 3),
+            # + = the hills made this run that much more work than the same pace on the flat.
+            "hill_effort_pct": _r((raw / gap - 1) * 100, 1) if gap and raw else None,
+        }
 
     return {
         "activity_id": activity_id,
         "gradable": gradable,
         "ungraded_reason": reason,
         "event": event["label"] if event else None,
-        "basics": {
-            "sport": a["sport_type"],
-            "sub_type": a.get("sub_type"),
-            "indoor": is_indoor(a.get("sub_type")),
-            "name": a.get("name"),
-            "date": day,
-            "start": a["start_time"],
-            "duration_min": _r(duration / 60, 0) if duration else None,
-            "distance_km": _r((a.get("distance_meters") or 0) / 1000, 2) or None,
-            "elevation_m": _r(a.get("total_elevation_m"), 0),
-            "load": _r(a.get("load"), 0),
-            "load_method": a.get("tss_method"),
-            "avg_hr": _r(a.get("avg_hr"), 0),
-            "max_hr": _r(a.get("max_hr"), 0),
-            "avg_power_w": _r(a.get("avg_power"), 0),
-            "normalized_power_w": _r(a.get("normalized_power"), 0),
-            "avg_pace_min_km": _r(a["avg_pace_sec_km"] / 60, 2) if a.get("avg_pace_sec_km") else None,
-            "avg_cadence": _r(a.get("avg_cadence"), 0),
-            "training_effect_aerobic": _r(a.get("training_effect_aerobic"), 1),
-            "training_effect_anaerobic": _r(a.get("training_effect_anaerobic"), 1),
-            "training_effect_label": a.get("training_effect_label"),
-        },
+        "basics": basics,
         "intensity": {"hr_zone_pct": zone_pct},
         "durability": {
             "notes": "Decoupling compares the first and second half of the whole session; it is only meaningful "
             "for steady sessions — warm-ups, intervals, stops or hills inflate it. Check lap_variability "
-            "(cv_pct above ~8% = not steady).",
+            "(cv_pct above ~8% = not steady). On outdoor runs both use grade-adjusted pace/speed when the "
+            "streams have altitude (basis / metric say so), so hills no longer inflate them; "
+            "efficiency_factor here is raw — basics.gap_efficiency_factor is the grade-adjusted one.",
             "efficiency_factor": _r(a.get("efficiency_factor"), 3),
-            "stream_decoupling": stream_durability(db, activity_id, a["sport_type"]),
+            "stream_decoupling": stream_durability(db, activity_id, a["sport_type"], grade_adjust=outdoor_run),
             "lap_variability": lap_variability(laps, a["sport_type"]),
         },
         # Lap by lap against the workout's targets (structured workouts), or as recorded (manual laps).

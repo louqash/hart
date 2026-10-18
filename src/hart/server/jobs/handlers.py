@@ -371,9 +371,12 @@ def make_handlers(config: HartSettings, runner_ref: dict[str, JobRunner]) -> dic
 
     def decoupling_backfill(db: Database, payload: dict[str, Any]) -> dict[str, Any]:
         from hart.ingestion.decoupling import backfill_decoupling
+        from hart.ingestion.grade_adjusted import backfill_grade_adjusted
         from hart.storage.views import refresh_all_views
 
         result = backfill_decoupling(db, only_missing=bool(payload.get("only_missing")))
+        # Grade-adjusted pace comes from the same streams; decoupling was just recomputed above.
+        result["grade_adjusted"] = backfill_grade_adjusted(db, with_decoupling=False)
         refresh_all_views(db)  # weekly / efficiency views average decoupling
         return result
 

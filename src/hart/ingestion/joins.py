@@ -15,6 +15,7 @@ from typing import Any
 
 from hart.analytics.joins import combine_activity, combine_metrics, join_problem, joined_description
 from hart.ingestion.decoupling import activity_decoupling
+from hart.ingestion.grade_adjusted import activity_gap_metrics, is_outdoor_run
 from hart.storage.database import Database
 from hart.storage.writers import delete_activity_rows
 
@@ -135,6 +136,10 @@ def join_activities(db: Database, activity_ids: list[str], method: str) -> dict[
                 [p["activity_id"], p["source"], p["external_id"], p["start_time"], target, method],
             )
         metrics["aerobic_decoupling_pct"] = activity_decoupling(db, target, joined["sport_type"])
+        if is_outdoor_run(joined["sport_type"], joined.get("sub_type")):
+            metrics.update(
+                activity_gap_metrics(db, target, joined.get("avg_pace_sec_km"), metrics.get("efficiency_factor"))
+            )
         _write_metrics(db, metrics)
     logger.info("Joined %s into %s (%s)", rest, target, method)
     return {"activity_id": target, "parts": rest}

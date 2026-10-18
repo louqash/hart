@@ -5,6 +5,10 @@ step (warm-up, work, recovery, cool-down) with a target — watts, heart rate, p
 cadence. Each work lap is compared with its target (on / under / over), and the reps
 are checked for fading. Without a workout, laps are listed as recorded (manual laps,
 auto-laps) with no verdict.
+
+Laps of an outdoor run may carry ``gap_pace_sec_km`` (grade-adjusted pace) and the
+lap's climb and descent (``grading_features.with_lap_grades``); pace is then judged
+on the grade-adjusted pace, so an uphill rep run at the right effort isn't "slow".
 """
 
 from __future__ import annotations
@@ -96,6 +100,9 @@ def breakdown(sport: str, laps: list[dict[str, Any]], steps: list[dict[str, Any]
             "seconds": lap.get("moving_seconds") or lap.get("elapsed_seconds"),
             "power": lap.get("avg_power"),
             "pace_sec_km": round(lap["avg_pace_sec_km"], 1) if lap.get("avg_pace_sec_km") else None,
+            "gap_pace_sec_km": round(lap["gap_pace_sec_km"], 1) if lap.get("gap_pace_sec_km") else None,
+            "gain_m": lap.get("elevation_gain_m"),
+            "loss_m": lap.get("elevation_loss_m"),
             "hr": lap.get("avg_hr"),
             "max_hr": lap.get("max_hr"),
             "cadence": lap.get("avg_cadence"),
@@ -106,9 +113,10 @@ def breakdown(sport: str, laps: list[dict[str, Any]], steps: list[dict[str, Any]
         if step and step.get("target_type") not in (None, "open"):
             row["target"] = {"low": step.get("target_low"), "high": step.get("target_high"), "unit": unit}
             if unit in METRIC_FOR_UNIT and kind == "work":
-                row["verdict"], row["off_pct"] = verdict(
-                    lap.get(metric), step.get("target_low"), step.get("target_high"), metric
-                )
+                value = lap.get(metric)
+                if metric == "avg_pace_sec_km" and lap.get("gap_pace_sec_km"):
+                    value = lap["gap_pace_sec_km"]  # the effort the pace stood for, hills taken out
+                row["verdict"], row["off_pct"] = verdict(value, step.get("target_low"), step.get("target_high"), metric)
                 if row.get("off_pct") is not None and row["off_pct"] > DOUBTFUL_PCT:
                     # That far off is a misread target (units), not a real miss: don't judge it.
                     row["verdict"], row["off_pct"] = None, None
@@ -125,6 +133,10 @@ def breakdown(sport: str, laps: list[dict[str, Any]], steps: list[dict[str, Any]
     key = {"avg_power": "power", "avg_pace_sec_km": "pace_sec_km", "avg_hr": "hr", "avg_cadence": "cadence"}[
         METRIC_FOR_UNIT.get((work[0].get("target") or {}).get("unit", ""), fallback_metric) if work else fallback_metric
     ]
+    if any(r.get("gap_pace_sec_km") for r in work):
+        summary["pace_judged_on"] = "grade-adjusted pace (gap_pace_sec_km) where a lap has it"
+        if key == "pace_sec_km" and all(r.get("gap_pace_sec_km") for r in work):
+            key = "gap_pace_sec_km"
     values = [r[key] for r in work if r.get(key)]
     if len(values) >= 3:
         # Fading: last rep vs first, in the direction that means "worse" (less power, slower pace).
@@ -174,6 +186,11 @@ def main_block(laps: list[dict[str, Any]], sport: str) -> dict[str, Any] | None:
         out["pace_sec_km"] = _r(pace, 1)
         if hr:
             out["ef"] = _r((1000 / pace * 60) / hr, 3)  # metres per minute per beat
+        gap = weighted("gap_pace_sec_km") if all(lap.get("gap_pace_sec_km") for lap in work) else None
+        if gap:
+            out["gap_pace_sec_km"] = _r(gap, 1)
+            if hr:
+                out["gap_ef"] = _r((1000 / gap * 60) / hr, 3)
     return out
 
 

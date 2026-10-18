@@ -23,6 +23,7 @@ from typing import Any
 from hart.config import HartSettings
 from hart.ingestion.decoupling import decoupling_from_points
 from hart.ingestion.fit_parser import FitParser
+from hart.ingestion.grade_adjusted import GAP_COLUMNS, gap_metrics_from_points, is_outdoor_run
 from hart.ingestion.joins import joined_garmin_ids
 from hart.models.activity import SportType, StreamPoint, StrengthSet
 from hart.models.health import HealthDay, HRVDaily, SleepRecord
@@ -788,9 +789,17 @@ class SyncManager:
         decoupling: float | None = None
         if stream_points:
             try:
-                decoupling = decoupling_from_points(stream_points, sport)
+                decoupling = decoupling_from_points(stream_points, sport, activity.sub_type)
             except Exception as exc:
                 logger.warning("Decoupling failed for activity %s: %s", activity.activity_id, exc)
+
+        # Outdoor runs: pace and EF with the hills taken out, from the altitude and distance streams.
+        gap: dict[str, float | None] = dict.fromkeys(GAP_COLUMNS)
+        if stream_points and is_outdoor_run(sport, activity.sub_type):
+            try:
+                gap = gap_metrics_from_points(stream_points, activity.avg_pace_sec_km, ef)
+            except Exception as exc:
+                logger.warning("Grade-adjusted pace failed for activity %s: %s", activity.activity_id, exc)
 
         # TSS from Garmin's own training load (already FTP-adjusted on device).
         tss = _safe_float(activity.garmin_training_load)
@@ -806,8 +815,8 @@ class SyncManager:
                  hr_zone_seconds, efficiency_factor, aerobic_decoupling_pct,
                  avg_ground_contact_ms, avg_vertical_osc_mm, avg_vertical_ratio_pct,
                  avg_stride_length_m, swolf, estimated_calories, estimated_kj,
-                 carb_calories, fat_calories)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 carb_calories, fat_calories, gap_pace_sec_km, ngp_sec_km, gap_efficiency_factor)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     activity.activity_id,
                     sport_str,
@@ -826,6 +835,7 @@ class SyncManager:
                     round(float(summary["totalWork"]), 1) if summary.get("totalWork") else None,
                     None,
                     None,  # carb/fat calories not in Garmin API
+                    *(gap[c] for c in GAP_COLUMNS),
                 ],
             )
             logger.debug("Metrics written for activity %s", activity.activity_id)

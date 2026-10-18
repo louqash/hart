@@ -12,13 +12,16 @@ from collections.abc import Iterable
 from typing import Any
 
 from hart.analytics.efficiency import steady_session_decoupling
+from hart.analytics.pace import grade_adjusted_speeds
+from hart.ingestion.grade_adjusted import is_outdoor_run
 from hart.models.activity import StreamPoint
 from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
 # Bike decoupling is Pw:Hr (outdoor rides without a power meter get none);
-# run decoupling is Pa:Hr from speed.
+# run decoupling is Pa:Hr from speed — grade-adjusted on outdoor runs, so hills
+# neither fake drift nor make a steady effort look unsteady.
 _OUTPUT_FIELD = {"bike": "power", "run": "speed"}
 
 
@@ -26,17 +29,20 @@ def _sport_str(sport: Any) -> str:
     return sport.value if hasattr(sport, "value") else str(sport)
 
 
-def decoupling_from_points(points: Iterable[StreamPoint], sport: Any) -> float | None:
+def decoupling_from_points(points: Iterable[StreamPoint], sport: Any, sub_type: str | None = None) -> float | None:
     """Decoupling (%) for parsed FIT stream points, or ``None`` if ineligible."""
     field = _OUTPUT_FIELD.get(_sport_str(sport))
     if field is None:
         return None
     pts = list(points)
+    output = [getattr(p, field) for p in pts]
+    if is_outdoor_run(sport, sub_type):
+        output = grade_adjusted_speeds([p.distance for p in pts], [p.altitude for p in pts], output)
     return _rounded(
         steady_session_decoupling(
             [p.timestamp_sec for p in pts],
             [p.heart_rate for p in pts],
-            [getattr(p, field) for p in pts],
+            output,
             _sport_str(sport),
         )
     )
@@ -48,16 +54,22 @@ def activity_decoupling(db: Database, activity_id: str, sport: Any) -> float | N
     if field is None:
         return None
     rows = db.fetchall(
-        f"SELECT timestamp_sec, heart_rate, {field} FROM activity_streams WHERE activity_id = ? ORDER BY timestamp_sec",
+        f"SELECT timestamp_sec, heart_rate, {field}, distance, altitude FROM activity_streams "
+        "WHERE activity_id = ? ORDER BY timestamp_sec",
         [activity_id],
     )
     if not rows:
         return None
+    output = [r[2] for r in rows]
+    if _sport_str(sport) == "run":
+        sub = db.fetchone("SELECT sub_type FROM activities WHERE activity_id = ?", [activity_id])
+        if is_outdoor_run(sport, sub[0] if sub else None):
+            output = grade_adjusted_speeds([r[3] for r in rows], [r[4] for r in rows], output)
     return _rounded(
         steady_session_decoupling(
             [r[0] for r in rows],
             [r[1] for r in rows],
-            [r[2] for r in rows],
+            output,
             _sport_str(sport),
         )
     )

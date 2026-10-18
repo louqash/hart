@@ -195,6 +195,9 @@ def job_details(job: dict[str, Any]) -> str:
             parts.append(f"{result['no_health_row']} estimate(s) skipped (no health row)")
     elif job["type"] == "decoupling_backfill" and "computed" in result:
         parts.append(f"decoupling computed for {result['computed']} of {result['checked']} bike/run sessions")
+        gap = result.get("grade_adjusted") or {}
+        if gap.get("checked"):
+            parts.append(f"grade-adjusted pace for {gap['computed']} of {gap['checked']} outdoor runs")
         if result.get("errors"):
             parts.append(f"{result['errors']} error(s)")
     elif job["type"] == "backup" and "bytes" in result:

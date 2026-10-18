@@ -7,13 +7,16 @@ migrations so future releases can upgrade the schema incrementally.
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from hart.storage.database import Database
 
+logger = logging.getLogger(__name__)
+
 # Bump this when adding migrations.
-CURRENT_SCHEMA_VERSION: int = 19
+CURRENT_SCHEMA_VERSION: int = 20
 
 # ---------------------------------------------------------------------------
 # DDL statements
@@ -218,7 +221,10 @@ CREATE TABLE IF NOT EXISTS activity_metrics (
     estimated_calories     INT,
     estimated_kj           DOUBLE,
     carb_calories          DOUBLE,
-    fat_calories           DOUBLE
+    fat_calories           DOUBLE,
+    gap_pace_sec_km        DOUBLE,
+    ngp_sec_km             DOUBLE,
+    gap_efficiency_factor  DOUBLE
 );
 
 CREATE TABLE IF NOT EXISTS daily_training_load (
@@ -754,6 +760,19 @@ def _run_migrations(db: Database) -> None:
     # v17: grade_waits — a new table only, created above.
     # v18: weekly_reviews — a new table only, created above.
     # v19: activity_joins — a new table only, created above.
+
+    if 20 not in applied:
+        # v20: grade-adjusted pace, NGP and GAP efficiency for outdoor runs; their decoupling becomes
+        # grade-adjusted too. Computed once here from the stored streams (new syncs compute them).
+        for column in ("gap_pace_sec_km", "ngp_sec_km", "gap_efficiency_factor"):
+            _add_column_if_missing(db, "activity_metrics", column, "DOUBLE")
+        from hart.ingestion.grade_adjusted import backfill_grade_adjusted
+
+        try:
+            result = backfill_grade_adjusted(db)
+            logger.info("Grade-adjusted metrics backfilled: %s", result)
+        except Exception as exc:  # a bad stream mustn't stop the database from opening
+            logger.warning("Grade-adjusted backfill failed: %s", exc)
 
     if 9 not in applied:
         # v9: accepted-suggestion link and Garmin text on plan rows;

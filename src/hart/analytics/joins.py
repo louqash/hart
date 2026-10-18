@@ -186,8 +186,8 @@ def combine_metrics(
     parts: list[dict[str, Any]], metrics: list[dict[str, Any] | None], joined: dict[str, Any]
 ) -> dict[str, Any]:
     """``activity_metrics`` of the joined activity: load, time in zones, calories and work add up; efficiency
-    comes from the joined averages; running dynamics are time-weighted. Decoupling needs the joined stream and
-    is computed by the caller."""
+    comes from the joined averages; running dynamics are time-weighted. Decoupling and grade-adjusted pace need
+    the joined stream and are computed by the caller."""
     weights = [_seconds(p) for p, m in zip(parts, metrics) if m]
     rows = [m for m in metrics if m]
     zones: dict[str, float] = {}

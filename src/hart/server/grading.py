@@ -29,7 +29,7 @@ from hart.storage.database import Database
 
 logger = logging.getLogger(__name__)
 
-GRADE_PROMPT_VERSION = "grade@8"
+GRADE_PROMPT_VERSION = "grade@9"
 WEIGHTS = {"execution": 0.45, "response": 0.30, "context_fit": 0.25}
 LETTERS = ((4.5, "A"), (3.75, "B"), (3.0, "C"), (2.25, "D"))
 UNVERIFIED_LIMIT = 0.30
@@ -119,6 +119,16 @@ under / over, with `off_pct`), and the summary counts them and shows fading (`la
 `hr_drift_bpm`) and recovery length. Judge execution per interval — were the targets hit, did the reps \
 fade, were recoveries respected — not from the session averages, which warm-up and recoveries dilute. \
 With "laps" (manual or auto laps, no targets) compare the laps with the note or the coach's text.
+- Hills (outdoor runs): raw pace and efficiency depend on the route. Code grade-adjusts them (the same \
+effort on the flat): `basics.gap_pace_min_km`, `ngp_min_km`, `gap_efficiency_factor` and \
+`hill_effort_pct` (how much more work the hills made it); `comparison` has `gap_pace_sec_km`, \
+`ngp_sec_km` and `gap_ef` medians and deltas, `comparison.main_block` has `gap_pace_sec_km` and \
+`gap_ef`; lap rows have `gap_pace_sec_km` with `gain_m` / `loss_m`, and pace verdicts and fading are \
+on the grade-adjusted pace (`summary.pace_judged_on`). For outdoor runs judge pace, efficiency and \
+pace targets on these, not on raw pace or EF — never mark a run slow or less efficient because the \
+route was hillier than usual. Without grade-adjusted values (no altitude data, or no similar session \
+has them) a raw difference on a hilly run may be the route: lower confidence rather than the score. \
+Indoor runs and other sports have none.
 - `feedback` holds what the athlete said about the session: RPE, feel and their `note` (written in \
 hart or in Garmin Connect — often the coach's workout or how it went). Read the note: it states the \
 intent, pain or niggles, and circumstances the numbers can't show, and it weighs in all three scores. \
